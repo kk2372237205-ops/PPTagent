@@ -1,0 +1,235 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String         @id @default(cuid())
+  phone            String         @unique
+  createdAt        DateTime       @default(now())
+  animationEnabled Boolean        @default(true)
+  notifications    Boolean        @default(true)
+  sessions         Session[]
+  consultations    Consultation[]
+  services         Service[]
+  assets           Asset[]
+}
+
+model VerificationCode {
+  id        String    @id @default(cuid())
+  phone     String
+  codeHash  String
+  ip        String?
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([phone, createdAt])
+}
+
+model Session {
+  id          String   @id @default(cuid())
+  tokenHash   String   @unique
+  deviceLabel String
+  ip          String?
+  remember    Boolean  @default(true)
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Consultation {
+  id        String            @id @default(cuid())
+  number    String            @unique
+  budget    String
+  status    String            @default("等待人工客服")
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  Message[]
+  services  Service[]
+  revisions RevisionRequest[]
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  role           String       @default("customer")
+  content        String
+  createdAt      DateTime     @default(now())
+  consultationId String
+  consultation   Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+  employeeId     String?
+  employee       Employee?    @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  attachments    Attachment[]
+}
+
+model Attachment {
+  id           String           @id @default(cuid())
+  originalName String
+  storedName   String           @unique
+  mimeType     String
+  size         Int
+  createdAt    DateTime         @default(now())
+  messageId    String?
+  message      Message?         @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  versionId    String?
+  version      DeliveryVersion? @relation(fields: [versionId], references: [id], onDelete: Cascade)
+}
+
+model Service {
+  id             String            @id @default(cuid())
+  number         String            @unique
+  title          String
+  category       String
+  purchasedAt    DateTime
+  priceCents     Int
+  status         String
+  progress       Int
+  userId         String
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  consultationId String?
+  consultation   Consultation?     @relation(fields: [consultationId], references: [id], onDelete: SetNull)
+  versions       DeliveryVersion[]
+  revisions      RevisionRequest[]
+  asset          Asset?
+  assigneeId     String?
+  assignee       Employee?         @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+  workDocument   WorkDocument?
+  activities     ServiceActivity[]
+  generationJobs GenerationJob[]
+}
+
+model DeliveryVersion {
+  id          String       @id @default(cuid())
+  version     Int
+  label       String
+  note        String
+  createdAt   DateTime     @default(now())
+  serviceId   String
+  service     Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  attachments Attachment[]
+
+  @@unique([serviceId, version])
+}
+
+model RevisionRequest {
+  id             String       @id @default(cuid())
+  number         String       @unique
+  status         String       @default("待处理")
+  createdAt      DateTime     @default(now())
+  serviceId      String
+  service        Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  consultationId String
+  consultation   Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+}
+
+model Asset {
+  id        String   @id @default(cuid())
+  title     String
+  format    String
+  createdAt DateTime @default(now())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serviceId String   @unique
+  service   Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+}
+
+model Employee {
+  id               String            @id @default(cuid())
+  code             String            @unique
+  name             String
+  phone            String?           @unique
+  isAdmin          Boolean           @default(false)
+  enabled          Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  sessions         EmployeeSession[]
+  assignedServices Service[]
+  messages         Message[]
+  activities       ServiceActivity[]
+  workVersions     WorkVersion[]
+  generationJobs   GenerationJob[]
+}
+
+model EmployeeSession {
+  id          String   @id @default(cuid())
+  tokenHash   String   @unique
+  deviceLabel String
+  ip          String?
+  remember    Boolean  @default(true)
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model WorkDocument {
+  id           String        @id @default(cuid())
+  originalName String
+  storedName   String        @unique
+  fileType     String        @default("pptx")
+  documentKey  String        @unique
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  serviceId    String        @unique
+  service      Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  versions     WorkVersion[]
+}
+
+model WorkVersion {
+  id             String       @id @default(cuid())
+  version        Int
+  label          String
+  storedName     String       @unique
+  createdAt      DateTime     @default(now())
+  workDocumentId String
+  workDocument   WorkDocument @relation(fields: [workDocumentId], references: [id], onDelete: Cascade)
+  createdById    String
+  createdBy      Employee     @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([workDocumentId, version])
+}
+
+model ServiceActivity {
+  id         String   @id @default(cuid())
+  action     String
+  detail     String
+  createdAt  DateTime @default(now())
+  serviceId  String
+  service    Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+}
+
+model GenerationJob {
+  id                  String           @id @default(cuid())
+  prompt              String
+  referenceStoredName String?
+  status              String           @default("processing")
+  error               String?
+  createdAt           DateTime         @default(now())
+  serviceId           String
+  service             Service          @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  employeeId          String
+  employee            Employee         @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  images              GeneratedImage[]
+}
+
+model GeneratedImage {
+  id            String        @id @default(cuid())
+  storedName    String        @unique
+  originalUrl   String?
+  isMaterial    Boolean       @default(false)
+  materialOrder Int           @default(0)
+  createdAt     DateTime      @default(now())
+  jobId         String
+  job           GenerationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+}
