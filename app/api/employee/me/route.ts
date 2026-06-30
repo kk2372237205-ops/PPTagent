@@ -36,8 +36,21 @@ export async function GET() {
         generationJobs: {
           orderBy: { createdAt: "desc" },
           include: {
-            employee: { select: { name: true } },
+            employee: { select: { id: true, name: true } },
             images: { orderBy: [{ isMaterial: "desc" }, { materialOrder: "asc" }, { createdAt: "desc" }] }
+          }
+        },
+        materialItems: {
+          orderBy: [{ materialOrder: "asc" }, { createdAt: "desc" }],
+          include: {
+            employee: { select: { id: true, name: true } },
+            image: {
+              include: {
+                job: {
+                  include: { employee: { select: { id: true, name: true } } }
+                }
+              }
+            }
           }
         }
       }

@@ -2,6 +2,7 @@ node_modules/
 .next/
 .next-dev/
 .env
+.env.local
 prisma/dev.db
 prisma/dev.db-journal
 uploads/
@@ -9,4 +10,8 @@ uploads/
 .npm-cache/
 .runtime/
 .artifacts/
+.venv-image-gpu/
+.venv-sam3/
+.venv-grounded-sam2/
+.models/
 tsconfig.tsbuildinfo

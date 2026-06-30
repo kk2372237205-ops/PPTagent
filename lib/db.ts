@@ -9,5 +9,9 @@ if (!sqliteUrl?.startsWith("file:")) {
 }
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
-export const db = globalForPrisma.prisma ?? new PrismaClient();
+// Prisma's generated delegates change when a new data model is introduced. During
+// `next dev` hot reload, an older singleton can otherwise survive without the new
+// delegate and make a route return an empty 500 response. Recreate it once here.
+const existingPrisma = globalForPrisma.prisma;
+export const db = existingPrisma && "imageExplodeRun" in existingPrisma ? existingPrisma : new PrismaClient();
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;

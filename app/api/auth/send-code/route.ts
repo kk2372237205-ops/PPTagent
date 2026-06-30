@@ -15,6 +15,14 @@ export async function POST(request: NextRequest) {
     where: { phone, createdAt: { gt: new Date(Date.now() - 60_000) } }
   });
   if (recent) {
+    if (process.env.NODE_ENV !== "production") {
+      return NextResponse.json({
+        ok: true,
+        mode: "mock",
+        devCode: process.env.DEV_SMS_CODE ?? "123456",
+        cooldown: true
+      });
+    }
     return NextResponse.json({ error: "验证码发送太频繁，请稍后再试" }, { status: 429 });
   }
 
@@ -34,7 +42,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       mode: result.mode,
-      ...(result.mode === "development" && process.env.NODE_ENV !== "production" ? { devCode: code } : {})
+      ...(result.mode === "mock" && process.env.NODE_ENV !== "production" ? { devCode: code } : {})
     });
   } catch (error) {
     return NextResponse.json(

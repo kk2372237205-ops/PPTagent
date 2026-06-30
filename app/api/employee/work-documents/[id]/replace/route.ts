@@ -2,6 +2,7 @@ import path from "path";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { currentEmployee } from "@/lib/employee-auth";
+import { workPresentationMaxBytes, workPresentationMaxLabel } from "@/lib/upload-limits";
 import { documentRoot, saveFile } from "@/lib/workspace-storage";
 
 const allowedExtensions = new Set([".ppt", ".pptx"]);
@@ -26,8 +27,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   if (!allowedExtensions.has(extension)) {
     return NextResponse.json({ error: "仅支持 PPT 和 PPTX 文件" }, { status: 400 });
   }
-  if (file.size > 100 * 1024 * 1024) {
-    return NextResponse.json({ error: "PPT 文件不能超过 100MB" }, { status: 400 });
+  if (file.size > workPresentationMaxBytes) {
+    return NextResponse.json({ error: `PPT 文件不能超过 ${workPresentationMaxLabel}` }, { status: 400 });
   }
 
   const fileType = extension.slice(1);

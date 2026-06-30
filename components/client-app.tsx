@@ -14,7 +14,10 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 type Attachment = { id: string; originalName: string; size: number };
 type Message = { id: string; role: string; content: string; createdAt: string; attachments: Attachment[] };
-type Consultation = { id: string; number: string; budget: string; status: string; createdAt: string; updatedAt: string; messages: Message[] };
+type Consultation = {
+  id: string; number: string; budget: string; selectedBudgets?: string; isCustomerGroup?: boolean;
+  status: string; createdAt: string; updatedAt: string; messages: Message[];
+};
 type Version = { id: string; version: number; label: string; note: string; createdAt: string };
 type Service = {
   id: string; number: string; title: string; category: string; purchasedAt: string;
@@ -48,6 +51,19 @@ const sampleSlides = [
   { eyebrow: "NEXT CHAPTER", title: "一起抵达更远的地方", kind: "final" }
 ];
 
+function consultationBudgets(consultation: Pick<Consultation, "budget" | "selectedBudgets">) {
+  try {
+    const parsed = JSON.parse(consultation.selectedBudgets || "[]");
+    if (Array.isArray(parsed)) {
+      const values = parsed.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+      return Array.from(new Set([...values, consultation.budget]));
+    }
+  } catch {
+    // Old consultations only have the single budget field.
+  }
+  return [consultation.budget];
+}
+
 export default function ClientApp({ initialUser }: { initialUser: User | null }) {
   const [user, setUser] = useState<User | null | undefined>(initialUser);
   const [active, setActive] = useState("intro");
@@ -76,12 +92,13 @@ export default function ClientApp({ initialUser }: { initialUser: User | null })
     setActive(id); setChat(null); setMobileNav(false);
   }
   async function openBudget(range: string) {
-    const existing = user!.consultations.find((item) => item.budget === range);
-    if (existing) return setChat(existing);
+    const existing = user!.consultations.find((item) => item.isCustomerGroup);
+    if (existing && consultationBudgets(existing).includes(range)) return setChat(existing);
     const response = await fetch("/api/consultations", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ budget: range })
     });
     const data = await response.json();
+    if (!response.ok) return setToast(data.error || "咨询创建失败");
     await loadUser();
     setChat(data.consultation);
   }
@@ -143,6 +160,8 @@ function Sidebar({ active, navigate, user, logout, open, close }: {
 
 function LoginScreen({ onLogin }: { onLogin: () => Promise<void> }) {
   const reduceMotion = useReducedMotion();
+  const phoneRef = useRef<HTMLInputElement>(null);
+  const codeRef = useRef<HTMLInputElement>(null);
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [remember, setRemember] = useState(true);
@@ -151,6 +170,36 @@ function LoginScreen({ onLogin }: { onLogin: () => Promise<void> }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [devCode, setDevCode] = useState("");
+  const phoneValid = /^1[3-9]\d{9}$/.test(phone);
+  const codeValid = /^\d{6}$/.test(code);
+  const canSubmit = sent ? codeValid : phoneValid;
+
+  function updatePhone(value: string) {
+    const next = value.replace(/\D/g, "").slice(0, 11);
+    setPhone(next);
+    setCode("");
+    setSent(false);
+    setDevCode("");
+    if (phoneRef.current && phoneRef.current.value !== next) phoneRef.current.value = next;
+  }
+
+  function updateCode(value: string) {
+    const next = value.replace(/\D/g, "").slice(0, 6);
+    setCode(next);
+    if (codeRef.current && codeRef.current.value !== next) codeRef.current.value = next;
+  }
+
+  useEffect(() => {
+    const syncInputs = () => {
+      const currentPhone = (phoneRef.current?.value ?? "").replace(/\D/g, "").slice(0, 11);
+      const currentCode = (codeRef.current?.value ?? "").replace(/\D/g, "").slice(0, 6);
+      if (currentPhone !== phone) updatePhone(currentPhone);
+      if (currentCode !== code) updateCode(currentCode);
+    };
+    syncInputs();
+    const timer = window.setInterval(syncInputs, 250);
+    return () => window.clearInterval(timer);
+  }, [phone, code]);
 
   useEffect(() => {
     if (!countdown) return;
@@ -159,8 +208,14 @@ function LoginScreen({ onLogin }: { onLogin: () => Promise<void> }) {
   }, [countdown]);
 
   async function sendCode() {
+    const currentPhone = (phoneRef.current?.value ?? phone).replace(/\D/g, "").slice(0, 11);
+    if (currentPhone !== phone) setPhone(currentPhone);
+    if (!/^1[3-9]\d{9}$/.test(currentPhone)) {
+      setError("请输入正确的中国大陆手机号");
+      return;
+    }
     setError(""); setBusy(true);
-    const response = await fetch("/api/auth/send-code", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone }) });
+    const response = await fetch("/api/auth/send-code", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: currentPhone }) });
     const data = await response.json(); setBusy(false);
     if (!response.ok) return setError(data.error);
     setSent(true); setCountdown(60); setDevCode(data.devCode ?? "");
@@ -168,9 +223,17 @@ function LoginScreen({ onLogin }: { onLogin: () => Promise<void> }) {
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!sent) return sendCode();
+    const currentPhone = (phoneRef.current?.value ?? phone).replace(/\D/g, "").slice(0, 11);
+    const currentCode = (codeRef.current?.value ?? code).replace(/\D/g, "").slice(0, 6);
+    if (currentPhone !== phone) setPhone(currentPhone);
+    if (currentCode !== code) setCode(currentCode);
+    if (!/^\d{6}$/.test(currentCode)) {
+      setError("请输入 6 位验证码");
+      return;
+    }
     setError(""); setBusy(true);
     const response = await fetch("/api/auth/verify", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone, code, remember })
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: currentPhone, code: currentCode, remember })
     });
     const data = await response.json(); setBusy(false);
     if (!response.ok) return setError(data.error);
@@ -207,12 +270,12 @@ function LoginScreen({ onLogin }: { onLogin: () => Promise<void> }) {
         <p className="login-lead">手机号验证后即可登录，新用户将自动创建账户</p>
         <form onSubmit={submit}>
           <label>手机号码</label>
-          <div className="phone-field"><span>+86</span><input value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g,"").slice(0,11))} placeholder="请输入手机号码" inputMode="numeric" /></div>
-          {sent && <><label>验证码</label><div className="code-field"><input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g,"").slice(0,6))} placeholder="6 位验证码" inputMode="numeric" /><button type="button" disabled={countdown > 0} onClick={sendCode}>{countdown ? `${countdown}s` : "重新获取"}</button></div></>}
+          <div className="phone-field"><span>+86</span><input ref={phoneRef} value={phone} onInput={(e) => updatePhone(e.currentTarget.value)} onChange={(e) => updatePhone(e.target.value)} placeholder="请输入手机号码" inputMode="numeric" autoComplete="tel" /></div>
+          {sent && <><label>验证码</label><div className="code-field"><input ref={codeRef} value={code} onInput={(e) => updateCode(e.currentTarget.value)} onChange={(e) => updateCode(e.target.value)} placeholder="6 位验证码" inputMode="numeric" autoComplete="one-time-code" /><button type="button" disabled={countdown > 0} onClick={sendCode}>{countdown ? `${countdown}s` : "重新获取"}</button></div></>}
           {devCode && <div className="dev-code">本地演示验证码：<b>{devCode}</b></div>}
           <label className="remember"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /><span><Check size={13} /></span>记住我 60 天</label>
           {error && <div className="form-error">{error}</div>}
-          <button className="primary-button login-button" disabled={busy || phone.length !== 11 || (sent && code.length !== 6)}>
+          <button className="primary-button login-button" disabled={busy || !canSubmit}>
             {busy ? <RefreshCw className="spin" size={18} /> : sent ? "验证并进入工作台" : "获取验证码"} {!busy && <ArrowRight size={18} />}
           </button>
         </form>
@@ -271,7 +334,7 @@ function Introduction() {
             <span className="sample-watermark">WZLCF · ONLINE PREVIEW · 138****0000</span>
             <small>{sampleSlides[slide].eyebrow}</small><h3>{sampleSlides[slide].title}</h3>
             {sampleSlides[slide].kind === "chart" && <div className="sample-bars">{[28,46,38,72,58,88].map((h,i)=><i key={i} style={{height:`${h}%`}} />)}</div>}
-            {sampleSlides[slide].kind === "steps" && <div className="sample-steps"><span>洞察</span><i/><span>结构</span><i/><span>设计</span><i/><span>影响</span></div>}
+            {sampleSlides[slide].kind === "steps" && <div className="sample-step-row"><span>洞察</span><i/><span>结构</span><i/><span>设计</span><i/><span>影响</span></div>}
             <b className="sample-number">0{slide + 1}</b>
           </motion.div></AnimatePresence>
           <div className="sample-meta"><span>{String(slide + 1).padStart(2,"0")} / 04</span><div>{sampleSlides.map((_,i)=><i key={i} className={i===slide?"active":""}/>)}</div><em><ShieldCheck size={14}/> 仅供预览</em></div>
@@ -284,6 +347,7 @@ function Introduction() {
 }
 
 function Plans({ openBudget, consultations }: { openBudget: (range: string) => void; consultations: Consultation[] }) {
+  const customerGroup = consultations.find((item) => item.isCustomerGroup);
   return <div>
     <PageHead kicker="SERVICE PACKAGES" title="选择适合你的服务尺度" text="价格不是限制，而是我们共同定义项目深度的起点。" action={<div className="consult-tip"><MessageCircle size={17}/><div><b>不确定怎么选？</b><span>先和顾问聊聊</span></div></div>} />
     <section className="plans-hero"><div><span>从一页灵感，到一场重要发布</span><h2>每个预算，都值得<br/>被认真对待。</h2></div><div className="plan-sculpture"><i/><i/><i/></div></section>
@@ -292,7 +356,7 @@ function Plans({ openBudget, consultations }: { openBudget: (range: string) => v
         {plan.recommended && <em className="recommend">最受欢迎</em>}
         <div className="budget-top"><span>0{index+1}</span><ArrowRight/></div>
         <small>{plan.tag}</small><h3>¥ {plan.range}</h3><p>{plan.note}</p>
-        <div className="budget-foot"><span>{consultations.some(c=>c.budget===plan.range) ? "继续咨询" : "开启咨询"}</span><i /></div>
+        <div className="budget-foot"><span>{customerGroup || consultations.some(c=>consultationBudgets(c).includes(plan.range)) ? "继续咨询" : "开启咨询"}</span><i /></div>
       </motion.button>)}
     </div>
     <div className="plan-note"><ShieldCheck/><span>所有套餐均包含需求梳理、专属设计师、进度同步与交付后修改支持。</span></div>
@@ -362,6 +426,7 @@ function ChatPage({ chat, back, refresh, notify }: { chat: Consultation; user: U
   const [files,setFiles]=useState<File[]>([]);
   const [sending,setSending]=useState(false);
   const fileRef=useRef<HTMLInputElement>(null);
+  const selectedBudgets = consultationBudgets(chat);
   async function send() {
     if (!text.trim()&&!files.length) return;
     setSending(true); const form=new FormData(); form.set("content",text); files.forEach(f=>form.append("files",f));
@@ -370,7 +435,7 @@ function ChatPage({ chat, back, refresh, notify }: { chat: Consultation; user: U
     setMessages(v=>[...v,data.message]); setText(""); setFiles([]); await refresh();
   }
   return <div className="chat-layout">
-    <div className="chat-top"><button className="back-button" onClick={back}><ChevronLeft/>返回套餐</button><div><span>咨询编号 {chat.number}</span><h2>{chat.budget} 专属咨询</h2></div><div className="waiting"><i/>等待人工顾问</div></div>
+    <div className="chat-top"><button className="back-button" onClick={back}><ChevronLeft/>返回套餐</button><div><span>咨询编号 {chat.number}</span><h2>客户专属咨询群</h2></div><div className="waiting"><i/>等待人工顾问</div></div>
     <div className="chat-body">
       <div className="chat-feed">
         <div className="chat-date">今天</div>
@@ -386,7 +451,7 @@ function ChatPage({ chat, back, refresh, notify }: { chat: Consultation; user: U
         <div><input ref={fileRef} hidden type="file" multiple accept=".ppt,.pptx,.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.zip" onChange={e=>setFiles(Array.from(e.target.files??[]).slice(0,5))}/><button className="attach-button" onClick={()=>fileRef.current?.click()}><Paperclip/>添加附件</button><span>最多 5 个，共 100MB</span><button className="send-button" onClick={send} disabled={sending}>{sending?<RefreshCw className="spin"/>:<Send/>}</button></div>
       </div>
     </div>
-    <aside className="chat-side"><h3>本次咨询</h3><div className="chat-budget"><span>预算范围</span><b>¥ {chat.budget}</b></div><dl><div><dt>咨询状态</dt><dd>等待回复</dd></div><div><dt>服务方式</dt><dd>一对一沟通</dd></div><div><dt>材料支持</dt><dd>PPT / PDF / ZIP</dd></div></dl><div className="privacy-box"><ShieldCheck/><div><b>资料安全保障</b><span>仅你和服务团队有权访问本次咨询材料。</span></div></div></aside>
+    <aside className="chat-side"><h3>客户需求</h3><div className="chat-budget"><span>已选择预算</span><div className="budget-tags">{selectedBudgets.map((budget) => <b key={budget}>¥ {budget}</b>)}</div></div><dl><div><dt>咨询状态</dt><dd>等待回复</dd></div><div><dt>服务方式</dt><dd>团队协同服务</dd></div><div><dt>材料支持</dt><dd>PPT / PDF / ZIP</dd></div></dl><div className="privacy-box"><ShieldCheck/><div><b>资料安全保障</b><span>仅你和服务团队有权访问本次咨询材料。</span></div></div></aside>
   </div>;
 }
 

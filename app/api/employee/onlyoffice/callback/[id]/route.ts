@@ -17,17 +17,25 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   if ([2, 6].includes(body.status) && body.url) {
     const document = await db.workDocument.findUnique({ where: { id } });
     if (!document) return NextResponse.json({ error: 1 });
+    if (!matchesDocumentVersion(body.key, document.documentKey)) {
+      return NextResponse.json({ error: 0 });
+    }
     const response = await fetch(body.url);
     if (!response.ok) return NextResponse.json({ error: 1 });
+    const latestDocument = await db.workDocument.findUnique({ where: { id } });
+    if (!latestDocument || !matchesDocumentVersion(body.key, latestDocument.documentKey)) {
+      return NextResponse.json({ error: 0 });
+    }
     await ensureWorkspaceDirectories();
     await writeFile(
-      path.join(documentRoot, path.basename(document.storedName)),
+      path.join(documentRoot, path.basename(latestDocument.storedName)),
       Buffer.from(await response.arrayBuffer())
     );
-    await db.workDocument.update({
-      where: { id },
-      data: { documentKey: `${document.serviceId}-${Date.now()}` }
-    });
   }
   return NextResponse.json({ error: 0 });
+}
+
+function matchesDocumentVersion(callbackKey: unknown, documentKey: string) {
+  if (typeof callbackKey !== "string") return false;
+  return callbackKey === documentKey || callbackKey.startsWith(`${documentKey}-`);
 }

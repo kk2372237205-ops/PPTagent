@@ -33,12 +33,20 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   const image = await db.generatedImage.findUnique({ where: { id }, include: { job: true } });
   if (!image) return NextResponse.json({ error: "图片不存在" }, { status: 404 });
   const { isMaterial, materialOrder } = await request.json();
-  const result = await db.generatedImage.update({
-    where: { id },
-    data: {
-      ...(typeof isMaterial === "boolean" ? { isMaterial } : {}),
-      ...(Number.isFinite(Number(materialOrder)) ? { materialOrder: Number(materialOrder) } : {})
-    }
+  if (isMaterial === false) {
+    await db.materialItem.deleteMany({ where: { imageId: id, employeeId: employee.id } });
+    return NextResponse.json({ ok: true });
+  }
+  const order = Number.isFinite(Number(materialOrder)) ? Number(materialOrder) : 0;
+  const item = await db.materialItem.upsert({
+    where: { employeeId_imageId: { employeeId: employee.id, imageId: id } },
+    create: {
+      imageId: id,
+      employeeId: employee.id,
+      serviceId: image.job.serviceId,
+      materialOrder: order
+    },
+    update: { materialOrder: order }
   });
-  return NextResponse.json({ image: result });
+  return NextResponse.json({ materialItem: item });
 }

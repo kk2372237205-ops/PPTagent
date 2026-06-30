@@ -48,6 +48,8 @@ model Consultation {
   id        String            @id @default(cuid())
   number    String            @unique
   budget    String
+  selectedBudgets String      @default("[]")
+  isCustomerGroup Boolean     @default(false)
   status    String            @default("等待人工客服")
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
@@ -56,6 +58,8 @@ model Consultation {
   messages  Message[]
   services  Service[]
   revisions RevisionRequest[]
+
+  @@index([userId, isCustomerGroup])
 }
 
 model Message {
@@ -104,6 +108,11 @@ model Service {
   workDocument   WorkDocument?
   activities     ServiceActivity[]
   generationJobs GenerationJob[]
+  aiConversations AiConversation[]
+  materialItems   MaterialItem[]
+  designAgentRuns DesignAgentRun[]
+  imageExplodeRuns ImageExplodeRun[]
+  deckGenerationRuns DeckGenerationRun[]
 }
 
 model DeliveryVersion {
@@ -156,6 +165,12 @@ model Employee {
   activities       ServiceActivity[]
   workVersions     WorkVersion[]
   generationJobs   GenerationJob[]
+  aiConversations  AiConversation[]
+  aiMessages        AiMessage[]
+  materialItems     MaterialItem[]
+  designAgentRuns   DesignAgentRun[]
+  imageExplodeRuns  ImageExplodeRun[]
+  deckGenerationRuns DeckGenerationRun[]
 }
 
 model EmployeeSession {
@@ -220,7 +235,10 @@ model GenerationJob {
   service             Service          @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   employeeId          String
   employee            Employee         @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  provider            String           @default("openai")
+  model               String           @default("")
   images              GeneratedImage[]
+  designAgentRun      DesignAgentRun?
 }
 
 model GeneratedImage {
@@ -232,4 +250,307 @@ model GeneratedImage {
   createdAt     DateTime      @default(now())
   jobId         String
   job           GenerationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  materialItems MaterialItem[]
+  designAgentReferences DesignAgentReference[]
+  explodeSources ImageExplodeRun[]
+}
+
+model AiConversation {
+  id         String      @id @default(cuid())
+  summary    String      @default("")
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  serviceId  String
+  service    Service     @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee   Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  messages   AiMessage[]
+
+  @@unique([serviceId, employeeId])
+  @@index([employeeId, updatedAt])
+}
+
+model AiMessage {
+  id             String         @id @default(cuid())
+  role           String
+  content        String
+  provider       String
+  model          String
+  mode           String         @default("text")
+  metadata       String         @default("{}")
+  createdAt      DateTime       @default(now())
+  conversationId String
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  employeeId     String
+  employee       Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
+
+model MaterialItem {
+  id            String         @id @default(cuid())
+  materialOrder Int            @default(0)
+  createdAt     DateTime       @default(now())
+  serviceId     String
+  service       Service        @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  employeeId    String
+  employee      Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  imageId       String
+  image         GeneratedImage @relation(fields: [imageId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, imageId])
+  @@index([serviceId, employeeId, materialOrder])
+}
+
+model DesignAgentRun {
+  id                 String                 @id @default(cuid())
+  generationMode     String
+  status             String                 @default("queued")
+  brief              String
+  visionReport       String                 @default("{}")
+  layoutPlan         String                 @default("{}")
+  designIntent       String                 @default("{}")
+  workflowState      String                 @default("queued")
+  qualityMode        String                 @default("standard")
+  generationAttempts Int                    @default(0)
+  generationBudget   Int                    @default(2)
+  evaluationAttempts Int                    @default(0)
+  selectedImageId    String?
+  visualPrompt       String                 @default("")
+  error              String?
+  startedAt          DateTime?
+  finishedAt         DateTime?
+  appliedAt          DateTime?
+  appliedSlideNumber Int?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+  serviceId          String
+  service            Service                @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  employeeId         String
+  employee           Employee               @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  generatedJobId     String?                @unique
+  generatedJob       GenerationJob?         @relation(fields: [generatedJobId], references: [id], onDelete: SetNull)
+  references         DesignAgentReference[]
+  events             DesignAgentEvent[]
+  evaluations        DesignAgentEvaluation[]
+
+  @@index([employeeId, createdAt])
+  @@index([serviceId, status, createdAt])
+}
+
+model DesignAgentEvaluation {
+  id          String         @id @default(cuid())
+  stage       String
+  status      String         @default("completed")
+  totalScore  Float          @default(0)
+  scoresJson  String         @default("{}")
+  reasonsJson String         @default("[]")
+  candidateId String?
+  createdAt   DateTime       @default(now())
+  runId       String
+  run         DesignAgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, createdAt])
+}
+
+model DesignPreferenceMemory {
+  id              String   @id @default(cuid())
+  industry        String   @default("")
+  pageType        String   @default("single-slide")
+  style           String   @default("")
+  paletteJson     String   @default("[]")
+  informationTone String   @default("balanced")
+  outcome         String   @default("accepted")
+  signalsJson     String   @default("{}")
+  createdAt       DateTime @default(now())
+  serviceId       String
+  employeeId      String
+
+  @@index([industry, pageType, createdAt])
+  @@index([serviceId, createdAt])
+}
+
+model DesignAgentReference {
+  id               String          @id @default(cuid())
+  source           String
+  label            String
+  storedName       String?
+  generatedImageId String?
+  generatedImage   GeneratedImage? @relation(fields: [generatedImageId], references: [id], onDelete: SetNull)
+  isPrimary        Boolean         @default(false)
+  sortOrder        Int             @default(0)
+  createdAt        DateTime        @default(now())
+  runId            String
+  run              DesignAgentRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, sortOrder])
+}
+
+model DesignAgentEvent {
+  id        String         @id @default(cuid())
+  stage     String
+  status    String
+  detail    String         @default("")
+  createdAt DateTime       @default(now())
+  runId     String
+  run       DesignAgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, createdAt])
+}
+
+model ImageExplodeRun {
+  id                 String             @id @default(cuid())
+  status             String             @default("queued")
+  sourceStoredName   String?
+  sourceImageId      String?            @unique
+  sourceImage        GeneratedImage?    @relation(fields: [sourceImageId], references: [id], onDelete: SetNull)
+  width              Int                @default(0)
+  height             Int                @default(0)
+  layerPlanJson      String             @default("{}")
+  qaReportJson       String             @default("{}")
+  reconstructionName String?
+  backgroundStrategy String             @default("local-mask-inpaint")
+  cloudCleanupUsed   Boolean            @default(false)
+  recommendedPartIds String             @default("[]")
+  needsReview        Boolean            @default(false)
+  error              String?
+  startedAt          DateTime?
+  finishedAt         DateTime?
+  appliedAt          DateTime?
+  appliedSlideNumber Int?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  serviceId          String
+  service            Service            @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  employeeId         String
+  employee           Employee           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  parts              ImageExplodePart[]
+  textLayers         ImageExplodeTextLayer[]
+  events             ImageExplodeEvent[]
+
+  @@index([employeeId, createdAt])
+  @@index([serviceId, status, createdAt])
+}
+
+model DeckGenerationRun {
+  id                   String                @id @default(cuid())
+  status               String                @default("queued")
+  projectName          String
+  projectType          String                @default("")
+  brief                String
+  pageCount            Int                   @default(12)
+  stylePack            String
+  unityOptionsJson     String                @default("{}")
+  outlineJson          String                @default("{}")
+  visualIdentityJson   String                @default("{}")
+  visualStoryboardJson String                @default("{}")
+  slideImageSpecsJson  String                @default("{}")
+  pdfStoredName        String?
+  pptStoredName        String?
+  coverStoredName      String?
+  codiaTaskId          String?
+  codiaResponseJson    String                @default("{}")
+  error                String?
+  startedAt            DateTime?
+  planReadyAt          DateTime?
+  confirmedAt          DateTime?
+  finishedAt           DateTime?
+  pdfGeneratedAt       DateTime?
+  pptGeneratedAt       DateTime?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  serviceId            String
+  service              Service               @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  employeeId           String
+  employee             Employee              @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  slides               DeckGenerationSlide[]
+
+  @@index([employeeId, createdAt])
+  @@index([serviceId, status, createdAt])
+}
+
+model DeckGenerationSlide {
+  id                String            @id @default(cuid())
+  slideIndex        Int
+  title             String            @default("")
+  role              String            @default("")
+  prompt            String            @default("")
+  specJson          String            @default("{}")
+  storedName        String?
+  status            String            @default("queued")
+  error             String?
+  regenerationCount Int               @default(0)
+  lastInstruction   String            @default("")
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  runId             String
+  run               DeckGenerationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, slideIndex])
+  @@index([runId, slideIndex])
+}
+
+model ImageExplodePart {
+  id            String          @id @default(cuid())
+  label         String
+  kind          String
+  variant       String          @default("semantic")
+  semanticId    String          @default("")
+  parentSemanticId String?
+  groupKey      String?
+  storedName    String?
+  refinedName   String?
+  textContent   String?
+  x             Float
+  y             Float
+  width         Float
+  height        Float
+  zIndex        Int             @default(0)
+  confidence    Float           @default(0)
+  maskQuality   Float           @default(0)
+  extractMode   String          @default("local")
+  recommended   Boolean         @default(false)
+  selected      Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  runId         String
+  run           ImageExplodeRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, zIndex])
+  @@index([runId, groupKey])
+}
+
+model ImageExplodeTextLayer {
+  id          String          @id @default(cuid())
+  content     String
+  groupKey    String?
+  x           Float
+  y           Float
+  width       Float
+  height      Float
+  rotation    Float           @default(0)
+  styleJson   String          @default("{}")
+  complexity  String          @default("simple")
+  mode        String          @default("native")
+  confidence  Float           @default(0)
+  ocrConfidence Float         @default(0)
+  visionConfidence Float      @default(0)
+  semanticRole String         @default("unknown")
+  selected    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  runId       String
+  run         ImageExplodeRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, groupKey, createdAt])
+}
+
+model ImageExplodeEvent {
+  id        String          @id @default(cuid())
+  stage     String
+  status    String
+  detail    String          @default("")
+  createdAt DateTime        @default(now())
+  runId     String
+  run       ImageExplodeRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, createdAt])
 }

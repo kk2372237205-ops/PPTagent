@@ -3,6 +3,7 @@ import { copyFile } from "fs/promises";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { currentEmployee } from "@/lib/employee-auth";
+import { workPresentationMaxBytes, workPresentationMaxLabel } from "@/lib/upload-limits";
 import {
   documentRoot,
   ensureWorkspaceDirectories,
@@ -34,8 +35,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     if (!(file instanceof File) || path.extname(file.name).toLowerCase() !== ".pptx") {
       return NextResponse.json({ error: "请上传 PPTX 文件" }, { status: 400 });
     }
-    if (file.size > 100 * 1024 * 1024) {
-      return NextResponse.json({ error: "工作文件不能超过 100MB" }, { status: 400 });
+    if (file.size > workPresentationMaxBytes) {
+      return NextResponse.json({ error: `工作文件不能超过 ${workPresentationMaxLabel}` }, { status: 400 });
     }
     storedName = await saveFile(file, documentRoot, "pptx");
     originalName = file.name;
