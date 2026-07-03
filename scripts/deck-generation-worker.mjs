@@ -283,6 +283,35 @@ function normalizePlan(plan, run) {
       must_avoid: []
     });
   }
+  const finalSlide = slides[slides.length - 1];
+  if (finalSlide) {
+    slides[slides.length - 1] = {
+      ...finalSlide,
+      role: "ending",
+      content_summary: String(finalSlide.content_summary || "Close the deck with one memorable conclusion and emotional payoff.").slice(0, 260),
+      composition: [
+        finalSlide.composition,
+        "FINAL ENDING SLIDE RULE: make this feel like a cover-level closing page, not another content page. Use sparse content, strong emotional closure, strong visual focus, and one memorable takeaway. Avoid dense cards, charts, process diagrams, multi-column explanations, or new information."
+      ].filter(Boolean).join(" "),
+      main_visual: String(finalSlide.main_visual || `${run.projectName} closing key visual`).slice(0, 520),
+      text_density: "low",
+      white_space: "High whitespace. One headline-level closing statement, optional short subtitle, and minimal supporting marks only.",
+      must_include: Array.from(new Set([
+        ...normalizeArray(finalSlide.must_include).map(String).slice(0, 2),
+        "one memorable closing statement"
+      ])).slice(0, 3),
+      must_avoid: Array.from(new Set([
+        ...normalizeArray(finalSlide.must_avoid).map(String),
+        "dense information architecture",
+        "three-column cards",
+        "process flow",
+        "feature list",
+        "complex chart",
+        "large paragraph blocks",
+        "new detailed arguments"
+      ])).slice(0, 12)
+    };
+  }
   return {
     outline: normalizeOutline(plan, run, slides),
     visual_identity: plan.visual_identity || {},
@@ -405,6 +434,7 @@ Hard requirements:
 - If a page number is needed, make it a tiny consistent footer or corner detail only, never the main title element.
 - Keep every important title, chart, icon, and bottom banner inside a safe area at least 6% away from all edges. Nothing important may touch or be cut off by the canvas edge.
 - If the regeneration instruction says closer to the previous slide, only align header/footer, palette, background texture, card chrome, and decorative rhythm; never copy the previous slide's content, main visual, chart data, or full layout.
+- If this is the final slide or Role is ending, it must be a minimal emotional closing page like a cover: sparse content, strong closure, strong memory point, one headline-level takeaway, optional short subtitle, and no dense cards, charts, feature lists, process diagrams, or new arguments.
 - Avoid gibberish blocks, watermarks, model signatures, random logos, copyrighted marks, and unrelated characters.
 - Use concise designed text only when needed. Prefer clean information blocks over long paragraphs.
 - No browser UI, no chat UI, no screenshot frame unless the slide spec explicitly asks for it.`;

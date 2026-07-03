@@ -560,6 +560,8 @@ function DesignStudio({ service, employee, refresh, notify, back, openSmart, ope
   const [primaryKey, setPrimaryKey] = useState("");
   const [runs, setRuns] = useState<DesignAgentRun[]>([]);
   const [activeRun, setActiveRun] = useState<DesignAgentRun | null>(null);
+  const [deckRuns, setDeckRuns] = useState<DeckGenerationRun[]>([]);
+  const [activeDeckRun, setActiveDeckRun] = useState<DeckGenerationRun | null>(null);
   const [workerWarning, setWorkerWarning] = useState("");
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -583,16 +585,37 @@ function DesignStudio({ service, employee, refresh, notify, back, openSmart, ope
     setWorkerWarning(result.workerHealth?.ok === false ? (result.workerHealth.message || "后台智能模式 Worker 未运行/已停止") : "");
     setActiveRun(current => current ? (result.runs || []).find((item: DesignAgentRun) => item.id === current.id) || current : result.runs?.[0] || null);
   }, [notify, service.id]);
+  const loadDeckRuns = useCallback(async () => {
+    const response = await fetch(`/api/employee/services/${service.id}/deck-generation/runs`, { cache: "no-store" });
+    const result = await response.json();
+    if (!response.ok) return notify(result.error || "生成 PPT 记录读取失败");
+    const nextRuns = result.runs || [];
+    setDeckRuns(nextRuns);
+    setActiveDeckRun(current => current ? nextRuns.find((item: DeckGenerationRun) => item.id === current.id) || current : nextRuns[0] || null);
+  }, [notify, service.id]);
+  function setDeckRun(run: DeckGenerationRun) {
+    setActiveDeckRun(run);
+    setDeckRuns(current => [run, ...current.filter(item => item.id !== run.id)]);
+  }
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadRuns(), 0);
     return () => window.clearTimeout(timer);
   }, [loadRuns]);
   useEffect(() => {
+    const timer = window.setTimeout(() => void loadDeckRuns(), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadDeckRuns]);
+  useEffect(() => {
     if (!activeRun || !["queued", "running"].includes(activeRun.status)) return;
     const timer = window.setInterval(() => void loadRuns(), 2200);
     return () => window.clearInterval(timer);
   }, [activeRun, loadRuns]);
+  useEffect(() => {
+    if (!activeDeckRun || !["queued", "planning", "generating", "pdf_queued", "ppt_queued", "ppt_processing"].includes(activeDeckRun.status)) return;
+    const timer = window.setInterval(() => void loadDeckRuns(), 2400);
+    return () => window.clearInterval(timer);
+  }, [activeDeckRun, loadDeckRuns]);
   useEffect(() => {
     if (mentorTool !== "image" || mode !== "text" || !selectedCount) return;
     localReferences.forEach(item => URL.revokeObjectURL(item.previewUrl));
@@ -640,7 +663,7 @@ function DesignStudio({ service, employee, refresh, notify, back, openSmart, ope
       const response = await fetch(`/api/employee/services/${service.id}/design-agent/runs`, { method: "POST", body: form });
       const result = await responseJson(response);
       if (!response.ok) return notify(result.error || "智能美化任务创建失败");
-      setActiveRun(result.run); setRuns(current => [result.run, ...current]); setMentorOpen(false); notify("智能模式任务已开始");
+      setActiveDeckRun(null); setActiveRun(result.run); setRuns(current => [result.run, ...current]); setMentorOpen(false); notify("智能模式任务已开始");
     } finally { setBusy(false); }
   }
   async function createDeckFromMentor() {
@@ -661,9 +684,58 @@ function DesignStudio({ service, employee, refresh, notify, back, openSmart, ope
       const response = await fetch(`/api/employee/services/${service.id}/deck-generation/runs`, { method: "POST", body: form });
       const result = await response.json();
       if (!response.ok) return notify(result.error || "生成方案创建失败");
+      setDeckRun(result.run);
       setMentorOpen(false);
       notify("已开始生成大纲和视觉方案");
-      openSmart();
+    } finally { setBusy(false); }
+  }
+  async function confirmDeckRun() {
+    if (!activeDeckRun) return;
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/employee/services/${service.id}/deck-generation/runs/${activeDeckRun.id}/confirm`, { method: "POST" });
+      const result = await response.json();
+      if (!response.ok) return notify(result.error || "确认生成失败");
+      setDeckRun(result.run);
+      notify("已开始批量生成页面图片");
+    } finally { setBusy(false); }
+  }
+  async function replanDeckRun(stylePack?: string) {
+    if (!activeDeckRun) return;
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/employee/services/${service.id}/deck-generation/runs/${activeDeckRun.id}/replan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stylePack: stylePack || activeDeckRun.stylePack })
+      });
+      const result = await response.json();
+      if (!response.ok) return notify(result.error || "重新生成方案失败");
+      setDeckRun(result.run);
+      notify(stylePack && stylePack !== activeDeckRun.stylePack ? "已按新风格重新生成方案" : "已重新生成方案");
+    } finally { setBusy(false); }
+  }
+  async function createDeckPpt() {
+    if (!activeDeckRun) return;
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/employee/services/${service.id}/deck-generation/runs/${activeDeckRun.id}/ppt`, { method: "POST" });
+      const result = await response.json();
+      if (!response.ok) return notify(result.error || "PPT 生成失败");
+      setDeckRun(result.run);
+      notify(result.run.status === "ppt_ready" ? "PPT 已生成" : "已进入 PDF 转 PPT 队列");
+    } finally { setBusy(false); }
+  }
+  async function regenerateDeckSlide(slideId: string, action: "reroll" | "closer_previous") {
+    if (!activeDeckRun) return;
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/employee/services/${service.id}/deck-generation/runs/${activeDeckRun.id}/slides/${slideId}/regenerate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+      const result = await response.json();
+      if (!response.ok) return notify(result.error || "页面重生失败");
+      if (result.run) setDeckRun(result.run);
+      else await loadDeckRuns();
+      notify(action === "closer_previous" ? "已按上一页风格重生本页" : "已重新生成本页");
     } finally { setBusy(false); }
   }
   async function cancelRun() {
@@ -710,12 +782,51 @@ function DesignStudio({ service, employee, refresh, notify, back, openSmart, ope
   return <main className="design-studio">
     <aside className={"design-material-drawer " + (drawerOpen ? "open" : "")}>{drawerOpen && <><header><div><ImagePlus/><span><b>设计素材</b><small>我的素材库</small></span></div><button onClick={() => setDrawerOpen(false)}><ChevronLeft/></button></header><div className="design-material-grid">{mineMaterials.map(item => <button key={item.id} className={selectedMaterials.includes(item.image.id) ? "selected" : ""} onClick={() => toggleMaterial(item.image.id)}><img src={generatedImageUrl(item.image.id)} alt="参考素材"/><i>{selectedMaterials.includes(item.image.id) ? "已选" : "选择"}</i></button>)}</div></>} {!drawerOpen && <button className="design-drawer-open" onClick={() => setDrawerOpen(true)}><ImagePlus/>素材</button>}</aside>
     <input ref={fileRef} hidden type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={event => { addFiles(Array.from(event.target.files || [])); event.currentTarget.value = ""; }}/>
-    <section className="design-board"><header><button onClick={back}><ChevronLeft/>返回 PPT 编辑</button><span>WZLCF · INTELLIGENT SLIDE DESIGN</span><h1>把想法变成一张可编辑的美化页</h1><p>先生成完整高质量样片，再用干净背景与拆图部件重建；原始 PPT 页面不会被覆盖。</p></header>{activeRun ? <section className="design-run"><div className="design-run-head"><div><span className={`design-status ${activeRun.status}`}>{activeRun.status === "completed" ? "方案已完成" : activeRun.status === "failed" ? "任务失败" : activeRun.status === "cancelled" ? "已取消" : "正在设计"}</span><h2>{activeRun.brief}</h2><small>{new Date(activeRun.createdAt).toLocaleString("zh-CN")}</small></div><div>{["queued", "running"].includes(activeRun.status) && <button onClick={() => void cancelRun()}>取消任务</button>}{activeRun.status === "completed" && <button className="design-apply" disabled={busy || (!activeRun.appliedAt && !reconstructionReady)} onClick={() => void applyRun()}>{activeRun.appliedAt ? "同步并打开 PPT" : <><Save/>{!reconstructionReady ? "等待拆图完成" : qaNeedsReview ? "重建需确认，仍可导入" : "新增可编辑重建页"}</>}</button>}</div></div><div className="design-stage-list">{activeDesignEvents.map(event => <article key={event.id} className={event.status}><b>{stageLabel(event.stage)}</b><span>{event.detail || "处理中"}</span></article>)}</div>{activeRun.status === "completed" && <div className={qaNeedsReview ? "auto-explode-status warning" : "auto-explode-status completed"}><div><b>{reconstructionReady ? "图片炸开已自动完成" : "图片炸开正在自动处理"}</b><span>{plan.qa?.message || "完整样片只作为预览和拆解真值；新增 PPT 会使用干净背景 + 独立透明部件。"}</span></div><button onClick={openExplode}>{reconstructionReady ? "查看并选择部件" : "打开图片炸开页"}</button></div>}{activeRun.error && <div className="design-error">{activeRun.error}</div>}{workerWarning && ["queued", "running"].includes(activeRun.status) && <div className="design-error">{workerWarning}</div>}<div className="design-result-grid master-rebuild"><article className="design-preview"><span>完整样片</span>{masterImageId ? <button className="design-preview-open" onClick={() => setPreviewImage({ url: generatedImageUrl(masterImageId), title: "完整样片" })}><img src={generatedImageUrl(masterImageId)} alt="完整 PPT 样片"/><i><Maximize2/>点击放大</i></button> : <div><LoaderCircle className="spin"/><p>正在生成完整样片…</p></div>}</article><article className="design-preview"><span>干净背景</span>{cleanBackgroundImageId ? <button className="design-preview-open" onClick={() => setPreviewImage({ url: generatedImageUrl(cleanBackgroundImageId), title: "干净背景" })}><img src={generatedImageUrl(cleanBackgroundImageId)} alt="干净背景"/><i><Maximize2/>点击放大</i></button> : <div><LoaderCircle className="spin"/><p>正在生成干净背景…</p></div>}</article><article className="design-preview"><span>拆解重建预览</span>{reconstructionReady ? <button className="design-preview-open" onClick={() => setPreviewImage({ url: `/api/employee/services/${service.id}/image-explode/runs/${reconstructionRunId}/reconstruction`, title: "拆解重建预览" })}><img src={`/api/employee/services/${service.id}/image-explode/runs/${reconstructionRunId}/reconstruction`} alt="拆解重建预览"/><i><Maximize2/>点击放大</i></button> : <div><LoaderCircle className="spin"/><p>等待 OpenAI 零件拆解与佐糖二次抠图…</p></div>}</article><article className="design-layout"><span>重建策略</span><h3>{plan.title || "以完整样片为真值"}</h3><p>{plan.subtitle || "不再由系统额外生成丑文字；样片里有什么，就拆什么。"}</p><div>{(plan.palette || []).map(color => <i key={color} style={{ background: color }}/>)}</div><ul><li>完整样片只用于预览、拆解与 QA。</li><li>最终 PPT 底层使用 OpenAI 二次生成的干净背景。</li><li>标题艺术字默认保留原始 PNG 字效，普通文字可选 OCR。</li></ul><small>如果重建 QA 提示风险，建议先点“查看并选择部件”确认后再导入。</small></article></div></section> : <section className="design-empty"><WandSparkles/><h2>从右下角数字人开始</h2><p>选择文生图或混合参考模式，提交后可在这里追踪每一步。</p></section>}</section>
-    <div className="design-run-history">{runs.slice(0, 6).map(run => <button key={run.id} className={activeRun?.id === run.id ? "active" : ""} onClick={() => setActiveRun(run)}><span>{run.generationMode === "mixed" ? "混合" : "文生图"}</span><b>{run.brief}</b><small>{run.status}</small></button>)}</div>
+    <section className="design-board"><header><button onClick={back}><ChevronLeft/>返回 PPT 编辑</button><span>WZLCF · INTELLIGENT SLIDE DESIGN</span><h1>将想法变为产品</h1></header>{activeDeckRun ? <DeckInlineRun service={service} run={activeDeckRun} busy={busy} onConfirm={() => void confirmDeckRun()} onReplan={(stylePack) => void replanDeckRun(stylePack)} onCreatePpt={() => void createDeckPpt()} onRegenerate={(slideId, action) => void regenerateDeckSlide(slideId, action)} /> : activeRun ? <section className="design-run"><div className="design-run-head"><div><span className={`design-status ${activeRun.status}`}>{activeRun.status === "completed" ? "方案已完成" : activeRun.status === "failed" ? "任务失败" : activeRun.status === "cancelled" ? "已取消" : "正在设计"}</span><h2>{activeRun.brief}</h2><small>{new Date(activeRun.createdAt).toLocaleString("zh-CN")}</small></div><div>{["queued", "running"].includes(activeRun.status) && <button onClick={() => void cancelRun()}>取消任务</button>}{activeRun.status === "completed" && <button className="design-apply" disabled={busy || (!activeRun.appliedAt && !reconstructionReady)} onClick={() => void applyRun()}>{activeRun.appliedAt ? "同步并打开 PPT" : <><Save/>{!reconstructionReady ? "等待拆图完成" : qaNeedsReview ? "重建需确认，仍可导入" : "新增可编辑重建页"}</>}</button>}</div></div><div className="design-stage-list">{activeDesignEvents.map(event => <article key={event.id} className={event.status}><b>{stageLabel(event.stage)}</b><span>{event.detail || "处理中"}</span></article>)}</div>{activeRun.status === "completed" && <div className={qaNeedsReview ? "auto-explode-status warning" : "auto-explode-status completed"}><div><b>{reconstructionReady ? "图片炸开已自动完成" : "图片炸开正在自动处理"}</b><span>{plan.qa?.message || "完整样片只作为预览和拆解真值；新增 PPT 会使用干净背景 + 独立透明部件。"}</span></div><button onClick={openExplode}>{reconstructionReady ? "查看并选择部件" : "打开图片炸开页"}</button></div>}{activeRun.error && <div className="design-error">{activeRun.error}</div>}{workerWarning && ["queued", "running"].includes(activeRun.status) && <div className="design-error">{workerWarning}</div>}<div className="design-result-grid master-rebuild"><article className="design-preview"><span>完整样片</span>{masterImageId ? <button className="design-preview-open" onClick={() => setPreviewImage({ url: generatedImageUrl(masterImageId), title: "完整样片" })}><img src={generatedImageUrl(masterImageId)} alt="完整 PPT 样片"/><i><Maximize2/>点击放大</i></button> : <div><LoaderCircle className="spin"/><p>正在生成完整样片…</p></div>}</article><article className="design-preview"><span>干净背景</span>{cleanBackgroundImageId ? <button className="design-preview-open" onClick={() => setPreviewImage({ url: generatedImageUrl(cleanBackgroundImageId), title: "干净背景" })}><img src={generatedImageUrl(cleanBackgroundImageId)} alt="干净背景"/><i><Maximize2/>点击放大</i></button> : <div><LoaderCircle className="spin"/><p>正在生成干净背景…</p></div>}</article><article className="design-preview"><span>拆解重建预览</span>{reconstructionReady ? <button className="design-preview-open" onClick={() => setPreviewImage({ url: `/api/employee/services/${service.id}/image-explode/runs/${reconstructionRunId}/reconstruction`, title: "拆解重建预览" })}><img src={`/api/employee/services/${service.id}/image-explode/runs/${reconstructionRunId}/reconstruction`} alt="拆解重建预览"/><i><Maximize2/>点击放大</i></button> : <div><LoaderCircle className="spin"/><p>等待 OpenAI 零件拆解与佐糖二次抠图…</p></div>}</article><article className="design-layout"><span>重建策略</span><h3>{plan.title || "以完整样片为真值"}</h3><p>{plan.subtitle || "不再由系统额外生成丑文字；样片里有什么，就拆什么。"}</p><div>{(plan.palette || []).map(color => <i key={color} style={{ background: color }}/>)}</div><ul><li>完整样片只用于预览、拆解与 QA。</li><li>最终 PPT 底层使用 OpenAI 二次生成的干净背景。</li><li>标题艺术字默认保留原始 PNG 字效，普通文字可选 OCR。</li></ul><small>如果重建 QA 提示风险，建议先点“查看并选择部件”确认后再导入。</small></article></div></section> : <section className="design-empty"><WandSparkles/><h2>从右下角数字人开始</h2><p>选择文生图或混合参考模式，提交后可在这里追踪每一步。</p></section>}</section>
+    <div className="design-run-history">{[...deckRuns.map(run => ({ kind: "deck" as const, run, createdAt: run.createdAt })), ...runs.map(run => ({ kind: "image" as const, run, createdAt: run.createdAt }))].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 8).map(item => item.kind === "deck" ? <button key={`deck-${item.run.id}`} className={activeDeckRun?.id === item.run.id ? "active" : ""} onClick={() => { setActiveRun(null); setDeckRun(item.run); }}><span>生成 PPT</span><b>{item.run.projectName}</b><small>{deckStatusText(item.run.status)}</small></button> : <button key={`image-${item.run.id}`} className={activeRun?.id === item.run.id && !activeDeckRun ? "active" : ""} onClick={() => { setActiveDeckRun(null); setActiveRun(item.run); }}><span>{item.run.generationMode === "mixed" ? "混合" : "文生图"}</span><b>{item.run.brief}</b><small>{item.run.status}</small></button>)}</div>
     {batches.length > 1 && <div className="design-batch-picker">{batches.map((batch, index) => <button key={index} className={selectedBatchIndex === index ? "active" : ""} disabled={!batch.assetFiles?.reconstructionRunId} onClick={() => void selectBatch(index)}>第 {index + 1} 份</button>)}</div>}
     <div className="design-mentor"><button className="design-mentor-avatar" onClick={() => setMentorOpen(value => !value)} aria-label="打开 PPT 智能模式"><img src="/agent/ppt-design-mentor.png" alt="PPT 智能模式数字人"/></button>{mentorOpen && <section className="design-mentor-large-panel"><header><div><b>小 W · PPT 智能模式</b><span>选择任务类型，按当前工作流继续生成</span></div><button onClick={() => setMentorOpen(false)} aria-label="关闭智能模式"><X/></button></header><div className="design-tool-tabs"><button className={mentorTool === "deck" ? "active" : ""} onClick={() => setMentorTool("deck")}><FileText/><span><b>生成 PPT</b><small>整套文稿规划</small></span></button><button className={mentorTool === "polish" ? "active" : ""} onClick={() => setMentorTool("polish")}><WandSparkles/><span><b>美化 PPT</b><small>优化当前文稿</small></span></button><button className={mentorTool === "image" ? "active" : ""} onClick={() => setMentorTool("image")}><ImagePlus/><span><b>生图</b><small>生成 16:9 PNG</small></span></button></div>{mentorTool === "deck" && <section className="deck-generation-form"><label>项目名称<input value={deckProjectName} onChange={event => setDeckProjectName(event.target.value)}/></label><label>比赛类型 / 用途<input value={deckProjectType} onChange={event => setDeckProjectType(event.target.value)} placeholder="例如：创新创业大赛 / 商业计划书"/></label><div className="deck-page-slider"><label>PPT 页数</label><div><input type="range" min={2} max={20} value={deckPageCount} onChange={event => setDeckPageCount(Number(event.target.value))} style={{ "--range-progress": `${((deckPageCount - 2) / 18) * 100}%` } as CSSProperties}/><b>{deckPageCount}页</b></div></div><label>风格包<select value={deckStylePack} onChange={event => setDeckStylePack(event.target.value)}>{deckStylePacks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label>项目简介<textarea value={deckBrief} onChange={event => setDeckBrief(event.target.value)} placeholder="描述项目背景、核心内容、目标受众和必须出现的信息。"/></label><label>参考资料摘要（可选）<textarea value={deckReferenceText} onChange={event => setDeckReferenceText(event.target.value)} placeholder="可粘贴评审要求、产品信息、客户资料；图片可拖到下面或点击上传。"/></label><div className="deck-reference-drop" onClick={() => fileRef.current?.click()} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); addFiles(Array.from(event.dataTransfer.files || [])); }}><Upload/><b>参考文档 / 参考图片</b><span>点击打开文件夹，或把图片拖到这里；也可以点击左侧素材加入参考。</span></div>{selectedCount > 0 && <div className="design-reference-strip deck-reference-strip">{selectedMaterialItems.map(item => <button key={item.id} className={primaryKey === `material:${item.image.id}` ? "primary" : ""} onClick={() => setPrimaryKey(`material:${item.image.id}`)}><img src={generatedImageUrl(item.image.id)} alt="素材参考"/><span onClick={event => { event.stopPropagation(); setSelectedMaterials(current => current.filter(id => id !== item.image.id)); }}>×</span></button>)}{localReferences.map(item => <button key={item.id} className={primaryKey === `local:${item.id}` ? "primary" : ""} onClick={() => setPrimaryKey(`local:${item.id}`)}><img src={item.previewUrl} alt={item.file.name}/><span onClick={event => { event.stopPropagation(); removeLocal(item.id); }}>×</span></button>)}</div>}<div className="deck-unity-options"><label><input type="checkbox" checked={deckUnityOptions.mainColor} onChange={event => setDeckUnityOptions(current => ({ ...current, mainColor: event.target.checked }))}/>主色统一</label><label><input type="checkbox" checked={deckUnityOptions.headerFooter} onChange={event => setDeckUnityOptions(current => ({ ...current, headerFooter: event.target.checked }))}/>页眉页脚统一</label><label><input type="checkbox" checked={deckUnityOptions.backgroundTexture} onChange={event => setDeckUnityOptions(current => ({ ...current, backgroundTexture: event.target.checked }))}/>背景纹理统一</label><label><input type="checkbox" checked={deckUnityOptions.cardStyle} onChange={event => setDeckUnityOptions(current => ({ ...current, cardStyle: event.target.checked }))}/>卡片样式统一</label><label><input type="checkbox" checked={deckUnityOptions.decorativeElements} onChange={event => setDeckUnityOptions(current => ({ ...current, decorativeElements: event.target.checked }))}/>装饰元素统一</label></div><button type="button" onClick={() => void createDeckFromMentor()} disabled={busy}>{busy ? <LoaderCircle className="spin"/> : <Sparkles/>}生成方案</button></section>}{mentorTool === "polish" && <section className="deck-generation-form"><label>美化范围<select defaultValue="current"><option value="current">当前文稿</option><option value="all">整套 PPT</option><option value="selected">指定页面</option></select></label><label>风格方向<select defaultValue="blue-gold-tech">{deckStylePacks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label>修改要求<textarea value={polishRequirement} onChange={event => setPolishRequirement(event.target.value)} placeholder="例如：更像发布会、减少文字、强化科技感、统一页眉页脚和图标风格。"/></label><button type="button" onClick={() => notify("美化 PPT 入口已恢复，真实重绘链路暂不自动启动。")}><WandSparkles/>即将接入</button></section>}{mentorTool === "image" && <section className="deck-generation-form"><div className="design-mode"><button className={mode === "text" ? "active" : ""} onClick={() => setMode("text")}><Bot/><span>文生图<small>不把参考图交给 OpenAI</small></span></button><button className={mode === "mixed" ? "active" : ""} onClick={() => setMode("mixed")}><ImagePlus/><span>混合模式<small>主参考与提示词直给 OpenAI</small></span></button></div><label>生成要求<textarea value={brief} onChange={event => setBrief(event.target.value)} placeholder="例如：将这一页做成深蓝科技发布会风格，突出列车底盘巡检机器人，保留未来感与大片留白…"/></label>{selectedCount > 0 && <div className="design-reference-strip">{selectedMaterialItems.map(item => <button key={item.id} className={primaryKey === `material:${item.image.id}` ? "primary" : ""} onClick={() => setPrimaryKey(`material:${item.image.id}`)}><img src={generatedImageUrl(item.image.id)} alt="素材参考"/><span>主参考</span></button>)}{localReferences.map(item => <button key={item.id} className={primaryKey === `local:${item.id}` ? "primary" : ""} onClick={() => setPrimaryKey(`local:${item.id}`)}><img src={item.previewUrl} alt={item.file.name}/><span onClick={event => { event.stopPropagation(); removeLocal(item.id); }}><X/></span></button>)}</div>}<div className="design-mentor-actions"><button type="button" onClick={() => fileRef.current?.click()} disabled={selectedCount >= 6}><Upload/>上传参考图</button><label>生成<select value={batchCount} onChange={event => setBatchCount(Number(event.target.value))}>{[1, 2, 3, 4].map(count => <option key={count} value={count}>{count} 份</option>)}</select></label><button type="button" className="design-start-inline" onClick={() => void createRun()} disabled={busy || !brief.trim()}>{busy ? <LoaderCircle className="spin"/> : <Sparkles/>}开始生成</button></div></section>}</section>}</div>
     {previewImage && <ExplodeImagePreview image={previewImage} onClose={() => setPreviewImage(null)}/>}
   </main>;
+}
+
+function DeckInlineRun({ service, run, busy, onConfirm, onReplan, onCreatePpt, onRegenerate }: {
+  service: Service;
+  run: DeckGenerationRun;
+  busy: boolean;
+  onConfirm: () => void;
+  onReplan: (stylePack?: string) => void;
+  onCreatePpt: () => void;
+  onRegenerate: (slideId: string, action: "reroll" | "closer_previous") => void;
+}) {
+  const [nextStylePack, setNextStylePack] = useState(run.stylePack);
+  useEffect(() => setNextStylePack(run.stylePack), [run.id, run.stylePack]);
+  const done = run.slides.filter(slide => slide.status === "completed").length;
+  const statusText = deckStatusText(run.status);
+  const pptUrl = `/api/employee/services/${service.id}/deck-generation/runs/${run.id}/ppt`;
+  const pdfUrl = `/api/employee/services/${service.id}/deck-generation/runs/${run.id}/pdf`;
+  return <section className="design-run design-deck-run">
+    <div className="design-run-head">
+      <div>
+        <span className={`design-status ${run.status}`}>{statusText}</span>
+        <h2>{run.projectName}</h2>
+        <small>{deckStylePacks.find(item => item.id === run.stylePack)?.label || run.stylePack} · {run.pageCount} 页 · {new Date(run.createdAt).toLocaleString("zh-CN")}</small>
+      </div>
+      <div>
+        {run.status === "plan_ready" && <><button className="design-apply" onClick={onConfirm} disabled={busy}>确认生成</button><button className="design-secondary" onClick={() => onReplan()} disabled={busy}>重新生成方案</button><button className="design-secondary" onClick={() => onReplan(nextStylePack)} disabled={busy}>调整风格</button></>}
+        {["review_ready", "pdf_ready"].includes(run.status) && <button className="design-apply" onClick={onCreatePpt} disabled={busy}>生成 PPT</button>}
+        {run.status === "pdf_ready" && <a className="design-apply" href={pdfUrl}><Download/>下载 PDF</a>}
+        {run.status === "ppt_ready" && <a className="design-apply" href={pptUrl}><Download/>下载 PPT</a>}
+      </div>
+    </div>
+    {run.error && <div className="design-error">{run.error}</div>}
+    {["queued", "planning"].includes(run.status) && <section className="deck-waiting inline"><LoaderCircle className="spin"/><h3>正在生成大纲和视觉方案</h3><p>后台会先生成 visual_identity、visual_storyboard 和 slide_image_specs，再按页生成 16:9 页面图。</p></section>}
+    {run.status === "plan_ready" && <section className="deck-plan-review inline"><article><span>视觉方案</span><h3>{deckStylePacks.find(item => item.id === run.stylePack)?.label || run.stylePack}</h3><p>确认后会按页生成 16:9 页面图，最后合成 PDF 并通过 Codia 转成 PPTX。</p><label className="deck-plan-style">调整风格<select value={nextStylePack} onChange={event => setNextStylePack(event.target.value)}>{deckStylePacks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label></article><article><span>页面节奏</span><ol>{run.slides.map(slide => <li key={slide.id}><b>{slide.title || `第 ${slide.slideIndex} 页`}</b><small>{slide.role || "content"}</small></li>)}</ol></article></section>}
+    {["generating", "review_ready", "pdf_queued", "pdf_ready", "ppt_queued", "ppt_processing", "ppt_ready"].includes(run.status) && <section className="deck-slide-review inline"><div className="deck-progress"><b>{done}/{run.pageCount}</b><span>{statusText}</span></div><div className="deck-slide-grid">{run.slides.map(slide => {
+      const canRegenerate = ["completed", "failed"].includes(slide.status);
+      return <article key={slide.id}><header><b>{slide.title || `第 ${slide.slideIndex} 页`}</b><span>{slide.role || slide.status}</span></header><button className="deck-slide-preview" disabled={!slide.storedName}>{slide.storedName ? <img src={`/api/employee/services/${service.id}/deck-generation/runs/${run.id}/slides/${slide.id}/image?v=${encodeURIComponent(slide.updatedAt)}`} alt={slide.title}/> : <><LoaderCircle className="spin"/><span>{slide.status}</span></>}</button>{slide.error && <p>{slide.error}</p>}<footer><button onClick={() => onRegenerate(slide.id, "reroll")} disabled={busy || !canRegenerate}>重新生成本页</button><button onClick={() => onRegenerate(slide.id, "closer_previous")} disabled={busy || !canRegenerate}>更贴近上一页</button></footer></article>;
+    })}</div></section>}
+  </section>;
 }
 
 function ImageExplodeStudio({ service, refresh, notify, back, openEditor }: {
@@ -1961,7 +2072,7 @@ function SmartStudio({ service, notify }: { service: Service; notify: (text: str
 
   return <main className="design-studio smart-studio">
     <section className="design-board smart-board">
-      <header><span>WZLCF · INTELLIGENT SLIDE DESIGN</span><h1>把想法变成一套精美 PPT</h1><p>生成 PPT 会先做图组导演层；生图会直接生成 16:9 高质量样片。美化 PPT 入口先保留占位，不接真实任务。</p></header>
+      <header><span>WZLCF · INTELLIGENT SLIDE DESIGN</span><h1>将想法变为产品</h1></header>
       <section className="design-mentor-large-panel smart-panel-static">
         <header><div><b>小 W · PPT 智能模式</b><span>选择任务类型，按当前工作流继续生成</span></div></header>
         <div className="design-tool-tabs">

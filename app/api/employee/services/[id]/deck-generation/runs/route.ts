@@ -34,16 +34,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   const service = await db.service.findUnique({ where: { id } });
   if (!service) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
 
-  const recentCount = await db.deckGenerationRun.count({
-    where: {
-      employeeId: employee.id,
-      createdAt: { gt: new Date(Date.now() - 60 * 60 * 1000) }
-    }
-  });
-  if (recentCount >= 4) {
-    return NextResponse.json({ error: "每名员工每小时最多创建 4 次生成 PPT 任务" }, { status: 429 });
-  }
-
   const form = await request.formData();
   const projectName = String(form.get("projectName") || "").trim();
   const projectType = String(form.get("projectType") || "").trim();
