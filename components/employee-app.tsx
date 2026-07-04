@@ -618,11 +618,15 @@ function DesignStudio({ service, employee, refresh, notify, back, openSmart, ope
   }, [activeDeckRun, loadDeckRuns]);
   useEffect(() => {
     if (mentorTool !== "image" || mode !== "text" || !selectedCount) return;
-    localReferences.forEach(item => URL.revokeObjectURL(item.previewUrl));
-    setSelectedMaterials([]);
-    setLocalReferences([]);
-    setPrimaryKey("");
-  }, [localReferences, mode, selectedCount]);
+    const referencesToClear = localReferences;
+    const timer = window.setTimeout(() => {
+      referencesToClear.forEach(item => URL.revokeObjectURL(item.previewUrl));
+      setSelectedMaterials([]);
+      setLocalReferences([]);
+      setPrimaryKey("");
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [localReferences, mentorTool, mode, selectedCount]);
 
   function addFiles(files: File[], source: "upload" | "ppt" = "upload") {
     if (mentorTool === "image" && mode === "text") return notify("文生图模式只能文字描述，不能上传参考图");
@@ -800,7 +804,10 @@ function DeckInlineRun({ service, run, busy, onConfirm, onReplan, onCreatePpt, o
   onRegenerate: (slideId: string, action: "reroll" | "closer_previous") => void;
 }) {
   const [nextStylePack, setNextStylePack] = useState(run.stylePack);
-  useEffect(() => setNextStylePack(run.stylePack), [run.id, run.stylePack]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setNextStylePack(run.stylePack), 0);
+    return () => window.clearTimeout(timer);
+  }, [run.id, run.stylePack]);
   const done = run.slides.filter(slide => slide.status === "completed").length;
   const statusText = deckStatusText(run.status);
   const pptUrl = `/api/employee/services/${service.id}/deck-generation/runs/${run.id}/ppt`;

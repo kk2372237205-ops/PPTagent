@@ -5,9 +5,11 @@
   "scripts": {
     "predev": "node scripts/ensure-onlyoffice.mjs",
     "dev": "node scripts/dev.mjs",
+    "dev:lite": "node scripts/dev-lite.mjs",
     "build": "node scripts/next-with-env-proxy.mjs build",
     "start": "node scripts/next-with-env-proxy.mjs start",
     "lint": "eslint .",
+    "storage:report": "node scripts/storage-report.mjs",
     "db:push": "node scripts/init-db.mjs && prisma generate",
     "db:init": "node scripts/init-db.mjs",
     "supabase:migrate": "node scripts/supabase-migrate.mjs",

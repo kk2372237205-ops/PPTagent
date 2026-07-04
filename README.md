@@ -12,6 +12,19 @@ npm run dev
 
 打开 `http://localhost:3000`。开发环境默认验证码为 `123456`。
 
+如果只调员工智能模式，可以用更轻的启动命令：
+
+```powershell
+npm run dev:lite
+```
+
+`dev:lite` 不替代完整开发模式，它只启动 Next、旧生图 worker 和生成 PPT worker。需要 ONLYOFFICE 检查、图片炸开或组件拆图时仍使用 `npm run dev`。
+
+当前项目的新存档和维护审计在 `docs/` 目录：
+
+- `docs/project-archive-2026-07-03.md`
+- `docs/maintenance-audit-2026-07-03.md`
+
 `npm run dev` 会先自动检查 Docker Desktop、启动 ONLYOFFICE 容器并确认编辑器可访问，然后才启动 Next.js。首次运行可能较慢，因为 Docker 需要拉取并初始化 ONLYOFFICE 镜像；Docker 未安装或无法启动时，命令会明确失败，不会启动一个缺少 PPT 编辑器的开发环境。
 
 ## 员工模式
