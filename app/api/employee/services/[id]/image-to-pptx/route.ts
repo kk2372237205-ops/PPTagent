@@ -4,7 +4,7 @@ import { ProxyAgent, fetch as undiciFetch } from "undici";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { currentEmployee } from "@/lib/employee-auth";
-import { documentRoot, imageRoot, readStoredFile, uniqueStoredName } from "@/lib/workspace-storage";
+import { documentRoot, ensureWorkspaceDirectories, imageRoot, readStoredFile, uniqueStoredName } from "@/lib/workspace-storage";
 import { writeFile } from "fs/promises";
 
 export const runtime = "nodejs";
@@ -49,6 +49,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     if (!pptUrl) throw new Error("Codia 任务成功但没有返回 PPT 下载链接");
     const pptx = await downloadCodiaPpt(pptUrl);
     const storedName = uniqueStoredName("pptx");
+    await ensureWorkspaceDirectories();
     await writeFile(path.join(documentRoot, storedName), pptx);
     return NextResponse.json({
       fileName: `${title}.pptx`,

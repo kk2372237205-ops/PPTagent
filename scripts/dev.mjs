@@ -112,6 +112,7 @@ const children = [
   { name: "Next dev server", process: spawn(process.execPath, ["scripts/next-with-env-proxy.mjs", "dev"], { stdio: "inherit", shell: false, env: devEnv }) },
   { name: "Design agent worker", process: spawn(process.execPath, ["scripts/design-agent-worker.mjs"], { stdio: "inherit", shell: false, env: devEnv }) },
   { name: "Deck generation worker", process: spawn(process.execPath, ["scripts/deck-generation-worker.mjs"], { stdio: "inherit", shell: false, env: devEnv }) },
+  { name: "PPT polish worker", process: spawn(process.execPath, ["scripts/ppt-polish-worker.mjs"], { stdio: "inherit", shell: false, env: devEnv }) },
   ...(componentExtractorPort ? [{ name: "Component extractor worker", process: spawn(process.execPath, ["scripts/component-extractor.mjs"], { stdio: "inherit", shell: false, env: devEnv }) }] : []),
   { name: "Image explode worker", process: spawn(process.execPath, ["scripts/image-explode-worker.mjs"], { stdio: "inherit", shell: false, env: devEnv }) }
 ];

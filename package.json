@@ -17,6 +17,7 @@
     "office:up": "node scripts/ensure-onlyoffice.mjs",
     "agent:worker": "node scripts/design-agent-worker.mjs",
     "agent:workers": "node scripts/agent-workers.mjs",
+    "ppt-polish:worker": "node scripts/ppt-polish-worker.mjs",
     "components:worker": "node scripts/image-explode-worker.mjs",
     "components:service": "node scripts/component-extractor.mjs",
     "components:gpu:check": "node scripts/check-image-gpu.mjs",

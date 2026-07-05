@@ -78,13 +78,14 @@ const devEnv = {
 };
 
 console.log(`Lite development server will use http://localhost:${port}`);
-console.log("dev:lite starts only Next, design-agent-worker, and deck-generation-worker.");
+console.log("dev:lite starts only Next, design-agent-worker, deck-generation-worker, and ppt-polish-worker.");
 console.log("Use npm run dev when you need ONLYOFFICE checks or image-explode/component extraction.");
 
 const children = [
   { name: "Next dev server", process: spawn(process.execPath, ["scripts/next-with-env-proxy.mjs", "dev"], { stdio: "inherit", shell: false, env: devEnv }) },
   { name: "Design agent worker", process: spawn(process.execPath, ["scripts/design-agent-worker.mjs"], { stdio: "inherit", shell: false, env: devEnv }) },
-  { name: "Deck generation worker", process: spawn(process.execPath, ["scripts/deck-generation-worker.mjs"], { stdio: "inherit", shell: false, env: devEnv }) }
+  { name: "Deck generation worker", process: spawn(process.execPath, ["scripts/deck-generation-worker.mjs"], { stdio: "inherit", shell: false, env: devEnv }) },
+  { name: "PPT polish worker", process: spawn(process.execPath, ["scripts/ppt-polish-worker.mjs"], { stdio: "inherit", shell: false, env: devEnv }) }
 ];
 
 let stopping = false;

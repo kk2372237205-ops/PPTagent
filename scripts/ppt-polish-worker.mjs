@@ -1,0 +1,708 @@
+import { existsSync, readFileSync } from "fs";
+import { mkdir, readdir, readFile, writeFile } from "fs/promises";
+import path from "path";
+import sharp from "sharp";
+import JSZip from "jszip";
+import { ProxyAgent, fetch as undiciFetch } from "undici";
+
+const root = process.cwd();
+loadEnv();
+
+const workspaceRoot = path.join(root, "uploads", "employee-workspace");
+const documentRoot = path.join(workspaceRoot, "documents");
+const imageRoot = path.join(workspaceRoot, "images");
+const polishRunRoot = path.join(workspaceRoot, "ppt-polish-runs");
+const workerHeartbeatPath = path.join(root, ".next-dev", "ppt-polish-worker-heartbeat.json");
+const pollMs = Math.max(1500, Number(process.env.PPT_POLISH_POLL_MS || 3000));
+const staleGeneratingMs = Math.max(60_000, Number(process.env.PPT_POLISH_STALE_GENERATING_MS || 60_000));
+const polishConcurrency = Math.min(4, Math.max(1, Number(process.env.PPT_POLISH_CONCURRENCY || 2)));
+const openAiBaseUrl = trimSlash(process.env.OPENAI_BASE_URL || "https://api.openai.com/v1");
+const openAiImageModel = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1.5";
+const openAiImageSize = process.env.OPENAI_IMAGE_SIZE?.split(",").map(item => item.trim()).find(Boolean) || "1536x864";
+const codiaBaseUrl = trimSlash(process.env.CODIA_BASE_URL || "https://api.codia.ai");
+let proxyAgent;
+let workerHeartbeatState = "starting";
+let workerHeartbeatTimer;
+
+function loadEnv() {
+  for (const fileName of [".env.local", ".env"]) {
+    const filePath = path.join(root, fileName);
+    if (!existsSync(filePath)) continue;
+    const content = readFileSync(filePath, "utf8");
+    for (const line of content.split(/\r?\n/)) {
+      const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+      if (!match || match[1].startsWith("#") || process.env[match[1]]) continue;
+      process.env[match[1]] = match[2].replace(/^["']|["']$/g, "");
+    }
+  }
+}
+
+function trimSlash(value) {
+  return String(value || "").replace(/\/$/, "");
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function nowName(extension) {
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}.${extension}`;
+}
+
+async function ensureDirs() {
+  await Promise.all([
+    mkdir(documentRoot, { recursive: true }),
+    mkdir(imageRoot, { recursive: true }),
+    mkdir(polishRunRoot, { recursive: true }),
+    mkdir(path.dirname(workerHeartbeatPath), { recursive: true })
+  ]);
+}
+
+async function writeWorkerHeartbeat(state = "idle") {
+  workerHeartbeatState = state;
+  try {
+    await mkdir(path.dirname(workerHeartbeatPath), { recursive: true });
+    await writeFile(workerHeartbeatPath, JSON.stringify({ pid: process.pid, state: workerHeartbeatState, updatedAt: new Date().toISOString() }, null, 2), "utf8");
+  } catch {}
+}
+
+function startWorkerHeartbeat() {
+  if (workerHeartbeatTimer) return;
+  workerHeartbeatTimer = setInterval(() => {
+    void writeWorkerHeartbeat(workerHeartbeatState);
+  }, 5000);
+}
+
+function runPath(runId) {
+  return path.join(polishRunRoot, `${path.basename(runId)}.json`);
+}
+
+async function readRunFile(fileName) {
+  const content = await readFile(path.join(polishRunRoot, fileName), "utf8");
+  return JSON.parse(content);
+}
+
+async function writeRun(run, patch = {}) {
+  const next = {
+    ...run,
+    ...patch,
+    updatedAt: new Date().toISOString()
+  };
+  await writeFile(runPath(next.id), JSON.stringify(next, null, 2), "utf8");
+  return next;
+}
+
+async function listRuns() {
+  await ensureDirs();
+  const entries = await readdir(polishRunRoot, { withFileTypes: true }).catch(() => []);
+  const runs = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+    try {
+      runs.push(await readRunFile(entry.name));
+    } catch (error) {
+      console.warn(`Skip malformed polish run ${entry.name}: ${error.message}`);
+    }
+  }
+  return runs.sort((a, b) => Date.parse(b.updatedAt || b.createdAt || "") - Date.parse(a.updatedAt || a.createdAt || ""));
+}
+
+function getOpenAiFetch() {
+  const proxy = process.env.OPENAI_PROXY_URL || process.env.CODIA_PROXY_URL;
+  if (proxy && !proxyAgent) proxyAgent = new ProxyAgent(proxy);
+  return async (url, init, timeoutMs = 300000) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      if (proxyAgent) return await undiciFetch(url, { ...init, signal: controller.signal, dispatcher: proxyAgent });
+      return await fetch(url, { ...init, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+}
+
+function providerError(result, fallback) {
+  return result?.error?.message || result?.message || fallback;
+}
+
+function readableExternalFailure(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (error instanceof Error && error.name === "AbortError") return "OpenAI 图片生成等待超时，请稍后重试。";
+  if (/fetch failed|network|connect|socket|econn|enotfound|etimedout|tls|ssl/i.test(message)) {
+    return `无法连接 OpenAI 图片服务：${message}。请检查 OPENAI_PROXY_URL 或网络代理后重试。`;
+  }
+  if (/401|invalid_api_key|incorrect api key|unauthorized/i.test(message)) return "OpenAI 服务端授权异常，请检查 API Key 配置。";
+  if (/403|forbidden|permission|not have access|does not have access|not authorized/i.test(message)) return "OpenAI 模型或项目权限异常，请检查模型、Project 与组织权限。";
+  if (/quota|billing|credits|balance|insufficient/i.test(message)) return "OpenAI API 额度或余额不足，请检查计费与额度。";
+  if (/rate limit|too many requests|429/i.test(message)) return "OpenAI 请求较多，请稍后重试。";
+  return message || "外部图片服务暂时不可用，请稍后重试。";
+}
+
+async function openAiImage(prompt) {
+  if (!process.env.OPENAI_API_KEY) throw new Error("尚未配置 OPENAI_API_KEY，无法逐页重绘 PPT。");
+  const request = getOpenAiFetch();
+  const response = await request(`${openAiBaseUrl}/images/generations`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+    },
+    body: JSON.stringify({
+      model: openAiImageModel,
+      prompt,
+      n: 1,
+      size: openAiImageSize,
+      quality: "medium",
+      output_format: "png"
+    })
+  });
+  const result = await response.json();
+  if (!response.ok || !result.data?.[0]) throw new Error(providerError(result, "OpenAI 图片生成失败"));
+  const image = result.data[0];
+  if (image.b64_json) return Buffer.from(image.b64_json, "base64");
+  if (image.url) {
+    const download = await request(image.url, {}, 120000);
+    if (!download.ok) throw new Error("OpenAI 生成图下载失败");
+    return Buffer.from(await download.arrayBuffer());
+  }
+  throw new Error("OpenAI 图片接口没有返回图片内容");
+}
+
+function stylePackName(id) {
+  return ({
+    "blue-gold-tech": "蓝金科技",
+    "white-green-tech": "白绿科技",
+    "black-gold-business": "黑金商务",
+    "blue-purple-ai": "蓝紫 AI",
+    "red-white-government": "红白政企",
+    "minimal-academic": "极简学术",
+    "vivid-roadshow": "活力路演"
+  })[id] || id || "蓝金科技";
+}
+
+function xmlText(value) {
+  return String(value || "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, "\"")
+    .replace(/&apos;/g, "'");
+}
+
+function cleanText(value, maxLength = 2200) {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+async function extractPptxSlides(storedName) {
+  const filePath = path.join(documentRoot, path.basename(storedName));
+  if (path.extname(filePath).toLowerCase() !== ".pptx") {
+    throw new Error("美化 worker 目前只支持 PPTX 自动逐页重绘；请先把 PPT 另存为 PPTX。");
+  }
+  const zip = await JSZip.loadAsync(await readFile(filePath));
+  const slideFiles = Object.keys(zip.files)
+    .filter(name => /^ppt\/slides\/slide\d+\.xml$/i.test(name))
+    .sort((a, b) => Number(a.match(/slide(\d+)\.xml/i)?.[1] || 0) - Number(b.match(/slide(\d+)\.xml/i)?.[1] || 0));
+  if (!slideFiles.length) throw new Error("没有从 PPTX 中识别到幻灯片页面。");
+  const slides = [];
+  for (const [index, fileName] of slideFiles.entries()) {
+    const xml = await zip.file(fileName)?.async("text");
+    const texts = Array.from(String(xml || "").matchAll(/<a:t[^>]*>([\s\S]*?)<\/a:t>/g))
+      .map(match => cleanText(xmlText(match[1]), 180))
+      .filter(Boolean);
+    const uniqueTexts = Array.from(new Set(texts));
+    slides.push({
+      slideIndex: index + 1,
+      title: uniqueTexts.find(item => item.length >= 2) || `第 ${index + 1} 页`,
+      originalText: cleanText(uniqueTexts.join(" / "), 1800),
+      note: "",
+      status: "queued",
+      updatedAt: new Date().toISOString()
+    });
+  }
+  return slides;
+}
+
+function pageNoteFor(index, pageNotes = []) {
+  const matched = [];
+  for (const item of pageNotes) {
+    const pages = String(item.pages || "");
+    const parts = pages.split(/[,\uFF0C;；、\s]+/).filter(Boolean);
+    for (const part of parts) {
+      const range = part.match(/^(\d+)\s*[-~至到]\s*(\d+)$/);
+      if (range) {
+        const start = Number(range[1]);
+        const end = Number(range[2]);
+        if (index >= Math.min(start, end) && index <= Math.max(start, end)) matched.push(item.note);
+      } else if (Number(part) === index) {
+        matched.push(item.note);
+      }
+    }
+  }
+  return cleanText(matched.join("；"), 800);
+}
+
+function optionLines(options = {}) {
+  const labels = {
+    keepText: "尽量保留原文字与原语义",
+    keepNumbers: "保留数字、年份、百分比和单位",
+    mainColor: "统一主色",
+    headerFooter: "统一页眉页脚",
+    backgroundTexture: "统一背景质感",
+    cardStyle: "统一卡片样式",
+    decorativeElements: "统一装饰元素",
+    reduceText: "降低文字密度，改成更清晰的信息层级"
+  };
+  return Object.entries(labels).filter(([key]) => options[key]).map(([, label]) => `- ${label}`).join("\n") || "- 保持页面专业、清晰、统一";
+}
+
+function slideRole(run, slide) {
+  if (slide.slideIndex === 1) return "cover";
+  if (slide.slideIndex === run.pageCount) return "ending";
+  return "content";
+}
+
+function visualSystemPrompt(run, slide) {
+  const role = slideRole(run, slide);
+  const base = [
+    "Global visual system lock:",
+    "- Use one consistent deck identity across every page: deep navy base, electric blue light trails, refined gold highlights, glassy dark cards, clean sans-serif Chinese typography, and the same icon stroke style.",
+    "- Keep background texture, header micro-labels, footer rhythm, page numbers, card radius, glow strength, and spacing language consistent with adjacent pages.",
+    "- Do not suddenly switch to a red/black, orange, purple, beige, cartoon, hand-drawn, or poster-only style. Even crisis/risk pages must stay in the blue-gold tech system; red is only a thin warning accent, not the dominant palette.",
+    "- Prefer fewer larger visual ideas over many small blocks. Avoid scattered decorations, mismatched illustration styles, and overloaded tiny text.",
+    "- Treat the deck as one premium conference keynote, not independent posters."
+  ];
+  if (role === "cover") {
+    base.push(
+      "Cover page special direction:",
+      "- Make the cover emotionally strong and eye-catching: one cinematic hero visual, strong depth, confident lighting, and clear focal point.",
+      "- Use very little text: main title, optional short subtitle, and at most three tiny metadata chips. Avoid dense timelines, paragraph cards, and explanatory blocks on the cover.",
+      "- The title should feel memorable and central; the visual should carry most of the impact."
+    );
+  } else if (role === "ending") {
+    base.push(
+      "Ending page special direction:",
+      "- Make the ending page emotional, spacious, and memorable. Use one large closing sentence or slogan as the main focus.",
+      "- Keep text minimal. If supporting points are needed, use no more than three short chips or cards.",
+      "- Use a stronger atmosphere than middle pages while still matching the same blue-gold tech identity."
+    );
+  } else {
+    base.push(
+      "Content page direction:",
+      "- Make the page readable and structured with clear hierarchy, but keep visual energy aligned with the cover and ending.",
+      "- Use charts, cards, timelines, or diagrams only when they help the detected content; avoid unnecessary text-heavy boxes."
+    );
+  }
+  return base.join("\n");
+}
+
+function previousVisualAnchor(slide) {
+  if (!slide?.prompt) return "No generated previous-page style anchor yet; follow the global deck visual system.";
+  const prompt = cleanText(slide.prompt, 1200);
+  return [
+    "Use this previous generated page prompt as a visual style anchor only.",
+    "Borrow its palette discipline, density, header/footer rhythm, glass card language, glow direction, and icon style.",
+    "Do not copy previous-page text, data, charts, characters, or exact composition.",
+    prompt
+  ].join("\n");
+}
+
+function slidePrompt(run, slide, previous, next) {
+  const wantsPreviousAnchor = /Action:\s*closer_previous/i.test(slide.lastInstruction || "");
+  return `Create one complete premium 16:9 PowerPoint slide image.
+
+This is a PPT polish/redesign task. Rebuild the current slide as a polished presentation page, not a poster and not a screenshot.
+
+Deck source file: ${run.sourceName}
+Target style: ${stylePackName(run.stylePack)}
+Slide: ${slide.slideIndex}/${run.pageCount}
+Detected slide title/text:
+${slide.originalText || slide.title}
+
+Overall polish direction:
+${run.note || "Make the deck more polished, consistent, readable, and presentation-ready."}
+
+Current slide specific request:
+${slide.note || "No extra page-level request."}
+
+Regeneration instruction:
+${slide.lastInstruction || "None."}
+
+Selected requirements:
+${optionLines(run.options)}
+
+Visual consistency requirements:
+${visualSystemPrompt(run, slide)}
+
+Previous generated page visual anchor:
+${wantsPreviousAnchor ? previousVisualAnchor(previous) : "Use the previous page only for broad continuity; prioritize the current slide request."}
+
+Previous slide context:
+${previous?.originalText || "start"}
+
+Next slide context:
+${next?.originalText || "end"}
+
+Hard requirements:
+- Output exactly one full 16:9 PPT page with refined layout, title hierarchy, content blocks, background, and safe margins.
+- Preserve the original meaning. If numbers, dates, names, or important labels exist in the detected text, keep them readable and do not invent conflicting data.
+- Avoid dense paragraphs. Use concise designed text, cards, diagrams, timelines, charts, or structured blocks where appropriate.
+- Keep all important text and visuals inside a 6% safe area. Nothing important may touch or be cut off by the canvas edge.
+- Keep continuity across pages: same palette, header/footer rhythm, typography feeling, card language, icon style, glow color, and decorative language.
+- For regeneration, obey the requested redesign route. The new page must be visibly different from the previous generated version unless the instruction explicitly asks only for closer continuity.
+- Do not include watermarks, model signatures, browser UI, chat UI, random logos, or unrelated characters.
+- If exact Chinese text is uncertain, use short legible Chinese labels based on the detected text rather than gibberish.`;
+}
+
+async function prepareRun(run) {
+  run = await writeRun(run, { status: "planning", error: "" });
+  const extracted = await extractPptxSlides(run.sourceStoredName);
+  const slides = extracted.map(slide => ({
+    ...slide,
+    note: pageNoteFor(slide.slideIndex, run.pageNotes)
+  }));
+  return writeRun(run, {
+    status: "generating",
+    pageCount: slides.length,
+    slides,
+    error: ""
+  });
+}
+
+async function generateSlideAsset(run, slide) {
+  const slides = run.slides || [];
+  const currentIndex = slides.findIndex(item => item.slideIndex === slide.slideIndex);
+  const previous = currentIndex > 0 ? slides[currentIndex - 1] : null;
+  const next = currentIndex >= 0 && currentIndex < slides.length - 1 ? slides[currentIndex + 1] : null;
+  const prompt = slidePrompt(run, slide, previous, next);
+  let normalized;
+  try {
+    const raw = await openAiImage(prompt);
+    normalized = await sharp(raw)
+      .resize(1920, 1080, { fit: "contain", background: "#061525" })
+      .png()
+      .toBuffer();
+  } catch (error) {
+    return { ok: false, slideIndex: slide.slideIndex, prompt, error: readableExternalFailure(error), updatedAt: new Date().toISOString() };
+  }
+  try {
+    const storedName = nowName("png");
+    await writeFile(path.join(imageRoot, storedName), normalized);
+    return { ok: true, slideIndex: slide.slideIndex, storedName, prompt, updatedAt: new Date().toISOString() };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, slideIndex: slide.slideIndex, prompt, error: message, updatedAt: new Date().toISOString() };
+  }
+}
+
+async function processGenerating(run) {
+  if (!run.slides?.length) return prepareRun(run);
+  const staleSlides = run.slides.filter(slide => slide.status === "generating" && Date.now() - Date.parse(slide.updatedAt || run.updatedAt || run.createdAt || "") > staleGeneratingMs);
+  if (staleSlides.length) {
+    const recoveredAt = new Date().toISOString();
+    const staleIndexes = new Set(staleSlides.map(slide => slide.slideIndex));
+    run = await writeRun(run, {
+      slides: run.slides.map(slide => staleIndexes.has(slide.slideIndex) ? { ...slide, status: "queued", error: "", updatedAt: recoveredAt } : slide),
+      error: ""
+    });
+  }
+  const activeCount = run.slides.filter(slide => slide.status === "generating").length;
+  const slots = Math.max(0, polishConcurrency - activeCount);
+  const nextSlides = run.slides.filter(slide => ["queued", "waiting"].includes(slide.status)).slice(0, slots);
+  if (nextSlides.length) {
+    const started = new Date().toISOString();
+    const activeIndexes = new Set(nextSlides.map(slide => slide.slideIndex));
+    run = await writeRun(run, {
+      slides: run.slides.map(slide => activeIndexes.has(slide.slideIndex) ? { ...slide, status: "generating", error: "", updatedAt: started } : slide),
+      error: ""
+    });
+    const activeSlides = run.slides.filter(slide => activeIndexes.has(slide.slideIndex));
+    const results = await Promise.all(activeSlides.map(slide => generateSlideAsset(run, slide)));
+    const latest = await readRunFile(`${run.id}.json`).catch(() => run);
+    const resultMap = new Map(results.map(result => [result.slideIndex, result]));
+    const mergedSlides = (latest.slides || []).map(slide => {
+      const result = resultMap.get(slide.slideIndex);
+      if (!result) return slide;
+      if (result.ok) return { ...slide, status: "completed", storedName: result.storedName, prompt: result.prompt, error: "", updatedAt: result.updatedAt };
+      return { ...slide, status: "failed", prompt: result.prompt, error: result.error, updatedAt: result.updatedAt };
+    });
+    const firstFailure = results.find(result => !result.ok);
+    const coverResult = results.find(result => result.ok && result.slideIndex === 1);
+    let status = "generating";
+    let error = "";
+    if (firstFailure) {
+      status = "failed";
+      error = firstFailure.error;
+    } else if (mergedSlides.every(slide => slide.status === "completed" && slide.storedName)) {
+      status = "review_ready";
+    }
+    return writeRun(latest, {
+      status,
+      slides: mergedSlides,
+      coverStoredName: coverResult?.storedName || latest.coverStoredName,
+      error
+    });
+  }
+  if (run.slides.every(slide => slide.status === "completed" && slide.storedName)) {
+    return writeRun(run, { status: "review_ready", error: "" });
+  }
+  if (run.slides.some(slide => slide.status === "failed")) {
+    return writeRun(run, { status: "failed", error: "部分页面生成失败，请检查页面错误后重新提交。" });
+  }
+  return run;
+}
+
+function pdfString(value) {
+  return Buffer.from(value, "binary");
+}
+
+function makeObject(id, body) {
+  return { id, body: Buffer.isBuffer(body) ? body : pdfString(String(body)) };
+}
+
+function streamObject(id, dict, stream) {
+  return makeObject(id, Buffer.concat([pdfString(`${dict}\nstream\n`), stream, pdfString("\nendstream")]));
+}
+
+function makeImagePdf(images, width, height) {
+  const objects = [];
+  const catalogId = 1;
+  const pagesId = 2;
+  let nextId = 3;
+  const pageIds = [];
+  for (const image of images) {
+    const pageId = nextId++;
+    const imageId = nextId++;
+    const contentId = nextId++;
+    pageIds.push(pageId);
+    objects.push(streamObject(imageId, `<< /Type /XObject /Subtype /Image /Width 1920 /Height 1080 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${image.length} >>`, image));
+    const content = Buffer.from(`q\n${width} 0 0 ${height} 0 0 cm\n/Im${imageId} Do\nQ\n`, "binary");
+    objects.push(streamObject(contentId, `<< /Length ${content.length} >>`, content));
+    objects.push(makeObject(pageId, `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${width} ${height}] /Resources << /XObject << /Im${imageId} ${imageId} 0 R >> >> /Contents ${contentId} 0 R >>`));
+  }
+  objects.push(makeObject(catalogId, `<< /Type /Catalog /Pages ${pagesId} 0 R >>`));
+  objects.push(makeObject(pagesId, `<< /Type /Pages /Kids [${pageIds.map(id => `${id} 0 R`).join(" ")}] /Count ${pageIds.length} >>`));
+  objects.sort((a, b) => a.id - b.id);
+  const chunks = [pdfString("%PDF-1.4\n%\xE2\xE3\xCF\xD3\n")];
+  const offsets = [0];
+  for (const object of objects) {
+    offsets[object.id] = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    chunks.push(pdfString(`${object.id} 0 obj\n`), object.body, pdfString("\nendobj\n"));
+  }
+  const xrefOffset = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const maxId = Math.max(...objects.map(object => object.id));
+  chunks.push(pdfString(`xref\n0 ${maxId + 1}\n0000000000 65535 f \n`));
+  for (let id = 1; id <= maxId; id += 1) chunks.push(pdfString(`${String(offsets[id] || 0).padStart(10, "0")} 00000 n \n`));
+  chunks.push(pdfString(`trailer\n<< /Size ${maxId + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`));
+  return Buffer.concat(chunks);
+}
+
+async function createPdf(run) {
+  const images = [];
+  for (const slide of run.slides || []) {
+    if (!slide.storedName || slide.status !== "completed") throw new Error("还有页面没有生成完成，暂时不能合成 PDF。");
+    const file = await readFile(path.join(imageRoot, path.basename(slide.storedName)));
+    const jpeg = await sharp(file)
+      .resize(1920, 1080, { fit: "contain", background: "#061525" })
+      .jpeg({ quality: 92, mozjpeg: true })
+      .toBuffer();
+    images.push(jpeg);
+  }
+  const storedName = nowName("pdf");
+  await writeFile(path.join(documentRoot, storedName), makeImagePdf(images, 960, 540));
+  return writeRun(run, {
+    status: "ppt_queued",
+    pdfStoredName: storedName,
+    coverStoredName: run.coverStoredName || run.slides?.[0]?.storedName,
+    error: ""
+  });
+}
+
+function codiaConfig() {
+  const key = process.env.CODIA_API_KEY?.replace(/^["']|["']$/g, "").trim();
+  if (!key) throw new Error("尚未配置 CODIA_API_KEY，PDF 已生成，但无法自动转 PPTX。");
+  return { key };
+}
+
+async function readCodiaJson(response, fallback) {
+  const text = await response.text();
+  let result = {};
+  try {
+    result = text ? JSON.parse(text) : {};
+  } catch {
+    result = { message: text };
+  }
+  if (!response.ok || result.code) throw new Error(`Codia API error ${response.status}: ${result?.message || fallback}`);
+  return result;
+}
+
+function multipartFileBody(fieldName, fileName, contentType, content) {
+  const boundary = `----wzlcf-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const safeFileName = String(fileName || "file.pdf").replace(/["\r\n]/g, "_");
+  const head = Buffer.from(
+    `--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="${fieldName}"; filename="${safeFileName}"\r\n` +
+    `Content-Type: ${contentType}\r\n\r\n`,
+    "utf8"
+  );
+  const tail = Buffer.from(`\r\n--${boundary}--\r\n`, "utf8");
+  return { boundary, body: Buffer.concat([head, content, tail]) };
+}
+
+async function codiaUploadPdf(pdfBuffer, fileName) {
+  const { key } = codiaConfig();
+  const request = getOpenAiFetch();
+  const multipart = multipartFileBody("file", fileName, "application/pdf", pdfBuffer);
+  const response = await request(`${codiaBaseUrl}/v2/open/uploads`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": `multipart/form-data; boundary=${multipart.boundary}`,
+      "Content-Length": String(multipart.body.length)
+    },
+    body: multipart.body
+  }, 120000);
+  const result = await readCodiaJson(response, "Codia PDF 上传失败");
+  const uploadId = result?.data?.upload_id;
+  if (!uploadId) throw new Error("Codia 上传成功但没有返回 upload_id");
+  return { uploadId, response: result };
+}
+
+async function codiaCreatePdfToPptTask(run, uploadId) {
+  const { key } = codiaConfig();
+  const request = getOpenAiFetch();
+  const response = await request(`${codiaBaseUrl}/v2/open/tasks`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${key}`,
+      "Idempotency-Key": `ppt-polish-${run.id}`
+    },
+    body: JSON.stringify({
+      operation: "pdf_to_ppt",
+      input: {
+        upload_id: uploadId,
+        title: `${run.sourceName.replace(/\.(pptx?|pdf)$/i, "")}-美化版`
+      }
+    })
+  }, 120000);
+  const result = await readCodiaJson(response, "Codia PDF 转 PPT 任务创建失败");
+  const taskId = result?.data?.task_id;
+  if (!taskId) throw new Error("Codia 任务创建成功但没有返回 task_id");
+  return { taskId, response: result };
+}
+
+async function codiaGetTask(taskId) {
+  const { key } = codiaConfig();
+  const request = getOpenAiFetch();
+  const response = await request(`${codiaBaseUrl}/v2/open/tasks/${encodeURIComponent(taskId)}`, {
+    headers: { Authorization: `Bearer ${key}` }
+  }, 45000);
+  return readCodiaJson(response, "Codia 任务状态读取失败");
+}
+
+async function downloadCodiaPpt(pptUrl) {
+  const request = getOpenAiFetch();
+  const response = await request(pptUrl, {}, 180000);
+  if (!response.ok) throw new Error(`Codia PPTX 下载失败：HTTP ${response.status}`);
+  return Buffer.from(await response.arrayBuffer());
+}
+
+async function processPpt(run) {
+  if (!run.pdfStoredName) return createPdf(run);
+  if (!run.codiaTaskId) {
+    const pdfBuffer = await readFile(path.join(documentRoot, path.basename(run.pdfStoredName)));
+    const upload = await codiaUploadPdf(pdfBuffer, `${run.sourceName.replace(/\.(pptx?|pdf)$/i, "")}-美化版.pdf`);
+    const task = await codiaCreatePdfToPptTask(run, upload.uploadId);
+    return writeRun(run, {
+      status: "ppt_processing",
+      codiaTaskId: task.taskId,
+      codiaResponse: { upload: upload.response, task: task.response },
+      error: ""
+    });
+  }
+  const result = await codiaGetTask(run.codiaTaskId);
+  const task = result?.data || {};
+  if (["pending", "processing"].includes(task.status)) {
+    return writeRun(run, { codiaResponse: result, error: "" });
+  }
+  if (task.status === "failed" || task.status === "canceled") {
+    throw new Error(task.error || `Codia PDF 转 PPT 任务${task.status === "canceled" ? "已取消" : "失败"}`);
+  }
+  if (task.status !== "succeeded") throw new Error(`Codia 返回了未知任务状态：${task.status || "empty"}`);
+  const pptUrl = task.result?.ppt_url;
+  if (!pptUrl) throw new Error("Codia 任务成功但没有返回 result.ppt_url");
+  const ppt = await downloadCodiaPpt(pptUrl);
+  const storedName = nowName("pptx");
+  await writeFile(path.join(documentRoot, storedName), ppt);
+  return writeRun(run, {
+    status: "ppt_ready",
+    pptStoredName: storedName,
+    codiaResponse: result,
+    error: ""
+  });
+}
+
+async function failRun(run, error) {
+  const message = readableExternalFailure(error);
+  if (["ppt_queued", "ppt_processing"].includes(run.status) && run.pdfStoredName) {
+    return writeRun(run, { status: "pdf_ready", error: message });
+  }
+  if (run.status === "generating" && run.slides?.length) {
+    let marked = false;
+    const nextSlides = run.slides.map(slide => {
+      if (slide.status === "generating" || (!marked && ["queued", "waiting"].includes(slide.status))) {
+        marked = true;
+        return { ...slide, status: "failed", error: message, updatedAt: new Date().toISOString() };
+      }
+      return slide;
+    });
+    return writeRun(run, { status: "failed", slides: nextSlides, error: message });
+  }
+  return writeRun(run, { status: "failed", error: message });
+}
+
+async function processRun(run) {
+  try {
+    if (run.status === "confirmed") return await prepareRun(run);
+    if (run.status === "planning") return await prepareRun(run);
+    if (run.status === "generating") return await processGenerating(run);
+    if (run.status === "pdf_queued") return await createPdf(run);
+    if (run.status === "pdf_ready" || run.status === "ppt_queued" || run.status === "ppt_processing") return await processPpt(run);
+    return run;
+  } catch (error) {
+    console.error(`PPT polish run ${run.id} failed:`, error);
+    return failRun(run, error);
+  }
+}
+
+async function tick() {
+  const activeStatuses = new Set(["confirmed", "planning", "generating", "pdf_queued", "ppt_queued", "ppt_processing"]);
+  const runs = await listRuns();
+  const run = runs.find(item => activeStatuses.has(item.status) && canProcessRun(item));
+  if (!run) {
+    await writeWorkerHeartbeat("idle");
+    return;
+  }
+  await writeWorkerHeartbeat(`running:${run.id}:${run.status}`);
+  await processRun(run);
+  await writeWorkerHeartbeat("polling");
+}
+
+function canProcessRun(run) {
+  if (run.status === "confirmed") return true;
+  if (["planning", "generating"].includes(run.status) && !run.confirmedAt && !run.pageCount && !run.slides?.length) return false;
+  return true;
+}
+
+console.log(`PPT polish worker polling ${polishRunRoot}`);
+await writeWorkerHeartbeat("started");
+startWorkerHeartbeat();
+for (;;) {
+  try {
+    await tick();
+  } catch (error) {
+    console.error("PPT polish worker tick failed:", error);
+  }
+  await sleep(pollMs);
+}

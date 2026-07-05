@@ -80,16 +80,16 @@ function normalizeUnityOptions(value: string) {
       mainColor: Boolean(parsed.mainColor ?? true),
       headerFooter: Boolean(parsed.headerFooter ?? true),
       backgroundTexture: Boolean(parsed.backgroundTexture ?? true),
-      cardStyle: Boolean(parsed.cardStyle ?? true),
-      decorativeElements: Boolean(parsed.decorativeElements ?? true)
+      cardStyle: Boolean(parsed.cardStyle ?? false),
+      decorativeElements: Boolean(parsed.decorativeElements ?? false)
     });
   } catch {
     return JSON.stringify({
       mainColor: true,
       headerFooter: true,
       backgroundTexture: true,
-      cardStyle: true,
-      decorativeElements: true
+      cardStyle: false,
+      decorativeElements: false
     });
   }
 }
