@@ -1,22 +1,22 @@
 import path from "path";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { currentEmployee } from "@/lib/employee-auth";
+import { authorizeEmployeeService } from "@/lib/employee-auth";
 import { workPresentationMaxBytes, workPresentationMaxLabel } from "@/lib/upload-limits";
 import { documentRoot, saveFile } from "@/lib/workspace-storage";
 
 const allowedExtensions = new Set([".ppt", ".pptx"]);
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
-
   const { id } = await context.params;
   const document = await db.workDocument.findUnique({
     where: { id },
     include: { service: true }
   });
   if (!document) return NextResponse.json({ error: "工作文件不存在" }, { status: 404 });
+  const authorization = await authorizeEmployeeService(document.serviceId, "officeEditor");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  const employee = authorization.access.employee;
 
   const form = await request.formData();
   const file = form.get("file");

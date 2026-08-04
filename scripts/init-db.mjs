@@ -67,9 +67,11 @@ CREATE TABLE IF NOT EXISTS "Service" (
   "progress" INTEGER NOT NULL,
   "userId" TEXT NOT NULL,
   "consultationId" TEXT,
+  "organizationId" TEXT,
   "assigneeId" TEXT,
   CONSTRAINT "Service_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE,
   CONSTRAINT "Service_consultationId_fkey" FOREIGN KEY ("consultationId") REFERENCES "Consultation" ("id") ON DELETE SET NULL,
+  CONSTRAINT "Service_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE SET NULL,
   CONSTRAINT "Service_assigneeId_fkey" FOREIGN KEY ("assigneeId") REFERENCES "Employee" ("id") ON DELETE SET NULL
 );
 CREATE TABLE IF NOT EXISTS "DeliveryVersion" (
@@ -124,6 +126,39 @@ CREATE TABLE IF NOT EXISTS "Employee" (
   "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" DATETIME NOT NULL
 );
+CREATE TABLE IF NOT EXISTS "Organization" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "slug" TEXT NOT NULL UNIQUE,
+  "name" TEXT NOT NULL,
+  "corpId" TEXT NOT NULL UNIQUE,
+  "enabled" BOOLEAN NOT NULL DEFAULT true,
+  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS "EmployeeMembership" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "organizationId" TEXT NOT NULL,
+  "employeeId" TEXT NOT NULL,
+  "identityProvider" TEXT NOT NULL DEFAULT 'wecom',
+  "externalUserId" TEXT NOT NULL DEFAULT '',
+  "unionId" TEXT NOT NULL DEFAULT '',
+  "wecomUserId" TEXT NOT NULL,
+  "role" TEXT NOT NULL DEFAULT 'member',
+  "status" TEXT NOT NULL DEFAULT 'pending',
+  "permissionsJson" TEXT NOT NULL DEFAULT '{}',
+  "departmentIdsJson" TEXT NOT NULL DEFAULT '[]',
+  "position" TEXT NOT NULL DEFAULT '',
+  "avatarUrl" TEXT NOT NULL DEFAULT '',
+  "lastLoginAt" DATETIME,
+  "loginCount" INTEGER NOT NULL DEFAULT 0,
+  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "EmployeeMembership_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE,
+  CONSTRAINT "EmployeeMembership_employeeId_fkey" FOREIGN KEY ("employeeId") REFERENCES "Employee" ("id") ON DELETE CASCADE,
+  UNIQUE("organizationId", "wecomUserId"),
+  UNIQUE("organizationId", "identityProvider", "externalUserId"),
+  UNIQUE("organizationId", "employeeId")
+);
 CREATE TABLE IF NOT EXISTS "EmployeeSession" (
   "id" TEXT NOT NULL PRIMARY KEY,
   "tokenHash" TEXT NOT NULL UNIQUE,
@@ -134,7 +169,19 @@ CREATE TABLE IF NOT EXISTS "EmployeeSession" (
   "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "lastSeenAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "employeeId" TEXT NOT NULL,
-  CONSTRAINT "EmployeeSession_employeeId_fkey" FOREIGN KEY ("employeeId") REFERENCES "Employee" ("id") ON DELETE CASCADE
+  "membershipId" TEXT,
+  CONSTRAINT "EmployeeSession_employeeId_fkey" FOREIGN KEY ("employeeId") REFERENCES "Employee" ("id") ON DELETE CASCADE,
+  CONSTRAINT "EmployeeSession_membershipId_fkey" FOREIGN KEY ("membershipId") REFERENCES "EmployeeMembership" ("id") ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS "EmployeeLoginEvent" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "employeeId" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "ip" TEXT,
+  "userAgent" TEXT NOT NULL DEFAULT '',
+  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "EmployeeLoginEvent_employeeId_fkey" FOREIGN KEY ("employeeId") REFERENCES "Employee" ("id") ON DELETE CASCADE,
+  CONSTRAINT "EmployeeLoginEvent_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS "WorkDocument" (
   "id" TEXT NOT NULL PRIMARY KEY,
@@ -334,11 +381,19 @@ CREATE TABLE IF NOT EXISTS "ImageExplodeRun" (
 CREATE TABLE IF NOT EXISTS "DeckGenerationRun" (
   "id" TEXT NOT NULL PRIMARY KEY,
   "status" TEXT NOT NULL DEFAULT 'queued',
+  "generationMode" TEXT NOT NULL DEFAULT 'quick',
   "projectName" TEXT NOT NULL,
   "projectType" TEXT NOT NULL DEFAULT '',
   "brief" TEXT NOT NULL,
+  "referenceText" TEXT NOT NULL DEFAULT '',
   "pageCount" INTEGER NOT NULL DEFAULT 12,
   "stylePack" TEXT NOT NULL,
+  "paletteMode" TEXT NOT NULL DEFAULT 'preset',
+  "paletteContractJson" TEXT NOT NULL DEFAULT '{}',
+  "outlineInputJson" TEXT NOT NULL DEFAULT '{}',
+  "analysisSummaryJson" TEXT NOT NULL DEFAULT '{}',
+  "themeReferenceStoredName" TEXT,
+  "sourceCount" INTEGER NOT NULL DEFAULT 0,
   "unityOptionsJson" TEXT NOT NULL DEFAULT '{}',
   "outlineJson" TEXT NOT NULL DEFAULT '{}',
   "visualIdentityJson" TEXT NOT NULL DEFAULT '{}',
@@ -362,6 +417,56 @@ CREATE TABLE IF NOT EXISTS "DeckGenerationRun" (
   "employeeId" TEXT NOT NULL,
   CONSTRAINT "DeckGenerationRun_serviceId_fkey" FOREIGN KEY ("serviceId") REFERENCES "Service" ("id") ON DELETE CASCADE,
   CONSTRAINT "DeckGenerationRun_employeeId_fkey" FOREIGN KEY ("employeeId") REFERENCES "Employee" ("id") ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS "DeckGenerationSource" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "kind" TEXT NOT NULL DEFAULT 'reference',
+  "originalName" TEXT NOT NULL,
+  "storedName" TEXT NOT NULL UNIQUE,
+  "mimeType" TEXT NOT NULL DEFAULT '',
+  "size" INTEGER NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'queued',
+  "extractedText" TEXT NOT NULL DEFAULT '',
+  "metadataJson" TEXT NOT NULL DEFAULT '{}',
+  "error" TEXT,
+  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "runId" TEXT NOT NULL,
+  CONSTRAINT "DeckGenerationSource_runId_fkey" FOREIGN KEY ("runId") REFERENCES "DeckGenerationRun" ("id") ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS "DeckGenerationEvidence" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "locator" TEXT NOT NULL DEFAULT '',
+  "content" TEXT NOT NULL,
+  "summary" TEXT NOT NULL DEFAULT '',
+  "tagsJson" TEXT NOT NULL DEFAULT '[]',
+  "dataJson" TEXT NOT NULL DEFAULT '{}',
+  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "runId" TEXT NOT NULL,
+  "sourceId" TEXT NOT NULL,
+  CONSTRAINT "DeckGenerationEvidence_runId_fkey" FOREIGN KEY ("runId") REFERENCES "DeckGenerationRun" ("id") ON DELETE CASCADE,
+  CONSTRAINT "DeckGenerationEvidence_sourceId_fkey" FOREIGN KEY ("sourceId") REFERENCES "DeckGenerationSource" ("id") ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS "DeckGenerationPagePlan" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "pageIndex" INTEGER NOT NULL,
+  "title" TEXT NOT NULL DEFAULT '',
+  "role" TEXT NOT NULL DEFAULT 'content',
+  "purpose" TEXT NOT NULL DEFAULT '',
+  "blocksJson" TEXT NOT NULL DEFAULT '[]',
+  "mustIncludeJson" TEXT NOT NULL DEFAULT '[]',
+  "conclusion" TEXT NOT NULL DEFAULT '',
+  "density" TEXT NOT NULL DEFAULT 'standard',
+  "layoutType" TEXT NOT NULL DEFAULT 'auto',
+  "constraintMode" TEXT NOT NULL DEFAULT 'polish',
+  "evidenceJson" TEXT NOT NULL DEFAULT '[]',
+  "warningsJson" TEXT NOT NULL DEFAULT '[]',
+  "locked" BOOLEAN NOT NULL DEFAULT false,
+  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "runId" TEXT NOT NULL,
+  CONSTRAINT "DeckGenerationPagePlan_runId_fkey" FOREIGN KEY ("runId") REFERENCES "DeckGenerationRun" ("id") ON DELETE CASCADE,
+  UNIQUE("runId", "pageIndex")
 );
 CREATE TABLE IF NOT EXISTS "DeckGenerationSlide" (
   "id" TEXT NOT NULL PRIMARY KEY,
@@ -454,9 +559,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS "ImageExplodeRun_sourceImageId_key" ON "ImageE
 CREATE INDEX IF NOT EXISTS "DeckGenerationRun_employeeId_createdAt_idx" ON "DeckGenerationRun"("employeeId", "createdAt");
 CREATE INDEX IF NOT EXISTS "DeckGenerationRun_serviceId_status_createdAt_idx" ON "DeckGenerationRun"("serviceId", "status", "createdAt");
 CREATE INDEX IF NOT EXISTS "DeckGenerationSlide_runId_slideIndex_idx" ON "DeckGenerationSlide"("runId", "slideIndex");
+CREATE INDEX IF NOT EXISTS "DeckGenerationSource_runId_kind_createdAt_idx" ON "DeckGenerationSource"("runId", "kind", "createdAt");
+CREATE INDEX IF NOT EXISTS "DeckGenerationEvidence_runId_sourceId_idx" ON "DeckGenerationEvidence"("runId", "sourceId");
+CREATE INDEX IF NOT EXISTS "DeckGenerationPagePlan_runId_pageIndex_idx" ON "DeckGenerationPagePlan"("runId", "pageIndex");
 CREATE INDEX IF NOT EXISTS "ImageExplodePart_runId_zIndex_idx" ON "ImageExplodePart"("runId", "zIndex");
 CREATE INDEX IF NOT EXISTS "ImageExplodeTextLayer_runId_groupKey_createdAt_idx" ON "ImageExplodeTextLayer"("runId", "groupKey", "createdAt");
 CREATE INDEX IF NOT EXISTS "ImageExplodeEvent_runId_createdAt_idx" ON "ImageExplodeEvent"("runId", "createdAt");
+CREATE INDEX IF NOT EXISTS "EmployeeMembership_organizationId_status_updatedAt_idx" ON "EmployeeMembership"("organizationId", "status", "updatedAt");
+CREATE INDEX IF NOT EXISTS "EmployeeMembership_employeeId_updatedAt_idx" ON "EmployeeMembership"("employeeId", "updatedAt");
+CREATE INDEX IF NOT EXISTS "EmployeeLoginEvent_organizationId_createdAt_idx" ON "EmployeeLoginEvent"("organizationId", "createdAt");
+CREATE INDEX IF NOT EXISTS "EmployeeLoginEvent_employeeId_createdAt_idx" ON "EmployeeLoginEvent"("employeeId", "createdAt");
 `);
 
 function ensureColumn(table, column, definition) {
@@ -468,6 +580,21 @@ function ensureColumn(table, column, definition) {
 
 ensureColumn("Message", "employeeId", "TEXT");
 ensureColumn("Service", "assigneeId", "TEXT");
+ensureColumn("Service", "organizationId", "TEXT");
+ensureColumn("EmployeeSession", "membershipId", "TEXT");
+ensureColumn("EmployeeMembership", "identityProvider", "TEXT NOT NULL DEFAULT 'wecom'");
+ensureColumn("EmployeeMembership", "externalUserId", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("EmployeeMembership", "unionId", "TEXT NOT NULL DEFAULT ''");
+db.exec(`
+  UPDATE "EmployeeMembership"
+  SET "externalUserId" = "wecomUserId"
+  WHERE "externalUserId" = ''
+`);
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS "EmployeeMembership_organizationId_identityProvider_externalUserId_key" ON "EmployeeMembership"("organizationId", "identityProvider", "externalUserId")');
+db.exec('CREATE INDEX IF NOT EXISTS "EmployeeMembership_identityProvider_unionId_idx" ON "EmployeeMembership"("identityProvider", "unionId")');
+db.exec('CREATE INDEX IF NOT EXISTS "Service_organizationId_purchasedAt_idx" ON "Service"("organizationId", "purchasedAt")');
+db.exec('CREATE INDEX IF NOT EXISTS "EmployeeSession_employeeId_expiresAt_idx" ON "EmployeeSession"("employeeId", "expiresAt")');
+db.exec('CREATE INDEX IF NOT EXISTS "EmployeeSession_membershipId_expiresAt_idx" ON "EmployeeSession"("membershipId", "expiresAt")');
 ensureColumn("Consultation", "selectedBudgets", "TEXT NOT NULL DEFAULT '[]'");
 ensureColumn("Consultation", "isCustomerGroup", "BOOLEAN NOT NULL DEFAULT false");
 ensureColumn("GenerationJob", "provider", "TEXT NOT NULL DEFAULT 'openai'");
@@ -495,6 +622,14 @@ ensureColumn("DesignAgentRun", "generationAttempts", "INTEGER NOT NULL DEFAULT 0
 ensureColumn("DesignAgentRun", "generationBudget", "INTEGER NOT NULL DEFAULT 2");
 ensureColumn("DesignAgentRun", "evaluationAttempts", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("DesignAgentRun", "selectedImageId", "TEXT");
+ensureColumn("DeckGenerationRun", "generationMode", "TEXT NOT NULL DEFAULT 'quick'");
+ensureColumn("DeckGenerationRun", "referenceText", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("DeckGenerationRun", "paletteMode", "TEXT NOT NULL DEFAULT 'preset'");
+ensureColumn("DeckGenerationRun", "paletteContractJson", "TEXT NOT NULL DEFAULT '{}'");
+ensureColumn("DeckGenerationRun", "outlineInputJson", "TEXT NOT NULL DEFAULT '{}'");
+ensureColumn("DeckGenerationRun", "analysisSummaryJson", "TEXT NOT NULL DEFAULT '{}'");
+ensureColumn("DeckGenerationRun", "themeReferenceStoredName", "TEXT");
+ensureColumn("DeckGenerationRun", "sourceCount", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("DeckGenerationRun", "pdfStoredName", "TEXT");
 ensureColumn("DeckGenerationRun", "pptStoredName", "TEXT");
 ensureColumn("DeckGenerationRun", "coverStoredName", "TEXT");
@@ -526,9 +661,9 @@ if (admins.length) {
   }
   db.prepare(`
     UPDATE "Employee"
-    SET "code" = ?, "phone" = ?, "updatedAt" = CURRENT_TIMESTAMP
+    SET "code" = ?, "updatedAt" = CURRENT_TIMESTAMP
     WHERE "id" = ?
-  `).run("12345678", "15875754338", canonicalId);
+  `).run("12345678", canonicalId);
 }
 
 db.close();

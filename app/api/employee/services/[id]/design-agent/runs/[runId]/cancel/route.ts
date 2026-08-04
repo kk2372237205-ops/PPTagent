@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { currentEmployee } from "@/lib/employee-auth";
+import { authorizeEmployeeService } from "@/lib/employee-auth";
 
 export async function POST(_request: Request, context: { params: Promise<{ id: string; runId: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
   const { id, runId } = await context.params;
+  const authorization = await authorizeEmployeeService(id, "aiAssistant");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  const employee = authorization.access.employee;
   const result = await db.designAgentRun.updateMany({
     where: { id: runId, serviceId: id, employeeId: employee.id, status: { in: ["queued", "running"] } },
     data: { status: "cancelled", finishedAt: new Date(), error: "员工已取消任务" }

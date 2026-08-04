@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { currentEmployee } from "@/lib/employee-auth";
+import { authorizeEmployeeService } from "@/lib/employee-auth";
 
 const allowedStylePacks = new Set([
   "blue-gold-tech",
@@ -13,13 +13,14 @@ const allowedStylePacks = new Set([
 ]);
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string; runId: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
   const { id, runId } = await context.params;
+  const authorization = await authorizeEmployeeService(id, "smartPpt");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  const employee = authorization.access.employee;
   const body = await request.json().catch(() => ({})) as { stylePack?: string };
   const run = await db.deckGenerationRun.findFirst({
     where: { id: runId, serviceId: id, employeeId: employee.id },
-    include: { slides: true }
+    include: { slides: true, pagePlans: true }
   });
   if (!run) return NextResponse.json({ error: "生成 PPT 任务不存在" }, { status: 404 });
   if (!["plan_ready", "failed"].includes(run.status)) {
@@ -29,10 +30,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   if (!allowedStylePacks.has(stylePack)) return NextResponse.json({ error: "风格包无效" }, { status: 400 });
 
   await db.deckGenerationSlide.deleteMany({ where: { runId: run.id } });
+  const nextStatus = run.generationMode === "advanced" ? (run.pagePlans.length ? "matching_queued" : "sources_queued") : "queued";
   const updated = await db.deckGenerationRun.update({
     where: { id: run.id },
     data: {
-      status: "queued",
+      status: nextStatus,
       stylePack,
       outlineJson: "{}",
       visualIdentityJson: "{}",
@@ -51,7 +53,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       pdfGeneratedAt: null,
       pptGeneratedAt: null
     },
-    include: { slides: { orderBy: { slideIndex: "asc" } } }
+    include: { slides: { orderBy: { slideIndex: "asc" } }, sources: true, pagePlans: { orderBy: { pageIndex: "asc" } } }
   });
   return NextResponse.json({ run: updated }, { status: 202 });
 }

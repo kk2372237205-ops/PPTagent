@@ -21,6 +21,21 @@
 - `slide-image-specs.md`
   - 单页怎么生成。
 
+- `source-grounding.md`
+  - 大量资料读取、事实与数字来源追溯规则。
+
+- `outline-control.md`
+  - 高级版逐页大标题、小标题、内容意图和两次确认规则。
+
+- `content-density.md`
+  - 正文页信息密度、紧凑版式和减少无意义留白规则。
+
+- `palette-reference.md`
+  - 内置配色与参考图配色的颜色职责提取规则，不照抄版式。
+
+- `quality-audit.md`
+  - 生图前后检查标题、数字、必须信息、配色和页面连续性。
+
 - `regeneration-controls.md`
   - 重新生成本页、更贴近上一页等局部重生规则。
 

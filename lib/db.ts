@@ -13,5 +13,10 @@ const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 // `next dev` hot reload, an older singleton can otherwise survive without the new
 // delegate and make a route return an empty 500 response. Recreate it once here.
 const existingPrisma = globalForPrisma.prisma;
-export const db = existingPrisma && "imageExplodeRun" in existingPrisma ? existingPrisma : new PrismaClient();
+export const db =
+  existingPrisma &&
+  "imageExplodeRun" in existingPrisma &&
+  "employeeMembership" in existingPrisma
+    ? existingPrisma
+    : new PrismaClient();
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;

@@ -7,14 +7,28 @@ import {
   Activity, ArrowRight, Bot, BriefcaseBusiness, Check, ChevronLeft,
   ChevronRight, Clipboard, Download, FileText, ImagePlus, LayoutDashboard, LoaderCircle,
   LogOut, MessageCircle, Monitor, Paperclip, Save, Scissors, Send,
-  Maximize2, Settings, ShieldCheck, Sparkles, Trash2, Upload, UserCog, Users, WandSparkles, X
+  Maximize2, QrCode, RefreshCw, School, Settings, ShieldCheck, Sparkles, Trash2, Upload,
+  UserCheck, UserCog, Users, UserX, WandSparkles, X
 } from "lucide-react";
-import { CSSProperties, DragEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { techszImageToolById, techszImageTools, type TechszImageToolId } from "@/lib/techsz-image-tools";
 import { workPresentationMaxBytes, workPresentationMaxLabel } from "@/lib/upload-limits";
 
+type EmployeeFeature =
+  "orders" | "customerMessages" | "team" | "officeEditor" | "aiAssistant" |
+  "smartPpt" | "materials" | "imageTools" | "exports";
+type EmployeePermissions = Record<EmployeeFeature, boolean>;
+type EmployeeMembership = {
+  id: string; organizationId: string; identityProvider: string; externalUserId: string; unionId: string;
+  role: string; status: string;
+  permissionsJson: string; departmentIdsJson: string; position: string; avatarUrl: string;
+  lastLoginAt: string | null; loginCount: number; createdAt: string; updatedAt: string;
+  organization: { id: string; slug: string; name: string; enabled: boolean };
+};
 type Employee = {
   id: string; code: string; name: string; phone: string | null; isAdmin: boolean; enabled: boolean; createdAt: string;
+  membership: EmployeeMembership;
+  permissions: EmployeePermissions;
 };
 type Attachment = { id: string; originalName: string; storedName?: string; size: number };
 type Message = {
@@ -30,13 +44,31 @@ type GeneratedImage = {
 };
 type DeckGenerationSlide = {
   id: string; slideIndex: number; title: string; role: string; storedName?: string | null; status: string; error?: string | null;
-  regenerationCount: number; updatedAt: string;
+  regenerationCount: number; updatedAt: string; specJson?: string;
 };
+type DeckGenerationSource = {
+  id: string; kind: string; originalName: string; size: number; status: string; extractedText?: string; error?: string | null;
+};
+type DeckPageBlock = {
+  id: string; subtitle: string; instruction: string; constraintMode: "exact" | "polish" | "direction"; content?: string; evidenceIds?: string[];
+};
+type DeckGenerationPagePlan = {
+  id: string; pageIndex: number; title: string; role: string; purpose: string; blocksJson: string; mustIncludeJson: string;
+  conclusion: string; density: "sparse" | "standard" | "compact"; layoutType: string; constraintMode: string;
+  evidenceJson: string; warningsJson: string; locked: boolean;
+};
+type DeckPageDraft = {
+  pageIndex: number; title: string; role: string; purpose: string; blocks: DeckPageBlock[]; mustInclude: string[];
+  conclusion: string; density: "sparse" | "standard" | "compact"; layoutType: string; constraintMode: string;
+  evidence: { id?: string; file?: string; source?: string; locator?: string; content?: string }[]; warnings: string[]; locked: boolean;
+};
+
 type DeckGenerationRun = {
-  id: string; kind?: string; status: string; projectName: string; projectType: string; brief: string; pageCount: number; stylePack: string;
+  id: string; kind?: string; status: string; generationMode?: "quick" | "advanced"; projectName: string; projectType: string; brief: string; pageCount: number; stylePack: string;
   unityOptionsJson: string; outlineJson: string; visualIdentityJson: string; visualStoryboardJson: string; slideImageSpecsJson: string;
+  referenceText?: string; paletteMode?: "preset" | "reference"; paletteContractJson?: string; analysisSummaryJson?: string; sourceCount?: number;
   pdfStoredName?: string | null; pptStoredName?: string | null; coverStoredName?: string | null; error?: string | null; createdAt: string; updatedAt: string;
-  slides: DeckGenerationSlide[];
+  slides: DeckGenerationSlide[]; sources?: DeckGenerationSource[]; pagePlans?: DeckGenerationPagePlan[];
 };
 type GenerationJob = {
   id: string; prompt: string; status: string; error?: string | null; createdAt: string; provider?: string; model?: string;
@@ -56,7 +88,11 @@ type AiMessage = {
 type AiModelOption = {
   id: string; provider: string; model: string; label: string; available: boolean; default?: boolean;
 };
-type OpenAiHealth = { ok: boolean; error?: string };
+type AiServiceHealth = {
+  ok: boolean; configured: boolean; serviceName: string; baseUrl: string; model: string;
+  proxyConfigured: boolean; error?: string; apiMode?: string; size?: string; supportsEdits?: boolean;
+};
+type OpenAiHealth = { ok: boolean; error?: string; text?: AiServiceHealth; image?: AiServiceHealth };
 type TrackedImageJob = GenerationJob & { requestedAt?: string };
 type DesignAgentReference = { id: string; source: string; label: string; isPrimary: boolean; sortOrder: number; generatedImage?: GeneratedImage | null };
 type DesignAgentEvent = { id: string; stage: string; status: string; detail: string; createdAt: string };
@@ -88,12 +124,45 @@ type EmployeeData = {
 };
 
 const emptyData: EmployeeData = { employee: null, employees: [], services: [], consultations: [] };
-const navItems = [
-  { id: "orders", label: "订单任务", icon: BriefcaseBusiness },
-  { id: "messages", label: "客户消息", icon: MessageCircle },
-  { id: "team", label: "团队协作", icon: Users },
+const navItems: { id: string; label: string; icon: typeof BriefcaseBusiness; feature?: EmployeeFeature }[] = [
+  { id: "orders", label: "订单任务", icon: BriefcaseBusiness, feature: "orders" },
+  { id: "messages", label: "客户消息", icon: MessageCircle, feature: "customerMessages" },
+  { id: "team", label: "团队协作", icon: Users, feature: "team" },
   { id: "settings", label: "设置", icon: Settings }
 ];
+const featureLabels: Record<EmployeeFeature, string> = {
+  orders: "订单任务",
+  customerMessages: "客户消息",
+  team: "团队协作",
+  officeEditor: "在线编辑",
+  aiAssistant: "AI 助手",
+  smartPpt: "智能 PPT",
+  materials: "素材库",
+  imageTools: "图片工具",
+  exports: "文件导出"
+};
+const roleLabels: Record<string, string> = {
+  platform_admin: "平台管理员",
+  org_admin: "学校管理员",
+  manager: "项目主管",
+  designer: "设计师",
+  reviewer: "审核员",
+  member: "普通成员"
+};
+const rolePermissionDefaults: Record<string, EmployeePermissions> = {
+  platform_admin: Object.fromEntries(Object.keys(featureLabels).map((feature) => [feature, true])) as EmployeePermissions,
+  org_admin: Object.fromEntries(Object.keys(featureLabels).map((feature) => [feature, true])) as EmployeePermissions,
+  manager: Object.fromEntries(Object.keys(featureLabels).map((feature) => [feature, true])) as EmployeePermissions,
+  designer: {
+    orders: true, customerMessages: false, team: true, officeEditor: true, aiAssistant: true,
+    smartPpt: true, materials: true, imageTools: true, exports: true
+  },
+  reviewer: {
+    orders: true, customerMessages: false, team: true, officeEditor: true, aiAssistant: false,
+    smartPpt: false, materials: false, imageTools: false, exports: true
+  },
+  member: Object.fromEntries(Object.keys(featureLabels).map((feature) => [feature, false])) as EmployeePermissions
+};
 const statusOptions = ["待开始", "制作中", "待客户确认", "修改中", "已完成"];
 const deckStylePacks = [
   { id: "blue-gold-tech", label: "蓝金科技" },
@@ -137,6 +206,26 @@ function pendingCustomerMessageCount(messages: Message[]) {
     if (message.role === "customer") count += 1;
   }
   return count;
+}
+
+function canOpenEmployeeAdmin(employee: Employee) {
+  return employee.isAdmin || ["platform_admin", "org_admin"].includes(employee.membership.role);
+}
+
+function canAssignOrders(employee: Employee) {
+  return employee.isAdmin || ["platform_admin", "org_admin", "manager"].includes(employee.membership.role);
+}
+
+function identityProviderLabel(provider: string) {
+  if (provider === "wechat") return "微信";
+  if (provider === "wecom") return "企业微信";
+  if (provider === "local") return "本地管理员";
+  return "外部账号";
+}
+
+function compactIdentity(value: string) {
+  if (value.length <= 20) return value;
+  return `${value.slice(0, 9)}...${value.slice(-7)}`;
 }
 
 export default function EmployeeApp({ initialAuthenticated }: { initialAuthenticated: boolean }) {
@@ -187,12 +276,22 @@ export default function EmployeeApp({ initialAuthenticated }: { initialAuthentic
     const timer = setTimeout(() => setToast(""), 2800);
     return () => clearTimeout(timer);
   }, [toast]);
+  const effectiveActive = useMemo(() => {
+    if (!data.employee || data.employee.membership.status !== "active") return active;
+    if (active === "admin" && canOpenEmployeeAdmin(data.employee)) return active;
+    const allowed = navItems.filter((item) => !item.feature || data.employee?.permissions[item.feature]);
+    return allowed.some((item) => item.id === active) ? active : allowed[0]?.id || "settings";
+  }, [active, data.employee]);
 
   async function logout() {
     await fetch("/api/employee/auth/logout", { method: "POST" });
     setData(emptyData); setWorkspace(null);
   }
   async function enterWorkspace(service: Service) {
+    if (!data.employee?.permissions.officeEditor) {
+      setToast("你的账号未开通在线编辑权限");
+      return;
+    }
     if (service.workDocument) return setWorkspace(service);
     const form = new FormData();
     form.set("source", "blank");
@@ -211,18 +310,21 @@ export default function EmployeeApp({ initialAuthenticated }: { initialAuthentic
 
   if (loading) return <div className="employee-root"><MobileBlock/><EmployeeLoading /></div>;
   if (!data.employee) return <div className="employee-root"><MobileBlock/><EmployeeLogin onLogin={loadData} /></div>;
+  if (data.employee.membership.status !== "active") {
+    return <div className="employee-root"><MobileBlock/><EmployeePending employee={data.employee} logout={logout}/></div>;
+  }
 
   return <div className="employee-root">
     <MobileBlock/>
     {workspace ? <Workspace service={workspace} employee={data.employee} refresh={loadData} back={() => { setWorkspace(null); void loadData(); }} notify={setToast} /> :
       <div className="employee-shell">
-        <EmployeeSidebar active={active} setActive={setActive} employee={data.employee} services={data.services} logout={logout} />
+        <EmployeeSidebar active={effectiveActive} setActive={setActive} employee={data.employee} services={data.services} logout={logout} />
         <main className="employee-main">
-          {active === "orders" && <Orders services={data.services} employees={data.employees} employee={data.employee} enterWorkspace={enterWorkspace} refresh={loadData} notify={setToast} />}
-          {active === "messages" && <CustomerMessages consultations={data.consultations} refresh={loadData} notify={setToast} />}
-          {active === "team" && <TeamView employees={data.employees} services={data.services} />}
-          {active === "settings" && <EmployeeSettings employee={data.employee} logout={logout} />}
-          {active === "admin" && data.employee.isAdmin && <EmployeeAdmin employees={data.employees} refresh={loadData} notify={setToast} />}
+          {effectiveActive === "orders" && <Orders services={data.services} employees={data.employees} employee={data.employee} enterWorkspace={enterWorkspace} refresh={loadData} notify={setToast} />}
+          {effectiveActive === "messages" && <CustomerMessages consultations={data.consultations} refresh={loadData} notify={setToast} />}
+          {effectiveActive === "team" && <TeamView employees={data.employees} services={data.services} />}
+          {effectiveActive === "settings" && <EmployeeSettings employee={data.employee} logout={logout} />}
+          {effectiveActive === "admin" && canOpenEmployeeAdmin(data.employee) && <EmployeeAdmin employee={data.employee} notify={setToast} />}
         </main>
       </div>}
     {toast && <div className="employee-toast"><Check size={16}/>{toast}</div>}
@@ -241,113 +343,170 @@ function EmployeeLoading() {
   return <div className="employee-loading"><div>W</div><LoaderCircle className="spin"/><span>正在进入员工工作台</span></div>;
 }
 
+type EmployeeLoginProvider = "wechat" | "wecom";
+type EmployeeLoginConfig = {
+  organizations: { slug: string; name: string; configured: boolean }[];
+  selectedOrganization: string | null;
+  configured: boolean;
+  appId?: string;
+  corpId?: string;
+  agentId?: string;
+  redirectUri?: string;
+  state?: string;
+  authorizationUrl?: string;
+  developmentBypassAvailable: boolean;
+};
+
 function EmployeeLogin({ onLogin }: { onLogin: () => Promise<void> }) {
-  const phoneRef = useRef<HTMLInputElement>(null);
-  const employeeCodeRef = useRef<HTMLInputElement>(null);
-  const codeRef = useRef<HTMLInputElement>(null);
-  const [phone, setPhone] = useState("");
-  const [employeeCode, setEmployeeCode] = useState("");
-  const [code, setCode] = useState("");
-  const [sent, setSent] = useState(false);
+  const [provider, setProvider] = useState<EmployeeLoginProvider>("wechat");
+  const [config, setConfig] = useState<EmployeeLoginConfig | null>(null);
+  const [selectedOrganization, setSelectedOrganization] = useState("");
   const [busy, setBusy] = useState(false);
-  const [countdown, setCountdown] = useState(0);
-  const [devCode, setDevCode] = useState("");
   const [error, setError] = useState("");
-  const phoneValid = /^1[3-9]\d{9}$/.test(phone);
-  const employeeCodeValid = /^\d{8}$/.test(employeeCode);
-  const codeValid = /^\d{6}$/.test(code);
-  const canSubmit = sent ? codeValid : phoneValid && employeeCodeValid;
-
-  function updatePhone(value: string) {
-    const next = value.replace(/\D/g, "").slice(0, 11);
-    setPhone(next);
-    setCode("");
-    setSent(false);
-    setDevCode("");
-    if (phoneRef.current && phoneRef.current.value !== next) phoneRef.current.value = next;
-  }
-
-  function updateEmployeeCode(value: string) {
-    const next = value.replace(/\D/g, "").slice(0, 8);
-    setEmployeeCode(next);
-    setCode("");
-    setSent(false);
-    setDevCode("");
-    if (employeeCodeRef.current && employeeCodeRef.current.value !== next) employeeCodeRef.current.value = next;
-  }
-
-  function updateCode(value: string) {
-    const next = value.replace(/\D/g, "").slice(0, 6);
-    setCode(next);
-    if (codeRef.current && codeRef.current.value !== next) codeRef.current.value = next;
-  }
+  const loadConfig = useCallback(async (targetProvider: EmployeeLoginProvider, organizationSlug?: string) => {
+    setBusy(true);
+    setError("");
+    try {
+      const query = organizationSlug ? `?org=${encodeURIComponent(organizationSlug)}` : "";
+      const response = await fetch(`/api/employee/auth/${targetProvider}/config${query}`, { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || `${targetProvider === "wechat" ? "微信" : "企业微信"}登录配置读取失败`);
+      setConfig(result);
+      setSelectedOrganization(result.selectedOrganization || result.organizations?.[0]?.slug || "");
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "扫码登录配置读取失败");
+    } finally {
+      setBusy(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const syncInputs = () => {
-      const currentPhone = (phoneRef.current?.value ?? "").replace(/\D/g, "").slice(0, 11);
-      const currentEmployeeCode = (employeeCodeRef.current?.value ?? "").replace(/\D/g, "").slice(0, 8);
-      const currentCode = (codeRef.current?.value ?? "").replace(/\D/g, "").slice(0, 6);
-      if (currentPhone !== phone) updatePhone(currentPhone);
-      if (currentEmployeeCode !== employeeCode) updateEmployeeCode(currentEmployeeCode);
-      if (currentCode !== code) updateCode(currentCode);
-    };
-    syncInputs();
-    const timer = window.setInterval(syncInputs, 250);
+    const timer = window.setTimeout(() => {
+      const query = new URLSearchParams(window.location.search);
+      const weComError = query.get("wecom_error");
+      const weChatError = query.get("wechat_error");
+      const initialProvider: EmployeeLoginProvider = weComError ? "wecom" : "wechat";
+      const queryError = weComError || weChatError;
+      setProvider(initialProvider);
+      if (queryError) {
+        setError(queryError);
+        window.history.replaceState({}, "", "/employee");
+      }
+      void loadConfig(initialProvider);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadConfig]);
+
+  useEffect(() => {
+    if (!config?.configured || !config.redirectUri || !config.state) return;
+    let cancelled = false;
+    if (provider === "wechat" && config.appId) {
+      const options = {
+        self_redirect: false,
+        id: "employee-wechat-qr",
+        appid: config.appId,
+        scope: "snsapi_login",
+        redirect_uri: encodeURIComponent(config.redirectUri),
+        state: config.state,
+        style: "black",
+        href: ""
+      };
+      const mount = () => {
+        if (cancelled) return;
+        const container = document.getElementById(options.id);
+        if (container) container.innerHTML = "";
+        const Login = (window as unknown as {
+          WxLogin?: new (value: typeof options) => unknown;
+        }).WxLogin;
+        if (!Login) return setError("微信二维码组件加载失败，请使用下方登录链接");
+        new Login(options);
+      };
+      const existing = document.querySelector<HTMLScriptElement>('script[data-wechat-login="true"]');
+      if (existing) {
+        if ((window as unknown as { WxLogin?: unknown }).WxLogin) mount();
+        else existing.addEventListener("load", mount, { once: true });
+      } else {
+        const script = document.createElement("script");
+        script.src = "https://res.wx.qq.com/connect/zh_CN/htmledition/js/wxLogin.js";
+        script.async = true;
+        script.dataset.wechatLogin = "true";
+        script.onload = mount;
+        script.onerror = () => setError("微信二维码组件加载失败，请使用下方登录链接");
+        document.head.appendChild(script);
+      }
+    }
+    if (provider === "wecom" && config.corpId && config.agentId) {
+      const options = {
+        id: "employee-wecom-qr",
+        appid: config.corpId,
+        agentid: config.agentId,
+        redirect_uri: encodeURIComponent(config.redirectUri),
+        state: config.state,
+        href: "",
+        lang: "zh"
+      };
+      const mount = () => {
+        if (cancelled) return;
+        const container = document.getElementById(options.id);
+        if (container) container.innerHTML = "";
+        const Login = (window as unknown as {
+          WwLogin?: new (value: typeof options) => unknown;
+        }).WwLogin;
+        if (!Login) return setError("企业微信二维码组件加载失败，请使用下方登录链接");
+        new Login(options);
+      };
+      const existing = document.querySelector<HTMLScriptElement>('script[data-wecom-login="true"]');
+      if (existing) {
+        if ((window as unknown as { WwLogin?: unknown }).WwLogin) mount();
+        else existing.addEventListener("load", mount, { once: true });
+      } else {
+        const script = document.createElement("script");
+        script.src = "https://wwcdn.weixin.qq.com/node/wework/wwopen/js/wwLogin-1.2.7.js";
+        script.async = true;
+        script.dataset.wecomLogin = "true";
+        script.onload = mount;
+        script.onerror = () => setError("企业微信二维码组件加载失败，请使用下方登录链接");
+        document.head.appendChild(script);
+      }
+    }
+    return () => { cancelled = true; };
+  }, [config, provider]);
+
+  useEffect(() => {
+    if (!config?.configured) return;
+    const timer = window.setInterval(async () => {
+      const response = await fetch("/api/employee/me", { cache: "no-store" });
+      if (!response.ok) return;
+      const result = await response.json();
+      if (result.employee) {
+        window.clearInterval(timer);
+        await onLogin();
+      }
+    }, 1800);
     return () => window.clearInterval(timer);
-  }, [phone, employeeCode, code]);
-  useEffect(() => {
-    if (!countdown) return;
-    const timer = setInterval(() => setCountdown((value) => Math.max(0, value - 1)), 1000);
-    return () => clearInterval(timer);
-  }, [countdown]);
-  async function sendCode() {
-    const currentPhone = (phoneRef.current?.value ?? phone).replace(/\D/g, "").slice(0, 11);
-    const currentEmployeeCode = (employeeCodeRef.current?.value ?? employeeCode).replace(/\D/g, "").slice(0, 8);
-    if (currentPhone !== phone) setPhone(currentPhone);
-    if (currentEmployeeCode !== employeeCode) setEmployeeCode(currentEmployeeCode);
-    if (!/^1[3-9]\d{9}$/.test(currentPhone)) {
-      setError("请输入正确的中国大陆手机号");
-      return;
-    }
-    if (!/^\d{8}$/.test(currentEmployeeCode)) {
-      setError("请输入 8 位员工码");
-      return;
-    }
-    setBusy(true); setError("");
-    const response = await fetch("/api/auth/send-code", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: currentPhone })
-    });
-    const result = await response.json(); setBusy(false);
-    if (!response.ok) return setError(result.error);
-    setSent(true); setCountdown(60); setDevCode(result.devCode || "");
-  }
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!sent) return void sendCode();
-    const currentPhone = (phoneRef.current?.value ?? phone).replace(/\D/g, "").slice(0, 11);
-    const currentEmployeeCode = (employeeCodeRef.current?.value ?? employeeCode).replace(/\D/g, "").slice(0, 8);
-    const currentCode = (codeRef.current?.value ?? code).replace(/\D/g, "").slice(0, 6);
-    if (currentPhone !== phone) setPhone(currentPhone);
-    if (currentEmployeeCode !== employeeCode) setEmployeeCode(currentEmployeeCode);
-    if (currentCode !== code) setCode(currentCode);
-    if (!/^\d{8}$/.test(currentEmployeeCode)) {
-      setError("请输入 8 位员工码");
-      return;
-    }
-    if (!/^\d{6}$/.test(currentCode)) {
-      setError("请输入 6 位验证码");
-      return;
-    }
-    setBusy(true); setError("");
-    const response = await fetch("/api/employee/auth/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone: currentPhone, employeeCode: currentEmployeeCode, code: currentCode, remember: true })
-    });
-    const result = await response.json(); setBusy(false);
-    if (!response.ok) return setError(result.error);
+  }, [config?.configured, onLogin]);
+
+  async function enterDevelopmentAdmin() {
+    setBusy(true);
+    setError("");
+    const response = await fetch(`/api/employee/auth/${provider}/dev`, { method: "POST" });
+    const result = await response.json();
+    setBusy(false);
+    if (!response.ok) return setError(result.error || "开发管理员入口不可用");
     await onLogin();
   }
+
+  function switchProvider(nextProvider: EmployeeLoginProvider) {
+    if (nextProvider === provider) return;
+    setProvider(nextProvider);
+    setConfig(null);
+    setError("");
+    void loadConfig(nextProvider, selectedOrganization || undefined);
+  }
+
+  const providerName = provider === "wechat" ? "微信" : "企业微信";
+  const currentOrganization = config?.organizations.find((item) => item.slug === selectedOrganization);
+
   return <div className="employee-login">
     <header><EmployeeBrand/><Link href="/">客户端模式 <ArrowRight size={14}/></Link></header>
     <section className="employee-login-art">
@@ -357,18 +516,55 @@ function EmployeeLogin({ onLogin }: { onLogin: () => Promise<void> }) {
       <div className="employee-art-cards"><i/><i/><i/></div>
     </section>
     <section className="employee-login-panel">
-      <form onSubmit={submit}>
+      <div className="employee-wechat-login">
         <div className="employee-login-mark">W</div>
-        <h2>员工工作台</h2><p>仅限已绑定手机号的 WZLCF 团队成员</p>
-        <label>手机号码</label><div className="employee-input"><span>+86</span><input ref={phoneRef} value={phone} onInput={event => updatePhone(event.currentTarget.value)} onChange={event => updatePhone(event.target.value)} placeholder="请输入绑定手机号" inputMode="numeric" autoComplete="tel"/></div>
-        <label>员工码</label><div className="employee-input"><UserCog/><input ref={employeeCodeRef} value={employeeCode} onInput={event => updateEmployeeCode(event.currentTarget.value)} onChange={event => updateEmployeeCode(event.target.value)} placeholder="8 位员工码" inputMode="numeric" autoComplete="off"/></div>
-        {sent && <><label>验证码</label><div className="employee-input employee-code"><input ref={codeRef} value={code} onInput={event => updateCode(event.currentTarget.value)} onChange={event => updateCode(event.target.value)} placeholder="6 位验证码" inputMode="numeric" autoComplete="one-time-code"/><button type="button" onClick={sendCode} disabled={countdown > 0}>{countdown ? `${countdown}s` : "重新获取"}</button></div></>}
-        {devCode && <div className="employee-dev-code">本地演示验证码：<b>{devCode}</b></div>}
+        <h2>扫码登录</h2><p>默认使用微信，也可以使用学校企业微信</p>
+        <div className="employee-login-providers" role="tablist" aria-label="登录方式">
+          <button className={provider === "wechat" ? "active" : ""} role="tab" aria-selected={provider === "wechat"} onClick={() => switchProvider("wechat")}><QrCode/>微信</button>
+          <button className={provider === "wecom" ? "active" : ""} role="tab" aria-selected={provider === "wecom"} onClick={() => switchProvider("wecom")}><School/>企业微信</button>
+        </div>
+        {config?.organizations && config.organizations.length > 1 ? <label className="employee-wechat-school">
+          <span>申请加入</span>
+          <select value={selectedOrganization} onChange={(event) => void loadConfig(provider, event.target.value)}>
+            {config.organizations.map((item) => <option value={item.slug} key={item.slug}>{item.name}</option>)}
+          </select>
+        </label> : currentOrganization && <div className="employee-wechat-school employee-wechat-school-static"><span>申请加入</span><b><School/>{currentOrganization.name}</b></div>}
+        {busy && !config ? <div className="employee-wechat-loading"><LoaderCircle className="spin"/><span>正在读取微信登录配置</span></div> :
+          config?.configured ? <>
+            <div className="employee-wechat-qr-shell">
+              <div id={`employee-${provider}-qr`}><LoaderCircle className="spin"/></div>
+              <span><QrCode/>使用{providerName}扫一扫</span>
+            </div>
+            <p className="employee-wechat-hint">{provider === "wechat" ? "微信身份不代表学校身份。首次扫码只会提交加入申请，由管理员审核学校与功能权限。" : "企业微信会核验该学校通讯录成员身份；首次登录仍由管理员分配角色和功能权限。"}</p>
+            {config.authorizationUrl && <a className="employee-wechat-fallback" href={config.authorizationUrl}>二维码未显示？打开{providerName}登录页 <ArrowRight/></a>}
+          </> : <div className="employee-wechat-unconfigured">
+            <QrCode/>
+            <b>{providerName}扫码登录尚未接通</b>
+            <p>{provider === "wechat" ? "需要先在微信开放平台创建网站应用，并配置 AppID、AppSecret 和 HTTPS 回调域名。" : "需要学校企业微信管理员创建自建应用，并配置 CorpID、AgentID、Secret 和可信回调域名。"}</p>
+            <button onClick={() => void loadConfig(provider, selectedOrganization)}><RefreshCw/>重新检查配置</button>
+          </div>}
         {error && <div className="employee-error">{error}</div>}
-        <button className="employee-login-button" disabled={busy || !canSubmit}>{busy ? <LoaderCircle className="spin"/> : sent ? "验证并进入员工工作台" : "获取短信验证码"}<ArrowRight/></button>
-        <small><ShieldCheck size={14}/> 员工身份与客户账户完全隔离</small>
-      </form>
+        {config?.developmentBypassAvailable && <button className="employee-dev-admin" disabled={busy} onClick={enterDevelopmentAdmin}>暂不扫码，进入本地工作台</button>}
+        <small><ShieldCheck size={14}/>{provider === "wechat" ? "只读取授权后的微信昵称、头像和身份标识，不读取密码、聊天记录或联系人" : "只读取学校企业微信授权范围内的成员身份，不读取密码、聊天记录或联系人"}</small>
+      </div>
     </section>
+  </div>;
+}
+
+function EmployeePending({ employee, logout }: { employee: Employee; logout: () => void }) {
+  const provider = identityProviderLabel(employee.membership.identityProvider);
+  return <div className="employee-pending">
+    <EmployeeBrand/>
+    <div className="employee-pending-mark"><UserCheck/></div>
+    <span>身份已验证</span>
+    <h1>等待管理员开通工作台</h1>
+    <p>{employee.name}，你的{provider}身份已提交至 <b>{employee.membership.organization.name}</b>。管理员确认成员资格后，会为你分配角色和具体功能。</p>
+    <dl>
+      <div><dt>{provider}身份标识</dt><dd title={employee.membership.externalUserId}>{compactIdentity(employee.membership.externalUserId)}</dd></div>
+      <div><dt>当前状态</dt><dd>待审批</dd></div>
+    </dl>
+    <button onClick={() => window.location.reload()}><RefreshCw/>刷新审批状态</button>
+    <button className="secondary" onClick={logout}><LogOut/>退出登录</button>
   </div>;
 }
 
@@ -377,12 +573,12 @@ function EmployeeSidebar({ active, setActive, employee, services, logout }: {
 }) {
   return <aside className="employee-sidebar">
     <EmployeeBrand/><span className="employee-side-caption">员工协同中心</span>
-    <nav>{navItems.map(item => <button key={item.id} className={active === item.id ? "active" : ""} onClick={() => setActive(item.id)}><item.icon/><span>{item.label}</span>{item.id === "orders" && <em>{services.length}</em>}</button>)}
-      {employee.isAdmin && <button className={active === "admin" ? "active" : ""} onClick={() => setActive("admin")}><UserCog/><span>员工管理</span></button>}
+    <nav>{navItems.filter((item) => !item.feature || employee.permissions[item.feature]).map(item => <button key={item.id} className={active === item.id ? "active" : ""} onClick={() => setActive(item.id)}><item.icon/><span>{item.label}</span>{item.id === "orders" && <em>{services.length}</em>}</button>)}
+      {canOpenEmployeeAdmin(employee) && <button className={active === "admin" ? "active" : ""} onClick={() => setActive("admin")}><UserCog/><span>管理控制台</span></button>}
     </nav>
     <div className="employee-side-spacer"/>
     <div className="employee-team-card"><Activity/><div><b>团队在线协作</b><span>文档保存与操作日志已开启</span></div><i/></div>
-    <div className="employee-profile"><div>{employee.name.slice(0, 1)}</div><span><b>{employee.name}</b><small>{employee.code} · {employee.isAdmin ? "管理员" : "设计师"}</small></span><button onClick={logout} title="退出"><LogOut/></button></div>
+    <div className="employee-profile"><div>{employee.name.slice(0, 1)}</div><span><b>{employee.name}</b><small>{employee.membership.organization.name} · {roleLabels[employee.membership.role] || "成员"}</small></span><button onClick={logout} title="退出"><LogOut/></button></div>
   </aside>;
 }
 
@@ -407,7 +603,7 @@ function Orders({ services, employees, employee, enterWorkspace, refresh, notify
       <div className={`employee-order-cover cover-${(index % 4) + 1}`}><small>{service.category}</small><strong>{service.title}</strong><span>WZLCF / {service.number.slice(0, 8)}</span></div>
       <div className="employee-order-content">
         <div className="employee-order-title"><div><span className={`employee-status status-${statusSlug(service.status)}`}>{service.status}</span><h3>{service.title}</h3></div><span className="employee-customer">客户 {maskPhone(service.user.phone)}</span></div>
-        <div className="employee-order-meta"><span>服务编号<b>{service.number}</b></span><span>购买时间<b>{formatDate(service.purchasedAt)}</b></span><span>服务价格<b>￥{(service.priceCents / 100).toLocaleString()}</b></span><span>负责人{employee.isAdmin ? <select value={service.assigneeId || ""} onChange={event => assign(service.id, event.target.value)}><option value="">待分配</option>{employees.filter(item => item.enabled && item.phone).map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select> : <b>{service.assignee?.name || "待管理员分配"}</b>}</span></div>
+        <div className="employee-order-meta"><span>服务编号<b>{service.number}</b></span><span>购买时间<b>{formatDate(service.purchasedAt)}</b></span><span>服务价格<b>￥{(service.priceCents / 100).toLocaleString()}</b></span><span>负责人{canAssignOrders(employee) ? <select value={service.assigneeId || ""} onChange={event => assign(service.id, event.target.value)}><option value="">待分配</option>{employees.filter(item => item.enabled && item.membership.status === "active" && item.permissions.orders).map(item => <option value={item.id} key={item.membership.id}>{item.name}</option>)}</select> : <b>{service.assignee?.name || "待管理员分配"}</b>}</span></div>
         <div className="employee-progress"><div><i style={{ width: `${service.progress}%` }}/></div><b>{service.progress}%</b></div>
         <div className="employee-order-actions"><span>{service.workDocument ? `工作文件 · ${service.workDocument.versions.length} 个版本` : "尚未创建工作文件"}</span><button onClick={() => enterWorkspace(service)}><LayoutDashboard/>进入工作台<ArrowRight/></button></div>
       </div>
@@ -474,37 +670,218 @@ function EmployeeCustomerNeedsPanel({ consultation }: { consultation: Consultati
 function TeamView({ employees, services }: { employees: Employee[]; services: Service[] }) {
   const activities = services.flatMap(service => service.activities.map(item => ({ ...item, service }))).sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt)).slice(0, 12);
   return <div className="employee-page"><header className="employee-page-head"><div><span>TEAM COLLABORATION</span><h1>团队协作</h1><p>查看成员状态、负责订单与最近操作。</p></div></header>
-    <div className="employee-team-grid">{employees.map(item => <article key={item.id}><div>{item.name.slice(0, 1)}</div><span><b>{item.name}</b><small>{item.code} · {item.isAdmin ? "管理员" : "设计师"}</small></span><em className={item.enabled && item.phone ? "online" : ""}>{item.enabled ? item.phone ? "已启用" : "待绑定" : "已停用"}</em><p>负责 {services.filter(service => service.assigneeId === item.id).length} 个订单</p></article>)}</div>
+    <div className="employee-team-grid">{employees.map(item => <article key={item.membership.id}><div>{item.name.slice(0, 1)}</div><span><b>{item.name}</b><small>{roleLabels[item.membership.role] || "成员"} · {item.membership.position || item.membership.organization.name}</small></span><em className={item.membership.status === "active" ? "online" : ""}>{item.membership.status === "active" ? "已开通" : item.membership.status === "pending" ? "待审批" : "已停用"}</em><p>负责 {services.filter(service => service.assigneeId === item.id).length} 个订单 · 登录 {item.membership.loginCount} 次</p></article>)}</div>
     <section className="employee-activity-panel"><h2>最近操作</h2>{activities.length ? activities.map(item => <div key={item.id}><Activity/><span><b>{item.employee.name}</b>{item.detail}<small>{item.service.number} · {formatDateTime(item.createdAt)}</small></span></div>) : <p>团队操作记录将在这里出现。</p>}</section>
   </div>;
 }
 
 function EmployeeSettings({ employee, logout }: { employee: Employee; logout: () => void }) {
-  return <div className="employee-page"><header className="employee-page-head"><div><span>EMPLOYEE SETTINGS</span><h1>账户设置</h1><p>查看员工身份和当前登录信息。</p></div></header><div className="employee-settings-card"><div className="employee-settings-avatar">{employee.name.slice(0, 1)}</div><div><span>员工姓名</span><b>{employee.name}</b></div><div><span>员工码</span><b>{employee.code}</b></div><div><span>绑定手机号</span><b>{employee.phone ? maskPhone(employee.phone) : "未绑定"}</b></div><div><span>权限</span><b>{employee.isAdmin ? "管理员" : "设计师"}</b></div><button onClick={logout}><LogOut/>退出员工模式</button></div></div>;
+  const enabledFeatures = Object.entries(employee.permissions).filter(([, enabled]) => enabled).length;
+  return <div className="employee-page"><header className="employee-page-head"><div><span>EMPLOYEE SETTINGS</span><h1>账户设置</h1><p>查看登录身份、学校工作区和当前权限。</p></div></header><div className="employee-settings-card"><div className="employee-settings-avatar">{employee.name.slice(0, 1)}</div><div><span>成员姓名</span><b>{employee.name}</b></div><div><span>学校工作区</span><b>{employee.membership.organization.name}</b></div><div><span>登录身份</span><b title={employee.membership.externalUserId}>{identityProviderLabel(employee.membership.identityProvider)} · {compactIdentity(employee.membership.externalUserId)}</b></div><div><span>角色</span><b>{roleLabels[employee.membership.role] || "成员"}</b></div><div><span>已开通功能</span><b>{enabledFeatures} / {Object.keys(employee.permissions).length}</b></div><button onClick={logout}><LogOut/>退出员工模式</button></div></div>;
 }
 
-function EmployeeAdmin({ employees, refresh, notify }: { employees: Employee[]; refresh: () => Promise<void>; notify: (text: string) => void }) {
-  const [drafts, setDrafts] = useState<Record<string, { name: string; phone: string; enabled: boolean }>>({});
-  function draft(item: Employee) { return drafts[item.id] || { name: item.name, phone: item.phone || "", enabled: item.enabled }; }
-  async function save(item: Employee) {
-    const value = draft(item);
-    const response = await fetch(`/api/employee/employees/${item.id}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(value)
+type AdminMember = {
+  id: string; organizationId: string; organizationName: string;
+  identityProvider: string; externalUserId: string; unionId: string;
+  role: string; status: string; permissions: EmployeePermissions; position: string;
+  avatarUrl: string; lastLoginAt: string | null; loginCount: number; createdAt: string;
+  employee: {
+    id: string; name: string; code: string; isAdmin: boolean;
+    counts: { assignedServices: number; generationJobs: number; activities: number; deckGenerationRuns: number };
+  };
+};
+type AdminOverview = {
+  organizations: {
+    id: string; slug: string; name: string; configured: boolean;
+    weChatConfigured: boolean; weComConfigured: boolean; memberCount: number;
+  }[];
+  members: AdminMember[];
+  stats: { total: number; pending: number; active: number; disabled: number; active7d: number; loginEvents7d: number };
+  features: EmployeeFeature[];
+  aiServices: {
+    text: {
+      serviceName: string; baseUrl: string; model: string; apiMode: string;
+      configured: boolean; proxyConfigured: boolean;
+    };
+    image: {
+      serviceName: string; baseUrl: string; model: string; size: string;
+      configured: boolean; proxyConfigured: boolean; supportsEdits: boolean;
+    };
+  };
+};
+
+function EmployeeAdmin({ employee, notify }: { employee: Employee; notify: (text: string) => void }) {
+  const [overview, setOverview] = useState<AdminOverview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [organizationId, setOrganizationId] = useState("all");
+  const [search, setSearch] = useState("");
+  const [expandedId, setExpandedId] = useState("");
+  const [drafts, setDrafts] = useState<Record<string, { role: string; status: string; permissions: EmployeePermissions }>>({});
+
+  const loadOverview = useCallback(async () => {
+    setLoading(true);
+    const response = await fetch("/api/employee/admin/overview", { cache: "no-store" });
+    const result = await response.json();
+    setLoading(false);
+    if (!response.ok) return notify(result.error || "控制台数据读取失败");
+    setOverview(result);
+  }, [notify]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadOverview(), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadOverview]);
+
+  function draft(member: AdminMember) {
+    return drafts[member.id] || {
+      role: member.role,
+      status: member.status,
+      permissions: member.permissions
+    };
+  }
+
+  function patchDraft(member: AdminMember, change: Partial<ReturnType<typeof draft>>) {
+    setDrafts((current) => ({ ...current, [member.id]: { ...draft(member), ...change } }));
+  }
+
+  async function save(member: AdminMember) {
+    const value = draft(member);
+    const response = await fetch(`/api/employee/admin/members/${member.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(value)
     });
     const result = await response.json();
-    if (!response.ok) return notify(result.error);
-    notify("员工资料已保存"); setDrafts(current => { const next = { ...current }; delete next[item.id]; return next; }); await refresh();
+    if (!response.ok) return notify(result.error || "成员权限保存失败");
+    setDrafts((current) => {
+      const next = { ...current };
+      delete next[member.id];
+      return next;
+    });
+    notify(value.status === "active" ? "成员权限已开通" : value.status === "disabled" ? "成员已停用" : "成员设置已保存");
+    await loadOverview();
   }
-  return <div className="employee-page"><header className="employee-page-head"><div><span>STAFF ADMINISTRATION</span><h1>员工管理</h1><p>系统固定五个员工身份号，管理员负责绑定手机号和启停账号。</p></div><div className="employee-head-stat"><b>5</b><span>个固定员工席位</span></div></header>
-    <div className="employee-admin-table"><header><span>员工身份</span><span>姓名</span><span>绑定手机号</span><span>状态</span><span>操作</span></header>{employees.map(item => { const value = draft(item); return <div key={item.id}><span><b>{item.code}</b><small>{item.isAdmin ? "首位管理员" : "员工席位"}</small></span><input value={value.name} onChange={event => setDrafts(current => ({ ...current, [item.id]: { ...value, name: event.target.value } }))}/><input value={value.phone} onChange={event => setDrafts(current => ({ ...current, [item.id]: { ...value, phone: event.target.value.replace(/\D/g, "").slice(0, 11) } }))} placeholder="输入 11 位手机号"/><label><input type="checkbox" checked={value.enabled} disabled={item.isAdmin} onChange={event => setDrafts(current => ({ ...current, [item.id]: { ...value, enabled: event.target.checked } }))}/><i/>{value.enabled ? "启用" : "停用"}</label><button onClick={() => save(item)}>保存</button></div>; })}</div>
+
+  const members = (overview?.members || []).filter((member) => {
+    if (organizationId !== "all" && member.organizationId !== organizationId) return false;
+    const keyword = search.trim().toLowerCase();
+    return !keyword || member.employee.name.toLowerCase().includes(keyword) ||
+      member.externalUserId.toLowerCase().includes(keyword) ||
+      member.organizationName.toLowerCase().includes(keyword);
+  });
+
+  return <div className="employee-page employee-control-page">
+    <header className="employee-page-head">
+      <div><span>PLATFORM CONTROL</span><h1>管理控制台</h1><p>审批微信与企业微信登录申请，核对学校归属，分配角色与功能权限并查看实际使用情况。</p></div>
+      <button className="employee-control-refresh" onClick={() => void loadOverview()} disabled={loading}><RefreshCw className={loading ? "spin" : ""}/>刷新数据</button>
+    </header>
+    {loading && !overview ? <div className="employee-control-loading"><LoaderCircle className="spin"/>正在读取成员与使用记录</div> : overview && <>
+      <section className="employee-control-stats">
+        <article><Users/><span><b>{overview.stats.total}</b>全部成员</span></article>
+        <article className="pending"><UserCheck/><span><b>{overview.stats.pending}</b>等待审批</span></article>
+        <article className="active"><Activity/><span><b>{overview.stats.active7d}</b>近 7 天活跃</span></article>
+        <article><ShieldCheck/><span><b>{overview.stats.loginEvents7d}</b>近 7 天登录</span></article>
+        <article className="disabled"><UserX/><span><b>{overview.stats.disabled}</b>已停用</span></article>
+      </section>
+      <section className="employee-ai-service-strip">
+        <article className={overview.aiServices.text.configured ? "configured" : ""}>
+          <Bot/>
+          <span>
+            <small>文字中转服务</small>
+            <b>{overview.aiServices.text.serviceName}</b>
+            <em>{overview.aiServices.text.model} · {overview.aiServices.text.apiMode === "chat-completions" ? "Chat Completions" : "Responses"}</em>
+            <code>{overview.aiServices.text.baseUrl}</code>
+          </span>
+          <strong>{overview.aiServices.text.configured ? "已配置" : "缺少 Key"}</strong>
+        </article>
+        <article className={overview.aiServices.image.configured ? "configured" : ""}>
+          <ImagePlus/>
+          <span>
+            <small>图片中转服务</small>
+            <b>{overview.aiServices.image.serviceName}</b>
+            <em>{overview.aiServices.image.model} · {overview.aiServices.image.size}</em>
+            <code>{overview.aiServices.image.baseUrl}</code>
+          </span>
+          <strong>{overview.aiServices.image.configured ? "已配置" : "缺少 Key"}</strong>
+        </article>
+      </section>
+      <section className="employee-organization-strip">
+        <div><School/><span><b>学校工作区</b><small>普通微信需人工核验学校，企业微信可核验通讯录身份</small></span></div>
+        {overview.organizations.map((organization) => <article key={organization.id}>
+          <span><b>{organization.name}</b><small>{organization.memberCount} 位成员</small></span>
+          <div className="employee-org-login-status">
+            <em className={organization.weChatConfigured ? "configured" : ""}>微信{organization.weChatConfigured ? "已接通" : "待配置"}</em>
+            <em className={organization.weComConfigured ? "configured" : ""}>企业微信{organization.weComConfigured ? "已接通" : "待配置"}</em>
+          </div>
+        </article>)}
+      </section>
+      <div className="employee-control-tools">
+        <select value={organizationId} onChange={(event) => setOrganizationId(event.target.value)}>
+          <option value="all">全部学校</option>
+          {overview.organizations.map((organization) => <option value={organization.id} key={organization.id}>{organization.name}</option>)}
+        </select>
+        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索昵称、登录身份标识或学校"/>
+        <span>{members.length} 位成员</span>
+      </div>
+      <section className="employee-member-list">
+        {members.map((member) => {
+          const value = draft(member);
+          const isSelf = member.id === employee.membership.id;
+          return <article className={`employee-member-row status-${value.status}`} key={member.id}>
+            <div className="employee-member-main">
+              <div className="employee-member-avatar">{member.avatarUrl ? <img src={member.avatarUrl} alt=""/> : member.employee.name.slice(0, 1)}</div>
+              <span className="employee-member-identity"><b>{member.employee.name}</b><small title={member.externalUserId}>{member.organizationName} · {identityProviderLabel(member.identityProvider)} · {compactIdentity(member.externalUserId)}</small></span>
+              <select value={value.role} disabled={isSelf} onChange={(event) => {
+                const role = event.target.value;
+                patchDraft(member, {
+                  role,
+                  permissions: { ...(rolePermissionDefaults[role] || rolePermissionDefaults.member) }
+                });
+              }}>
+                {Object.entries(roleLabels).filter(([role]) => employee.isAdmin || employee.membership.role === "platform_admin" || role !== "platform_admin").map(([role, label]) => <option value={role} key={role}>{label}</option>)}
+              </select>
+              <select value={value.status} disabled={isSelf} onChange={(event) => patchDraft(member, { status: event.target.value })}>
+                <option value="pending">待审批</option>
+                <option value="active">正常使用</option>
+                <option value="disabled">已停用</option>
+              </select>
+              <div className="employee-member-usage">
+                <span><b>{member.employee.counts.assignedServices}</b>订单</span>
+                <span><b>{member.employee.counts.generationJobs + member.employee.counts.deckGenerationRuns}</b>AI 任务</span>
+                <span><b>{member.loginCount}</b>登录</span>
+              </div>
+              <button className="employee-member-expand" onClick={() => setExpandedId(expandedId === member.id ? "" : member.id)}>
+                {expandedId === member.id ? "收起权限" : "功能权限"}
+              </button>
+              <button className="employee-member-save" disabled={isSelf || !drafts[member.id]} onClick={() => void save(member)}>保存</button>
+            </div>
+            {expandedId === member.id && <div className="employee-permission-grid">
+              {(overview.features || Object.keys(featureLabels) as EmployeeFeature[]).map((feature) => <label key={feature}>
+                <input type="checkbox" checked={value.permissions[feature]} disabled={isSelf} onChange={(event) => patchDraft(member, {
+                  permissions: { ...value.permissions, [feature]: event.target.checked }
+                })}/>
+                <i/>
+                <span>{featureLabels[feature]}</span>
+              </label>)}
+              <p>最后登录：{member.lastLoginAt ? formatDateTime(member.lastLoginAt) : "尚未登录"} · 最近操作 {member.employee.counts.activities} 次</p>
+            </div>}
+          </article>;
+        })}
+        {!members.length && <div className="employee-control-empty">没有符合条件的成员</div>}
+      </section>
+    </>}
   </div>;
 }
 
 function Workspace({ service, employee, refresh, back, notify }: {
   service: Service; employee: Employee; refresh: (silent?: boolean) => Promise<void>; back: () => void; notify: (text: string) => void;
 }) {
-  const canManage = employee.isAdmin || service.assigneeId === employee.id;
-  const [rightOpen, setRightOpen] = useState(true);
+  const canManage = employee.permissions.orders && (
+    employee.isAdmin ||
+    ["platform_admin", "org_admin", "manager"].includes(employee.membership.role) ||
+    service.assigneeId === employee.id
+  );
+  const [rightOpen, setRightOpen] = useState(employee.permissions.aiAssistant);
   const [workspaceMode, setWorkspaceMode] = useState<"editor" | "smart" | "design" | "explode">("editor");
   const [editorRevision, setEditorRevision] = useState(0);
   async function saveVersion() {
@@ -527,12 +904,12 @@ function Workspace({ service, employee, refresh, back, notify }: {
   }
   const leaveWorkspace = workspaceMode === "editor" ? back : () => setWorkspaceMode("editor");
   return <div className={`ppt-workspace ${rightOpen ? "" : "ai-collapsed"} ${workspaceMode !== "editor" ? "design-view" : ""}`}>
-    <header className="workspace-header"><button onClick={leaveWorkspace}><ChevronLeft/>{workspaceMode === "editor" ? "返回订单" : "返回工作台"}</button><div><span>{service.number}</span><b>{service.title}</b></div><div className="workspace-responsible">负责人：{service.assignee?.name || "待分配"}</div><div className="workspace-actions">{canManage && <><button onClick={saveVersion}><Save/>保存版本</button><button onClick={() => updateStatus("待客户确认", Math.max(90, service.progress))}><Send/>发布确认稿</button><button className="finish" onClick={() => updateStatus("已完成", 100)}><Check/>完成订单</button></>}{workspaceMode === "editor" && <button className="toggle-ai" onClick={() => setRightOpen(value => !value)}><Bot/>{rightOpen ? "收起 AI" : "打开 AI"}</button>}</div></header>
-    {workspaceMode === "smart" ? <SmartStudio service={service} notify={notify}/> : workspaceMode === "design" ? <DesignStudio service={service} employee={employee} refresh={refresh} notify={notify} back={() => setWorkspaceMode("editor")} openSmart={() => setWorkspaceMode("smart")} openEditor={(slideNumber) => { setEditorRevision(value => value + 1); setWorkspaceMode("editor"); notify(`已新增第 ${slideNumber} 页，请在左侧缩略图最底部查看`); }} /> : workspaceMode === "explode" ? <ImageExplodeStudio service={service} refresh={refresh} notify={notify} back={() => setWorkspaceMode("editor")} openEditor={(slideNumber) => { setEditorRevision(value => value + 1); setWorkspaceMode("editor"); notify(`已新增第 ${slideNumber} 页零部件，请在左侧缩略图最底部查看`); }} /> : <>
-      <main className="workspace-main"><section className="onlyoffice-stage">{service.workDocument ? <OnlyOfficeEditor documentId={service.workDocument.id} revision={editorRevision} refresh={refresh} notify={notify}/> : <div className="office-placeholder">正在创建空白工作文件...</div>}</section>{rightOpen && <AiPanel service={service} employee={employee} refresh={refresh} notify={notify}/>}</main>
-      {workspaceMode === "editor" && <button className="workspace-smart-mode" onClick={() => setWorkspaceMode("design")}><WandSparkles/>智能模式</button>}
-      <ImageToolsPanel service={service} employee={employee} refresh={refresh} notify={notify}/>
-      <MaterialRail service={service} employee={employee} refresh={refresh} notify={notify}/>
+    <header className="workspace-header"><button onClick={leaveWorkspace}><ChevronLeft/>{workspaceMode === "editor" ? "返回订单" : "返回工作台"}</button><div><span>{service.number}</span><b>{service.title}</b></div><div className="workspace-responsible">负责人：{service.assignee?.name || "待分配"}</div><div className="workspace-actions"><button onClick={saveVersion}><Save/>保存版本</button>{canManage && <><button onClick={() => updateStatus("待客户确认", Math.max(90, service.progress))}><Send/>发布确认稿</button><button className="finish" onClick={() => updateStatus("已完成", 100)}><Check/>完成订单</button></>}{workspaceMode === "editor" && employee.permissions.aiAssistant && <button className="toggle-ai" onClick={() => setRightOpen(value => !value)}><Bot/>{rightOpen ? "收起 AI" : "打开 AI"}</button>}</div></header>
+    {workspaceMode === "smart" ? <SmartStudio service={service} notify={notify}/> : workspaceMode === "design" ? <DesignStudio service={service} employee={employee} refresh={refresh} notify={notify} back={() => setWorkspaceMode("editor")} openEditor={(slideNumber) => { setEditorRevision(value => value + 1); setWorkspaceMode("editor"); notify(`已新增第 ${slideNumber} 页，请在左侧缩略图最底部查看`); }} /> : workspaceMode === "explode" ? <ImageExplodeStudio service={service} refresh={refresh} notify={notify} back={() => setWorkspaceMode("editor")} openEditor={(slideNumber) => { setEditorRevision(value => value + 1); setWorkspaceMode("editor"); notify(`已新增第 ${slideNumber} 页零部件，请在左侧缩略图最底部查看`); }} /> : <>
+      <main className="workspace-main"><section className="onlyoffice-stage">{service.workDocument ? <OnlyOfficeEditor documentId={service.workDocument.id} revision={editorRevision} refresh={refresh} notify={notify}/> : <div className="office-placeholder">正在创建空白工作文件...</div>}</section>{rightOpen && employee.permissions.aiAssistant && <AiPanel service={service} employee={employee} refresh={refresh} notify={notify}/>}</main>
+      {workspaceMode === "editor" && employee.permissions.smartPpt && <button className="workspace-smart-mode" onClick={() => setWorkspaceMode("design")}><WandSparkles/>智能模式</button>}
+      {employee.permissions.imageTools && <ImageToolsPanel service={service} employee={employee} refresh={refresh} notify={notify}/>}
+      {employee.permissions.materials && <MaterialRail service={service} employee={employee} refresh={refresh} notify={notify}/>}
     </>}
   </div>;
 }
@@ -546,16 +923,17 @@ type PptPolishRun = {
   pdfStoredName?: string; pptStoredName?: string; coverStoredName?: string; confirmedAt?: string; error?: string; createdAt: string; updatedAt: string;
 };
 
-function PolishPptPlanner({ service, note, setNote, notify, onRunCreated, onRunsLoaded }: {
+function PolishPptPlanner({ service, note, setNote, notify, initialRun, onRunCreated, onRunsLoaded }: {
   service: Service;
   note: string;
   setNote: (value: string) => void;
   notify: (text: string) => void;
+  initialRun?: PptPolishRun | null;
   onRunCreated?: (run: PptPolishRun) => void;
   onRunsLoaded?: (runs: PptPolishRun[]) => void;
 }) {
-  const [sourceMode, setSourceMode] = useState<"current" | "upload">(service.workDocument ? "current" : "upload");
-  const [stylePack, setStylePack] = useState("blue-gold-tech");
+  const [sourceMode, setSourceMode] = useState<"current" | "upload">(initialRun?.sourceMode || (service.workDocument ? "current" : "upload"));
+  const [stylePack, setStylePack] = useState(initialRun?.stylePack || "blue-gold-tech");
   const [selectedFileName, setSelectedFileName] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -563,10 +941,12 @@ function PolishPptPlanner({ service, note, setNote, notify, onRunCreated, onRuns
   const [pageNote, setPageNote] = useState("");
   const [polishRuns, setPolishRuns] = useState<PptPolishRun[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [pageNotes, setPageNotes] = useState<PolishPageNote[]>([
-    { id: "cover", pages: "1", note: "封面增强发布会主视觉，保留项目名称和关键信息" },
-    { id: "content", pages: "2-5", note: "减少密集文字，重排为更清晰的图文结构" }
-  ]);
+  const [pageNotes, setPageNotes] = useState<PolishPageNote[]>(() => initialRun
+    ? initialRun.pageNotes.map(item => ({ ...item }))
+    : [
+      { id: "cover", pages: "1", note: "封面增强发布会主视觉，保留项目名称和关键信息" },
+      { id: "content", pages: "2-5", note: "减少密集文字，重排为更清晰的图文结构" }
+    ]);
   const [options, setOptions] = useState({
     keepText: true,
     keepNumbers: true,
@@ -575,7 +955,8 @@ function PolishPptPlanner({ service, note, setNote, notify, onRunCreated, onRuns
     backgroundTexture: true,
     cardStyle: false,
     decorativeElements: false,
-    reduceText: true
+    reduceText: true,
+    ...(initialRun?.options || {})
   });
   const fileRef = useRef<HTMLInputElement>(null);
   const latestPollingStatus = polishRuns[0]?.status || "";
@@ -685,8 +1066,8 @@ function PolishPptPlanner({ service, note, setNote, notify, onRunCreated, onRuns
   </section>;
 }
 
-function DesignStudio({ service, employee, refresh, notify, back, openSmart, openEditor }: {
-  service: Service; employee: Employee; refresh: (silent?: boolean) => Promise<void>; notify: (text: string) => void; back: () => void; openSmart: () => void; openEditor: (slideNumber: number) => void;
+function DesignStudio({ service, employee, refresh, notify, back, openEditor }: {
+  service: Service; employee: Employee; refresh: (silent?: boolean) => Promise<void>; notify: (text: string) => void; back: () => void; openEditor: (slideNumber: number) => void;
 }) {
   const [drawerOpen, setDrawerOpen] = useState(true);
   const [mentorOpen, setMentorOpen] = useState(false);
@@ -713,6 +1094,7 @@ function DesignStudio({ service, employee, refresh, notify, back, openSmart, ope
   const [activeDeckRun, setActiveDeckRun] = useState<DeckGenerationRun | null>(null);
   const [polishRuns, setPolishRuns] = useState<PptPolishRun[]>([]);
   const [activePolishRun, setActivePolishRun] = useState<PptPolishRun | null>(null);
+  const [polishDraftRun, setPolishDraftRun] = useState<PptPolishRun | null>(null);
   const [workerWarning, setWorkerWarning] = useState("");
   const [polishWorkerWarning, setPolishWorkerWarning] = useState("");
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
@@ -780,6 +1162,13 @@ function DesignStudio({ service, employee, refresh, notify, back, openSmart, ope
     setMentorOpen(false);
     focusHistoryTop();
   }
+  function editPolishPlan() {
+    if (!activePolishRun || activePolishRun.status !== "plan_ready") return;
+    setPolishDraftRun(activePolishRun);
+    setPolishRequirement(activePolishRun.note || "");
+    setMentorTool("polish");
+    setMentorOpen(true);
+  }
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadRuns(), 0);
@@ -815,7 +1204,7 @@ function DesignStudio({ service, employee, refresh, notify, back, openSmart, ope
     return () => window.clearInterval(timer);
   }, [activeRun, loadRuns]);
   useEffect(() => {
-    if (!activeDeckRun || !["queued", "planning", "generating", "pdf_queued", "ppt_queued", "ppt_processing"].includes(activeDeckRun.status)) return;
+    if (!activeDeckRun || !["sources_queued", "source_processing", "queued", "planning", "matching_queued", "matching", "confirmed", "generating", "pdf_queued", "ppt_queued", "ppt_processing"].includes(activeDeckRun.status)) return;
     const timer = window.setInterval(() => void loadDeckRuns(), 2400);
     return () => window.clearInterval(timer);
   }, [activeDeckRun, loadDeckRuns]);
@@ -1062,10 +1451,10 @@ function DesignStudio({ service, employee, refresh, notify, back, openSmart, ope
   return <main className="design-studio">
     <aside className={"design-material-drawer " + (drawerOpen ? "open" : "")}>{drawerOpen && <><header><div><ImagePlus/><span><b>设计素材</b><small>我的素材库</small></span></div><button onClick={() => setDrawerOpen(false)}><ChevronLeft/></button></header><div className="design-material-grid">{mineMaterials.map(item => <button key={item.id} className={selectedMaterials.includes(item.image.id) ? "selected" : ""} onClick={() => toggleMaterial(item.image.id)}><img src={generatedImageUrl(item.image.id)} alt="参考素材"/><i>{selectedMaterials.includes(item.image.id) ? "已选" : "选择"}</i></button>)}</div></>} {!drawerOpen && <button className="design-drawer-open" onClick={() => setDrawerOpen(true)}><ImagePlus/>素材</button>}</aside>
     <input ref={fileRef} hidden type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={event => { addFiles(Array.from(event.target.files || [])); event.currentTarget.value = ""; }}/>
-    <section className="design-board"><header><button onClick={back}><ChevronLeft/>返回 PPT 编辑</button><span>WZLCF · INTELLIGENT SLIDE DESIGN</span><h1>将想法变为产品</h1></header>{activePolishRun ? <PolishInlineRun service={service} run={activePolishRun} busy={busy} workerWarning={polishWorkerWarning} onConfirm={() => void confirmPolishRun()} onCreatePpt={() => void createPolishPpt()} onRegenerate={(slideIndex, action) => void regeneratePolishSlide(slideIndex, action)} onRetry={() => void retryPolishRun()} onPreview={setPreviewImage}/> : activeDeckRun ? <DeckInlineRun service={service} run={activeDeckRun} busy={busy} onConfirm={() => void confirmDeckRun()} onReplan={(stylePack) => void replanDeckRun(stylePack)} onCreatePpt={() => void createDeckPpt()} onRegenerate={(slideId, action) => void regenerateDeckSlide(slideId, action)} onPreview={setPreviewImage} /> : activeRun ? <section className="design-run"><div className="design-run-head"><div><span className={`design-status ${activeRun.status}`}>{activeRun.status === "completed" ? "方案已完成" : activeRun.status === "failed" ? "任务失败" : activeRun.status === "cancelled" ? "已取消" : "正在设计"}</span><h2>{activeRun.brief}</h2><small>{new Date(activeRun.createdAt).toLocaleString("zh-CN")}</small></div><div>{["queued", "running"].includes(activeRun.status) && <button onClick={() => void cancelRun()}>取消任务</button>}{activeRun.status === "completed" && <button className="design-apply" disabled={busy || (!activeRun.appliedAt && !reconstructionReady)} onClick={() => void applyRun()}>{activeRun.appliedAt ? "同步并打开 PPT" : <><Save/>{!reconstructionReady ? "等待拆图完成" : qaNeedsReview ? "重建需确认，仍可导入" : "新增可编辑重建页"}</>}</button>}</div></div><div className="design-stage-list">{activeDesignEvents.map(event => <article key={event.id} className={event.status}><b>{stageLabel(event.stage)}</b><span>{event.detail || "处理中"}</span></article>)}</div>{activeRun.status === "completed" && <div className={qaNeedsReview ? "auto-explode-status warning" : "auto-explode-status completed"}><div><b>{reconstructionReady ? "图片炸开已自动完成" : "图片炸开正在自动处理"}</b><span>{plan.qa?.message || "完整样片只作为预览和拆解真值；新增 PPT 会使用干净背景 + 独立透明部件。"}</span></div><button onClick={openExplode}>{reconstructionReady ? "查看并选择部件" : "打开图片炸开页"}</button></div>}{activeRun.error && <div className="design-error">{activeRun.error}</div>}{workerWarning && ["queued", "running"].includes(activeRun.status) && <div className="design-error">{workerWarning}</div>}<div className="design-result-grid master-rebuild"><article className="design-preview"><span>完整样片</span>{masterImageId ? <button className="design-preview-open" onClick={() => setPreviewImage({ url: generatedImageUrl(masterImageId), title: "完整样片" })}><img src={generatedImageUrl(masterImageId)} alt="完整 PPT 样片"/><i><Maximize2/>点击放大</i></button> : <div><LoaderCircle className="spin"/><p>正在生成完整样片…</p></div>}</article><article className="design-preview"><span>干净背景</span>{cleanBackgroundImageId ? <button className="design-preview-open" onClick={() => setPreviewImage({ url: generatedImageUrl(cleanBackgroundImageId), title: "干净背景" })}><img src={generatedImageUrl(cleanBackgroundImageId)} alt="干净背景"/><i><Maximize2/>点击放大</i></button> : <div><LoaderCircle className="spin"/><p>正在生成干净背景…</p></div>}</article><article className="design-preview"><span>拆解重建预览</span>{reconstructionReady ? <button className="design-preview-open" onClick={() => setPreviewImage({ url: `/api/employee/services/${service.id}/image-explode/runs/${reconstructionRunId}/reconstruction`, title: "拆解重建预览" })}><img src={`/api/employee/services/${service.id}/image-explode/runs/${reconstructionRunId}/reconstruction`} alt="拆解重建预览"/><i><Maximize2/>点击放大</i></button> : <div><LoaderCircle className="spin"/><p>等待 OpenAI 零件拆解与佐糖二次抠图…</p></div>}</article><article className="design-layout"><span>重建策略</span><h3>{plan.title || "以完整样片为真值"}</h3><p>{plan.subtitle || "不再由系统额外生成丑文字；样片里有什么，就拆什么。"}</p><div>{(plan.palette || []).map(color => <i key={color} style={{ background: color }}/>)}</div><ul><li>完整样片只用于预览、拆解与 QA。</li><li>最终 PPT 底层使用 OpenAI 二次生成的干净背景。</li><li>标题艺术字默认保留原始 PNG 字效，普通文字可选 OCR。</li></ul><small>如果重建 QA 提示风险，建议先点“查看并选择部件”确认后再导入。</small></article></div></section> : <section className="design-empty"><WandSparkles/><h2>从右下角数字人开始</h2><p>选择文生图、生成 PPT 或美化 PPT，提交后可在这里追踪每一步。</p></section>}</section>
+    <section className="design-board"><header><button onClick={back}><ChevronLeft/>返回 PPT 编辑</button><span>WZLCF · INTELLIGENT SLIDE DESIGN</span><h1>将想法变为产品</h1></header>{activePolishRun ? <PolishInlineRun service={service} run={activePolishRun} busy={busy} workerWarning={polishWorkerWarning} onBack={editPolishPlan} onConfirm={() => void confirmPolishRun()} onCreatePpt={() => void createPolishPpt()} onRegenerate={(slideIndex, action) => void regeneratePolishSlide(slideIndex, action)} onRetry={() => void retryPolishRun()} onPreview={setPreviewImage}/> : activeDeckRun ? <DeckGenerationRunPanel service={service} run={activeDeckRun} busy={busy} onRunUpdate={setDeckRun} onConfirm={() => void confirmDeckRun()} onReplan={(stylePack) => void replanDeckRun(stylePack)} onCreatePpt={() => void createDeckPpt()} onRegenerate={(slideId, action) => void regenerateDeckSlide(slideId, action)} onPreview={setPreviewImage} /> : activeRun ? <section className="design-run"><div className="design-run-head"><div><span className={`design-status ${activeRun.status}`}>{activeRun.status === "completed" ? "方案已完成" : activeRun.status === "failed" ? "任务失败" : activeRun.status === "cancelled" ? "已取消" : "正在设计"}</span><h2>{activeRun.brief}</h2><small>{new Date(activeRun.createdAt).toLocaleString("zh-CN")}</small></div><div>{["queued", "running"].includes(activeRun.status) && <button onClick={() => void cancelRun()}>取消任务</button>}{activeRun.status === "completed" && <button className="design-apply" disabled={busy || (!activeRun.appliedAt && !reconstructionReady)} onClick={() => void applyRun()}>{activeRun.appliedAt ? "同步并打开 PPT" : <><Save/>{!reconstructionReady ? "等待拆图完成" : qaNeedsReview ? "重建需确认，仍可导入" : "新增可编辑重建页"}</>}</button>}</div></div><div className="design-stage-list">{activeDesignEvents.map(event => <article key={event.id} className={event.status}><b>{stageLabel(event.stage)}</b><span>{event.detail || "处理中"}</span></article>)}</div>{activeRun.status === "completed" && <div className={qaNeedsReview ? "auto-explode-status warning" : "auto-explode-status completed"}><div><b>{reconstructionReady ? "图片炸开已自动完成" : "图片炸开正在自动处理"}</b><span>{plan.qa?.message || "完整样片只作为预览和拆解真值；新增 PPT 会使用干净背景 + 独立透明部件。"}</span></div><button onClick={openExplode}>{reconstructionReady ? "查看并选择部件" : "打开图片炸开页"}</button></div>}{activeRun.error && <div className="design-error">{activeRun.error}</div>}{workerWarning && ["queued", "running"].includes(activeRun.status) && <div className="design-error">{workerWarning}</div>}<div className="design-result-grid master-rebuild"><article className="design-preview"><span>完整样片</span>{masterImageId ? <button className="design-preview-open" onClick={() => setPreviewImage({ url: generatedImageUrl(masterImageId), title: "完整样片" })}><img src={generatedImageUrl(masterImageId)} alt="完整 PPT 样片"/><i><Maximize2/>点击放大</i></button> : <div><LoaderCircle className="spin"/><p>正在生成完整样片…</p></div>}</article><article className="design-preview"><span>干净背景</span>{cleanBackgroundImageId ? <button className="design-preview-open" onClick={() => setPreviewImage({ url: generatedImageUrl(cleanBackgroundImageId), title: "干净背景" })}><img src={generatedImageUrl(cleanBackgroundImageId)} alt="干净背景"/><i><Maximize2/>点击放大</i></button> : <div><LoaderCircle className="spin"/><p>正在生成干净背景…</p></div>}</article><article className="design-preview"><span>拆解重建预览</span>{reconstructionReady ? <button className="design-preview-open" onClick={() => setPreviewImage({ url: `/api/employee/services/${service.id}/image-explode/runs/${reconstructionRunId}/reconstruction`, title: "拆解重建预览" })}><img src={`/api/employee/services/${service.id}/image-explode/runs/${reconstructionRunId}/reconstruction`} alt="拆解重建预览"/><i><Maximize2/>点击放大</i></button> : <div><LoaderCircle className="spin"/><p>等待 OpenAI 零件拆解与佐糖二次抠图…</p></div>}</article><article className="design-layout"><span>重建策略</span><h3>{plan.title || "以完整样片为真值"}</h3><p>{plan.subtitle || "不再由系统额外生成丑文字；样片里有什么，就拆什么。"}</p><div>{(plan.palette || []).map(color => <i key={color} style={{ background: color }}/>)}</div><ul><li>完整样片只用于预览、拆解与 QA。</li><li>最终 PPT 底层使用 OpenAI 二次生成的干净背景。</li><li>标题艺术字默认保留原始 PNG 字效，普通文字可选 OCR。</li></ul><small>如果重建 QA 提示风险，建议先点“查看并选择部件”确认后再导入。</small></article></div></section> : <section className="design-empty"><WandSparkles/><h2>从右下角数字人开始</h2><p>选择文生图、生成 PPT 或美化 PPT，提交后可在这里追踪每一步。</p></section>}</section>
     <div ref={historyRef} className="design-run-history">{[...deckRuns.map(run => ({ kind: "deck" as const, run, createdAt: run.createdAt })), ...polishRuns.map(run => ({ kind: "polish" as const, run, createdAt: run.createdAt })), ...runs.map(run => ({ kind: "image" as const, run, createdAt: run.createdAt }))].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 8).map(item => item.kind === "deck" ? <button key={`deck-${item.run.id}`} className={activeDeckRun?.id === item.run.id && !activePolishRun ? "active" : ""} onClick={() => { setActiveRun(null); setActivePolishRun(null); setDeckRun(item.run); }}><span>生成 PPT</span><b>{item.run.projectName}</b><small>{deckStatusText(item.run.status)}</small></button> : item.kind === "polish" ? <button key={`polish-${item.run.id}`} className={activePolishRun?.id === item.run.id ? "active" : ""} onClick={() => { setActiveRun(null); setActiveDeckRun(null); setActivePolishRun(item.run); }}><span>美化 PPT</span><b>{item.run.sourceName}</b><small>{deckStatusText(item.run.status)}</small></button> : <button key={`image-${item.run.id}`} className={activeRun?.id === item.run.id && !activeDeckRun && !activePolishRun ? "active" : ""} onClick={() => { setActivePolishRun(null); setActiveDeckRun(null); setActiveRun(item.run); }}><span>{item.run.generationMode === "mixed" ? "混合" : "文生图"}</span><b>{item.run.brief}</b><small>{item.run.status}</small></button>)}</div>
     {batches.length > 1 && <div className="design-batch-picker">{batches.map((batch, index) => <button key={index} className={selectedBatchIndex === index ? "active" : ""} disabled={!batch.assetFiles?.reconstructionRunId} onClick={() => void selectBatch(index)}>第 {index + 1} 份</button>)}</div>}
-    <div className="design-mentor"><button className="design-mentor-avatar" onClick={() => setMentorOpen(value => !value)} aria-label="打开 PPT 智能模式"><img src="/agent/ppt-design-mentor.png" alt="PPT 智能模式数字人"/></button>{mentorOpen && <section className="design-mentor-large-panel"><header><div><b>小 W · PPT 智能模式</b><span>选择任务类型，按当前工作流继续生成</span></div><button onClick={() => setMentorOpen(false)} aria-label="关闭智能模式"><X/></button></header><div className="design-tool-tabs"><button className={mentorTool === "deck" ? "active" : ""} onClick={() => setMentorTool("deck")}><FileText/><span><b>生成 PPT</b><small>整套文稿规划</small></span></button><button className={mentorTool === "polish" ? "active" : ""} onClick={() => setMentorTool("polish")}><WandSparkles/><span><b>美化 PPT</b><small>优化当前文稿</small></span></button><button className={mentorTool === "image" ? "active" : ""} onClick={() => setMentorTool("image")}><ImagePlus/><span><b>生图</b><small>生成 16:9 PNG</small></span></button></div>{mentorTool === "deck" && <section className="deck-generation-form"><label>项目名称<input value={deckProjectName} onChange={event => setDeckProjectName(event.target.value)}/></label><label>比赛类型 / 用途<input value={deckProjectType} onChange={event => setDeckProjectType(event.target.value)} placeholder="例如：创新创业大赛 / 商业计划书"/></label><div className="deck-page-slider"><label>PPT 页数</label><div><input type="range" min={2} max={20} value={deckPageCount} onChange={event => setDeckPageCount(Number(event.target.value))} style={{ "--range-progress": `${((deckPageCount - 2) / 18) * 100}%` } as CSSProperties}/><b>{deckPageCount}页</b></div></div><label>风格包<select value={deckStylePack} onChange={event => setDeckStylePack(event.target.value)}>{deckStylePacks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label>项目简介<textarea value={deckBrief} onChange={event => setDeckBrief(event.target.value)} placeholder="描述项目背景、核心内容、目标受众和必须出现的信息。"/></label><label>参考资料摘要（可选）<textarea value={deckReferenceText} onChange={event => setDeckReferenceText(event.target.value)} placeholder="可粘贴评审要求、产品信息、客户资料；图片可拖到下面或点击上传。"/></label><div className="deck-reference-drop" onClick={() => fileRef.current?.click()} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); addFiles(Array.from(event.dataTransfer.files || [])); }}><Upload/><b>参考文档 / 参考图片</b><span>点击打开文件夹，或把图片拖到这里；也可以点击左侧素材加入参考。</span></div>{selectedCount > 0 && <div className="design-reference-strip deck-reference-strip">{selectedMaterialItems.map(item => <button key={item.id} className={primaryKey === `material:${item.image.id}` ? "primary" : ""} onClick={() => setPrimaryKey(`material:${item.image.id}`)}><img src={generatedImageUrl(item.image.id)} alt="素材参考"/><span onClick={event => { event.stopPropagation(); setSelectedMaterials(current => current.filter(id => id !== item.image.id)); }}>×</span></button>)}{localReferences.map(item => <button key={item.id} className={primaryKey === `local:${item.id}` ? "primary" : ""} onClick={() => setPrimaryKey(`local:${item.id}`)}><img src={item.previewUrl} alt={item.file.name}/><span onClick={event => { event.stopPropagation(); removeLocal(item.id); }}>×</span></button>)}</div>}<div className="deck-unity-options"><label><input type="checkbox" checked={deckUnityOptions.mainColor} onChange={event => setDeckUnityOptions(current => ({ ...current, mainColor: event.target.checked }))}/>主色统一</label><label><input type="checkbox" checked={deckUnityOptions.headerFooter} onChange={event => setDeckUnityOptions(current => ({ ...current, headerFooter: event.target.checked }))}/>页眉页脚统一</label><label><input type="checkbox" checked={deckUnityOptions.backgroundTexture} onChange={event => setDeckUnityOptions(current => ({ ...current, backgroundTexture: event.target.checked }))}/>背景纹理统一</label><label><input type="checkbox" checked={deckUnityOptions.cardStyle} onChange={event => setDeckUnityOptions(current => ({ ...current, cardStyle: event.target.checked }))}/>卡片样式统一</label><label><input type="checkbox" checked={deckUnityOptions.decorativeElements} onChange={event => setDeckUnityOptions(current => ({ ...current, decorativeElements: event.target.checked }))}/>装饰元素统一</label></div><button type="button" onClick={() => void createDeckFromMentor()} disabled={busy}>{busy ? <LoaderCircle className="spin"/> : <Sparkles/>}生成方案</button></section>}{mentorTool === "polish" && <section className="deck-generation-form"><label>美化范围<select defaultValue="current"><option value="current">当前文稿</option><option value="all">整套 PPT</option><option value="selected">指定页面</option></select></label><label>风格方向<select defaultValue="blue-gold-tech">{deckStylePacks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label>修改要求<textarea value={polishRequirement} onChange={event => setPolishRequirement(event.target.value)} placeholder="例如：更像发布会、减少文字、强化科技感、统一页眉页脚和图标风格。"/></label><button type="button" onClick={() => notify("美化 PPT 入口已恢复，真实重绘链路暂不自动启动。")}><WandSparkles/>即将接入</button></section>}{mentorTool === "image" && <section className="deck-generation-form"><div className="design-mode"><button className={mode === "text" ? "active" : ""} onClick={() => setMode("text")}><Bot/><span>文生图<small>不把参考图交给 OpenAI</small></span></button><button className={mode === "mixed" ? "active" : ""} onClick={() => setMode("mixed")}><ImagePlus/><span>混合模式<small>主参考与提示词直给 OpenAI</small></span></button></div><label>生成要求<textarea value={brief} onChange={event => setBrief(event.target.value)} placeholder="例如：将这一页做成深蓝科技发布会风格，突出列车底盘巡检机器人，保留未来感与大片留白…"/></label>{selectedCount > 0 && <div className="design-reference-strip">{selectedMaterialItems.map(item => <button key={item.id} className={primaryKey === `material:${item.image.id}` ? "primary" : ""} onClick={() => setPrimaryKey(`material:${item.image.id}`)}><img src={generatedImageUrl(item.image.id)} alt="素材参考"/><span>主参考</span></button>)}{localReferences.map(item => <button key={item.id} className={primaryKey === `local:${item.id}` ? "primary" : ""} onClick={() => setPrimaryKey(`local:${item.id}`)}><img src={item.previewUrl} alt={item.file.name}/><span onClick={event => { event.stopPropagation(); removeLocal(item.id); }}><X/></span></button>)}</div>}<div className="design-mentor-actions"><button type="button" onClick={() => fileRef.current?.click()} disabled={selectedCount >= 6}><Upload/>上传参考图</button><label>生成<select value={batchCount} onChange={event => setBatchCount(Number(event.target.value))}>{[1, 2, 3, 4].map(count => <option key={count} value={count}>{count} 份</option>)}</select></label><button type="button" className="design-start-inline" onClick={() => void createRun()} disabled={busy || !brief.trim()}>{busy ? <LoaderCircle className="spin"/> : <Sparkles/>}开始生成</button></div></section>}</section>}</div>
+    <div className="design-mentor"><button className="design-mentor-avatar" onClick={() => setMentorOpen(value => !value)} aria-label="打开 PPT 智能模式"><img src="/agent/ppt-design-mentor.png" alt="PPT 智能模式数字人"/></button>{mentorOpen && <section className="design-mentor-large-panel"><header><div><b>小 W · PPT 智能模式</b><span>选择任务类型，按当前工作流继续生成</span></div><button onClick={() => setMentorOpen(false)} aria-label="关闭智能模式"><X/></button></header><div className="design-tool-tabs"><button className={mentorTool === "deck" ? "active" : ""} onClick={() => setMentorTool("deck")}><FileText/><span><b>生成 PPT</b><small>整套文稿规划</small></span></button><button className={mentorTool === "polish" ? "active" : ""} onClick={() => setMentorTool("polish")}><WandSparkles/><span><b>美化 PPT</b><small>优化当前文稿</small></span></button><button className={mentorTool === "image" ? "active" : ""} onClick={() => setMentorTool("image")}><ImagePlus/><span><b>生图</b><small>生成 16:9 PNG</small></span></button></div>{mentorTool === "deck" && <DeckGenerationForm service={service} notify={notify} onCreated={(run) => { setDeckRun(run); setMentorOpen(false); }}/>} {false && mentorTool === "deck" && <section className="deck-generation-form"><label>项目名称<input value={deckProjectName} onChange={event => setDeckProjectName(event.target.value)}/></label><label>比赛类型 / 用途<input value={deckProjectType} onChange={event => setDeckProjectType(event.target.value)} placeholder="例如：创新创业大赛 / 商业计划书"/></label><div className="deck-page-slider"><label>PPT 页数</label><div><input type="range" min={2} max={20} value={deckPageCount} onChange={event => setDeckPageCount(Number(event.target.value))} style={{ "--range-progress": `${((deckPageCount - 2) / 18) * 100}%` } as CSSProperties}/><b>{deckPageCount}页</b></div></div><label>风格包<select value={deckStylePack} onChange={event => setDeckStylePack(event.target.value)}>{deckStylePacks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label>项目简介<textarea value={deckBrief} onChange={event => setDeckBrief(event.target.value)} placeholder="描述项目背景、核心内容、目标受众和必须出现的信息。"/></label><label>参考资料摘要（可选）<textarea value={deckReferenceText} onChange={event => setDeckReferenceText(event.target.value)} placeholder="可粘贴评审要求、产品信息、客户资料；图片可拖到下面或点击上传。"/></label><div className="deck-reference-drop" onClick={() => fileRef.current?.click()} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); addFiles(Array.from(event.dataTransfer.files || [])); }}><Upload/><b>参考文档 / 参考图片</b><span>点击打开文件夹，或把图片拖到这里；也可以点击左侧素材加入参考。</span></div>{selectedCount > 0 && <div className="design-reference-strip deck-reference-strip">{selectedMaterialItems.map(item => <button key={item.id} className={primaryKey === `material:${item.image.id}` ? "primary" : ""} onClick={() => setPrimaryKey(`material:${item.image.id}`)}><img src={generatedImageUrl(item.image.id)} alt="素材参考"/><span onClick={event => { event.stopPropagation(); setSelectedMaterials(current => current.filter(id => id !== item.image.id)); }}>×</span></button>)}{localReferences.map(item => <button key={item.id} className={primaryKey === `local:${item.id}` ? "primary" : ""} onClick={() => setPrimaryKey(`local:${item.id}`)}><img src={item.previewUrl} alt={item.file.name}/><span onClick={event => { event.stopPropagation(); removeLocal(item.id); }}>×</span></button>)}</div>}<div className="deck-unity-options"><label><input type="checkbox" checked={deckUnityOptions.mainColor} onChange={event => setDeckUnityOptions(current => ({ ...current, mainColor: event.target.checked }))}/>主色统一</label><label><input type="checkbox" checked={deckUnityOptions.headerFooter} onChange={event => setDeckUnityOptions(current => ({ ...current, headerFooter: event.target.checked }))}/>页眉页脚统一</label><label><input type="checkbox" checked={deckUnityOptions.backgroundTexture} onChange={event => setDeckUnityOptions(current => ({ ...current, backgroundTexture: event.target.checked }))}/>背景纹理统一</label><label><input type="checkbox" checked={deckUnityOptions.cardStyle} onChange={event => setDeckUnityOptions(current => ({ ...current, cardStyle: event.target.checked }))}/>卡片样式统一</label><label><input type="checkbox" checked={deckUnityOptions.decorativeElements} onChange={event => setDeckUnityOptions(current => ({ ...current, decorativeElements: event.target.checked }))}/>装饰元素统一</label></div><button type="button" onClick={() => void createDeckFromMentor()} disabled={busy}>{busy ? <LoaderCircle className="spin"/> : <Sparkles/>}生成方案</button></section>}{mentorTool === "polish" && <section className="deck-generation-form"><label>美化范围<select defaultValue="current"><option value="current">当前文稿</option><option value="all">整套 PPT</option><option value="selected">指定页面</option></select></label><label>风格方向<select defaultValue="blue-gold-tech">{deckStylePacks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label>修改要求<textarea value={polishRequirement} onChange={event => setPolishRequirement(event.target.value)} placeholder="例如：更像发布会、减少文字、强化科技感、统一页眉页脚和图标风格。"/></label><button type="button" onClick={() => notify("美化 PPT 入口已恢复，真实重绘链路暂不自动启动。")}><WandSparkles/>即将接入</button></section>}{mentorTool === "image" && <section className="deck-generation-form"><div className="design-mode"><button className={mode === "text" ? "active" : ""} onClick={() => setMode("text")}><Bot/><span>文生图<small>不把参考图交给 OpenAI</small></span></button><button className={mode === "mixed" ? "active" : ""} onClick={() => setMode("mixed")}><ImagePlus/><span>混合模式<small>主参考与提示词直给 OpenAI</small></span></button></div><label>生成要求<textarea value={brief} onChange={event => setBrief(event.target.value)} placeholder="例如：将这一页做成深蓝科技发布会风格，突出列车底盘巡检机器人，保留未来感与大片留白…"/></label>{selectedCount > 0 && <div className="design-reference-strip">{selectedMaterialItems.map(item => <button key={item.id} className={primaryKey === `material:${item.image.id}` ? "primary" : ""} onClick={() => setPrimaryKey(`material:${item.image.id}`)}><img src={generatedImageUrl(item.image.id)} alt="素材参考"/><span>主参考</span></button>)}{localReferences.map(item => <button key={item.id} className={primaryKey === `local:${item.id}` ? "primary" : ""} onClick={() => setPrimaryKey(`local:${item.id}`)}><img src={item.previewUrl} alt={item.file.name}/><span onClick={event => { event.stopPropagation(); removeLocal(item.id); }}><X/></span></button>)}</div>}<div className="design-mentor-actions"><button type="button" onClick={() => fileRef.current?.click()} disabled={selectedCount >= 6}><Upload/>上传参考图</button><label>生成<select value={batchCount} onChange={event => setBatchCount(Number(event.target.value))}>{[1, 2, 3, 4].map(count => <option key={count} value={count}>{count} 份</option>)}</select></label><button type="button" className="design-start-inline" onClick={() => void createRun()} disabled={busy || !brief.trim()}>{busy ? <LoaderCircle className="spin"/> : <Sparkles/>}开始生成</button></div></section>}</section>}</div>
     {mentorOpen && mentorTool === "polish" && <section className="design-mentor-large-panel polish-only-panel">
       <header><div><b>小 W · PPT 智能模式</b><span>先整理美化方案，再进入逐页重绘工作流</span></div><button onClick={() => setMentorOpen(false)} aria-label="关闭智能模式"><X/></button></header>
       <div className="design-tool-tabs">
@@ -1073,17 +1462,18 @@ function DesignStudio({ service, employee, refresh, notify, back, openSmart, ope
         <button className={mentorTool === "polish" ? "active" : ""} onClick={() => setMentorTool("polish")}><WandSparkles/><span><b>美化 PPT</b><small>逐页重绘方案</small></span></button>
         <button onClick={() => setMentorTool("image")}><ImagePlus/><span><b>生图</b><small>生成 16:9 PNG</small></span></button>
       </div>
-      <PolishPptPlanner service={service} note={polishRequirement} setNote={setPolishRequirement} notify={notify} onRunCreated={setPolishRun} onRunsLoaded={syncPolishRuns}/>
+      <PolishPptPlanner key={polishDraftRun?.id || "new-polish-plan"} service={service} note={polishRequirement} setNote={setPolishRequirement} notify={notify} initialRun={polishDraftRun} onRunCreated={run => { setPolishDraftRun(null); setPolishRun(run); }} onRunsLoaded={syncPolishRuns}/>
     </section>}
     {previewImage && <ExplodeImagePreview image={previewImage} onClose={() => setPreviewImage(null)}/>}
   </main>;
 }
 
-function PolishInlineRun({ service, run, busy, workerWarning, onConfirm, onCreatePpt, onRegenerate, onRetry, onPreview }: {
+function PolishInlineRun({ service, run, busy, workerWarning, onBack, onConfirm, onCreatePpt, onRegenerate, onRetry, onPreview }: {
   service: Service;
   run: PptPolishRun;
   busy: boolean;
   workerWarning?: string;
+  onBack: () => void;
   onConfirm: () => void;
   onCreatePpt: () => void;
   onRegenerate: (slideIndex: number, action: "reroll" | "closer_previous") => void;
@@ -1115,7 +1505,7 @@ function PolishInlineRun({ service, run, busy, workerWarning, onConfirm, onCreat
         <small>{styleLabel} · {total ? `${done}/${total} 页` : `${run.pageNotes?.length || 0} 条页级要求`} · {new Date(run.createdAt).toLocaleString("zh-CN")}</small>
       </div>
       <div>
-        {run.status === "plan_ready" && <button className="design-apply" onClick={onConfirm} disabled={busy}>确认生成</button>}
+        {run.status === "plan_ready" && <><button className="design-secondary polish-plan-back" onClick={onBack} disabled={busy}><ChevronLeft/>返回修改</button><button className="design-apply" onClick={onConfirm} disabled={busy}>确认生成</button></>}
         {run.status === "failed" && run.slides?.length > 0 && <button className="design-apply" onClick={onRetry} disabled={busy}>继续生成</button>}
         {["review_ready", "pdf_ready"].includes(run.status) && <button className="design-apply" onClick={onCreatePpt} disabled={busy}>转化 PPT</button>}
         {run.pdfStoredName && <a className="design-secondary" href={pdfUrl}><Download/>下载 PDF</a>}
@@ -1153,10 +1543,235 @@ function PolishInlineRun({ service, run, busy, workerWarning, onConfirm, onCreat
   </section>;
 }
 
-function DeckInlineRun({ service, run, busy, onConfirm, onReplan, onCreatePpt, onRegenerate, onPreview }: {
+type DeckRunActions = {
   service: Service;
   run: DeckGenerationRun;
   busy: boolean;
+  onRunUpdate: (run: DeckGenerationRun) => void;
+  onConfirm: () => void;
+  onReplan: (stylePack?: string) => void;
+  onCreatePpt: () => void;
+  onRegenerate: (slideId: string, action: "reroll" | "closer_previous") => void;
+  onPreview: (image: { url: string; title: string }) => void;
+};
+
+function parseDeckArray<T>(value?: string): T[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed as T[] : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseDeckObject(value?: string): Record<string, unknown> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+function deckPageDraft(page: DeckGenerationPagePlan): DeckPageDraft {
+  return {
+    pageIndex: page.pageIndex,
+    title: page.title,
+    role: page.role,
+    purpose: page.purpose,
+    blocks: parseDeckArray<DeckPageBlock>(page.blocksJson).map((block, index) => ({
+      id: block.id || `block-${index + 1}`,
+      subtitle: block.subtitle || "",
+      instruction: block.instruction || "",
+      constraintMode: block.constraintMode || "polish",
+      content: block.content || "",
+      evidenceIds: block.evidenceIds || []
+    })),
+    mustInclude: parseDeckArray<string>(page.mustIncludeJson),
+    conclusion: page.conclusion,
+    density: page.density,
+    layoutType: page.layoutType,
+    constraintMode: page.constraintMode,
+    evidence: parseDeckArray<DeckPageDraft["evidence"][number]>(page.evidenceJson),
+    warnings: parseDeckArray<string>(page.warningsJson),
+    locked: page.locked
+  };
+}
+
+function deckSourceStatusText(status: string) {
+  return ({ queued: "等待读取", processing: "正在读取", completed: "读取完成", failed: "读取失败" } as Record<string, string>)[status] || status;
+}
+
+function DeckSourceSummary({ run }: { run: DeckGenerationRun }) {
+  const sources = run.sources || [];
+  if (!sources.length) return <section className="deck-source-summary empty"><FileText/><div><b>没有上传参考资料</b><span>本次会依据项目简介组织内容，不会虚构具体数字和事实。</span></div></section>;
+  const completed = sources.filter(source => source.status === "completed").length;
+  const failed = sources.filter(source => source.status === "failed").length;
+  return <section className="deck-source-summary">
+    <header><div><b>资料读取报告</b><span>{completed}/{sources.length} 份已读取{failed ? ` · ${failed} 份失败` : ""}</span></div></header>
+    <div>{sources.map(source => {
+      const pending = ["queued", "processing"].includes(source.status);
+      return <article key={source.id} className={source.status}>{pending ? <LoaderCircle className="spin"/> : source.status === "completed" ? <Check/> : <X/>}<span><b>{source.originalName}</b><small>{deckSourceStatusText(source.status)}{source.error ? ` · ${source.error}` : ""}</small></span></article>;
+    })}</div>
+  </section>;
+}
+
+
+function DeckAdvancedPlanRun(props: DeckRunActions) {
+  const { service, run, busy, onRunUpdate, onConfirm, onReplan } = props;
+  const [drafts, setDrafts] = useState<DeckPageDraft[]>(() => (run.pagePlans || []).map(deckPageDraft));
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [nextStylePack, setNextStylePack] = useState(run.stylePack);
+  const isOutlineStep = run.status === "outline_ready";
+  const isContentStep = run.status === "plan_ready";
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDrafts((run.pagePlans || []).map(deckPageDraft));
+      setNextStylePack(run.stylePack);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [run.id, run.status, run.updatedAt, run.stylePack, run.pagePlans]);
+
+  function updatePage(pageIndex: number, values: Partial<DeckPageDraft>) {
+    setDrafts(current => current.map(page => page.pageIndex === pageIndex ? { ...page, ...values } : page));
+  }
+
+  function updateBlock(pageIndex: number, blockId: string, values: Partial<DeckPageBlock>) {
+    setDrafts(current => current.map(page => page.pageIndex === pageIndex ? {
+      ...page,
+      blocks: page.blocks.map(block => block.id === blockId ? { ...block, ...values } : block)
+    } : page));
+  }
+
+  function addBlock(pageIndex: number) {
+    setDrafts(current => current.map(page => page.pageIndex === pageIndex ? {
+      ...page,
+      blocks: [...page.blocks, { id: `block-${Date.now()}`, subtitle: "", instruction: "", content: "", constraintMode: "polish", evidenceIds: [] }]
+    } : page));
+  }
+
+  function removeBlock(pageIndex: number, blockId: string) {
+    setDrafts(current => current.map(page => page.pageIndex === pageIndex ? { ...page, blocks: page.blocks.filter(block => block.id !== blockId) } : page));
+  }
+
+  function addPage() {
+    if (drafts.length >= 30) return setMessage("最多 30 页");
+    const pageIndex = drafts.length + 1;
+    setDrafts(current => [...current, {
+      pageIndex, title: `第 ${pageIndex} 页`, role: pageIndex === 1 ? "cover" : "insight", purpose: "", blocks: [],
+      mustInclude: [], conclusion: "", density: "standard", layoutType: "auto", constraintMode: "polish", evidence: [], warnings: [], locked: false
+    }]);
+  }
+
+  function removePage(pageIndex: number) {
+    if (drafts.length <= 2) return setMessage("至少保留 2 页");
+    setDrafts(current => current.filter(page => page.pageIndex !== pageIndex).map((page, index, all) => ({
+      ...page,
+      pageIndex: index + 1,
+      role: index === 0 ? "cover" : index === all.length - 1 ? "ending" : page.role
+    })));
+  }
+
+  async function savePages(action: "save" | "match" | "outline") {
+    setSaving(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/employee/services/${service.id}/deck-generation/runs/${run.id}/pages`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pages: drafts, action })
+      });
+      const result = await responseJson(response);
+      if (!response.ok) {
+        setMessage(result.error || "逐页方案保存失败");
+        return false;
+      }
+      onRunUpdate(result.run as DeckGenerationRun);
+      setMessage(action === "match" ? "结构已确认，正在按页查找资料" : action === "outline" ? "已返回结构调整" : "逐页内容已保存");
+      return true;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function confirmFinal() {
+    if (!await savePages("save")) return;
+    onConfirm();
+  }
+
+  async function changeStyle() {
+    if (!await savePages("save")) return;
+    onReplan(nextStylePack);
+  }
+
+  const waitingForSources = ["sources_queued", "source_processing"].includes(run.status);
+  const waitingForMatch = ["matching_queued", "matching"].includes(run.status);
+  return <section className="design-run design-deck-run deck-advanced-run">
+    <div className="design-run-head">
+      <div>
+        <span className={`design-status ${run.status}`}>{deckStatusText(run.status)}</span>
+        <h2>{run.projectName}</h2>
+        <small>高级版 · {run.pageCount} 页 · {new Date(run.createdAt).toLocaleString("zh-CN")}</small>
+      </div>
+      {isContentStep && <div><button className="design-apply" onClick={() => void confirmFinal()} disabled={busy || saving}>确认内容并生成预览</button></div>}
+    </div>
+    {run.error && <div className="design-error">{run.error}</div>}
+    <DeckSourceSummary run={run}/>
+    {waitingForSources && <section className="deck-waiting inline"><LoaderCircle className="spin"/><h3>正在逐份读取资料</h3><p>系统保留文件名、页码、幻灯片号和工作表位置。完成后先给你确认逐页结构，不会直接生成图片。</p></section>}
+    {waitingForMatch && <section className="deck-waiting inline"><LoaderCircle className="spin"/><h3>正在按页匹配资料</h3><p>每一页只检索与你确认的标题和内容意图有关的证据，并记录原文件与位置；资料不足会明确标记。</p></section>}
+    {(isOutlineStep || isContentStep) && <section className="deck-advanced-editor">
+      <header>
+        <div><span>{isOutlineStep ? "第一步" : "第二步"}</span><h3>{isOutlineStep ? "确认每一页讲什么" : "核对每一页用了哪些资料"}</h3><p>{isOutlineStep ? "标题、小标题、内容意图和页序都由你决定；确认后系统才开始按页取材。" : "可以修改系统整理的正文，证据标签会显示来源文件和位置。确认后才生成页面图片。"}</p></div>
+        {isOutlineStep && <button type="button" onClick={addPage}><FileText/>增加一页</button>}
+      </header>
+      <div className="deck-page-editor-list">{drafts.map(page => <details key={page.pageIndex} className="deck-page-editor" open={page.pageIndex <= 2}>
+        <summary><span>第 {page.pageIndex} 页</span><b>{page.title || "未命名页面"}</b><i>{page.density === "compact" ? "紧凑" : page.density === "sparse" ? "少文字" : "标准"}</i></summary>
+        <div className="deck-page-editor-body">
+          <div className="deck-page-fields">
+            <label>页面大标题<input value={page.title} onChange={event => updatePage(page.pageIndex, { title: event.target.value })}/></label>
+            <label>信息密度<select value={page.density} onChange={event => updatePage(page.pageIndex, { density: event.target.value as DeckPageDraft["density"] })}><option value="sparse">少文字 / 强视觉</option><option value="standard">标准汇报页</option><option value="compact">紧凑信息页</option></select></label>
+            <label className="wide">这一页要解决什么问题<textarea value={page.purpose} onChange={event => updatePage(page.pageIndex, { purpose: event.target.value })}/></label>
+            <label>版式偏好<input value={page.layoutType} onChange={event => updatePage(page.pageIndex, { layoutType: event.target.value })} placeholder="自动 / 数据看板 / 对比 / 时间轴"/></label>
+            <label>页末结论<input value={page.conclusion} onChange={event => updatePage(page.pageIndex, { conclusion: event.target.value })} placeholder="这一页希望观众记住什么"/></label>
+          </div>
+          <section className="deck-block-list">
+            <header><b>小标题与内容块</b><button type="button" onClick={() => addBlock(page.pageIndex)}><FileText/>增加内容块</button></header>
+            {page.blocks.length ? page.blocks.map((block, blockIndex) => <article key={block.id} className="deck-block-editor">
+              <div><span>{blockIndex + 1}</span><input value={block.subtitle} onChange={event => updateBlock(page.pageIndex, block.id, { subtitle: event.target.value })} placeholder="小标题"/><select value={block.constraintMode} onChange={event => updateBlock(page.pageIndex, block.id, { constraintMode: event.target.value as DeckPageBlock["constraintMode"] })}><option value="exact">原文保留</option><option value="polish">可压缩表达</option><option value="direction">只规定方向</option></select><button type="button" onClick={() => removeBlock(page.pageIndex, block.id)} aria-label="删除内容块"><Trash2/></button></div>
+              <textarea value={isContentStep ? block.content || "" : block.instruction} onChange={event => updateBlock(page.pageIndex, block.id, isContentStep ? { content: event.target.value } : { instruction: event.target.value })} placeholder={isContentStep ? "从资料中整理出的正文，可在这里修改" : "写清楚这个小标题想讲什么，系统会据此去资料里查找"}/>
+            </article>) : <p>这一页暂未规定小标题。可以保持整页主视觉，也可以增加内容块。</p>}
+          </section>
+          {isContentStep && <section className="deck-evidence-list">
+            <b>本页资料依据</b>
+            {page.evidence.length ? <div>{page.evidence.map((evidence, index) => <span key={evidence.id || index}><FileText/><b>{evidence.file || evidence.source || "参考资料"}</b><small>{evidence.locator || "未标注位置"}</small></span>)}</div> : <p>没有找到可靠依据。涉及数字、日期、人物和荣誉时请补充资料后重新匹配。</p>}
+            {page.warnings.length > 0 && <ul>{page.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
+          </section>}
+          <footer><label><input type="checkbox" checked={page.locked} onChange={event => updatePage(page.pageIndex, { locked: event.target.checked })}/>锁定本页内容</label>{isOutlineStep && drafts.length > 2 && <button type="button" onClick={() => removePage(page.pageIndex)}><Trash2/>删除本页</button>}</footer>
+        </div>
+      </details>)}</div>
+      {message && <div className="deck-editor-message">{message}</div>}
+      <footer className="deck-editor-actions">
+        {isOutlineStep ? <><button className="design-secondary" onClick={() => void savePages("save")} disabled={saving}>保存草稿</button><button className="design-apply" onClick={() => void savePages("match")} disabled={saving}>{saving ? <LoaderCircle className="spin"/> : <Check/>}确认结构并匹配资料</button></> : <><label>生成风格<select value={nextStylePack} onChange={event => setNextStylePack(event.target.value)}>{deckStylePacks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><button className="design-secondary" onClick={() => void savePages("outline")} disabled={saving || busy}>返回调整结构</button><button className="design-secondary" onClick={() => void changeStyle()} disabled={saving || busy}>按新风格重整方案</button><button className="design-secondary" onClick={() => void savePages("match")} disabled={saving || busy}>重新匹配资料</button><button className="design-apply" onClick={() => void confirmFinal()} disabled={saving || busy}>确认内容并生成预览</button></>}
+      </footer>
+    </section>}
+  </section>;
+}
+
+function DeckGenerationRunPanel(props: DeckRunActions) {
+  const advancedPlanning = props.run.generationMode === "advanced" && ["sources_queued", "source_processing", "outline_ready", "matching_queued", "matching", "plan_ready"].includes(props.run.status);
+  return advancedPlanning ? <DeckAdvancedPlanRun {...props}/> : <DeckInlineRun {...props}/>;
+}
+
+
+function DeckInlineRun({ service, run, busy, onRunUpdate, onConfirm, onReplan, onCreatePpt, onRegenerate, onPreview }: {
+  service: Service;
+  run: DeckGenerationRun;
+  busy: boolean;
+  onRunUpdate: (run: DeckGenerationRun) => void;
   onConfirm: () => void;
   onReplan: (stylePack?: string) => void;
   onCreatePpt: () => void;
@@ -1164,6 +1779,8 @@ function DeckInlineRun({ service, run, busy, onConfirm, onReplan, onCreatePpt, o
   onPreview: (image: { url: string; title: string }) => void;
 }) {
   const [nextStylePack, setNextStylePack] = useState(run.stylePack);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState("");
   useEffect(() => {
     const timer = window.setTimeout(() => setNextStylePack(run.stylePack), 0);
     return () => window.clearTimeout(timer);
@@ -1172,24 +1789,51 @@ function DeckInlineRun({ service, run, busy, onConfirm, onReplan, onCreatePpt, o
   const statusText = deckStatusText(run.status);
   const pptUrl = `/api/employee/services/${service.id}/deck-generation/runs/${run.id}/ppt`;
   const pdfUrl = `/api/employee/services/${service.id}/deck-generation/runs/${run.id}/pdf`;
+  const imagesUrl = `/api/employee/services/${service.id}/deck-generation/runs/${run.id}/images`;
+  const previewsReady = run.slides.length > 0 && run.slides.every(slide => slide.status === "completed" && Boolean(slide.storedName));
+  const hasPdf = Boolean(run.pdfStoredName);
+  const actionsBusy = busy || exportBusy;
+
+  async function createPdf() {
+    setExportBusy(true);
+    setExportError("");
+    try {
+      const response = await fetch(pdfUrl, { method: "POST" });
+      const result = await response.json();
+      if (!response.ok) {
+        setExportError(result.error || "PDF 生成失败");
+        return;
+      }
+      onRunUpdate(result.run);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "PDF 生成失败");
+    } finally {
+      setExportBusy(false);
+    }
+  }
   return <section className="design-run design-deck-run">
     <div className="design-run-head">
       <div>
         <span className={`design-status ${run.status}`}>{statusText}</span>
         <h2>{run.projectName}</h2>
-        <small>{deckStylePacks.find(item => item.id === run.stylePack)?.label || run.stylePack} · {run.pageCount} 页 · {new Date(run.createdAt).toLocaleString("zh-CN")}</small>
+        <small>{run.generationMode === "advanced" ? "高级版" : "快速版"} · {deckStylePacks.find(item => item.id === run.stylePack)?.label || run.stylePack} · {run.pageCount} 页 · {new Date(run.createdAt).toLocaleString("zh-CN")}</small>
       </div>
-      <div>
-        {run.status === "plan_ready" && <><button className="design-apply" onClick={onConfirm} disabled={busy}>确认生成</button><button className="design-secondary" onClick={() => onReplan()} disabled={busy}>重新生成方案</button><button className="design-secondary" onClick={() => onReplan(nextStylePack)} disabled={busy}>调整风格</button></>}
-        {["review_ready", "pdf_ready"].includes(run.status) && <button className="design-apply" onClick={onCreatePpt} disabled={busy}>生成 PPT</button>}
-        {run.status === "pdf_ready" && <a className="design-apply" href={pdfUrl}><Download/>下载 PDF</a>}
+      <div className="deck-export-actions">
+        {run.status === "failed" && !hasPdf && <button className="design-apply" onClick={() => onReplan()} disabled={actionsBusy}>重新分析资料</button>}
+        {run.status === "plan_ready" && <><button className="design-apply" onClick={onConfirm} disabled={actionsBusy}>确认生成</button><button className="design-secondary" onClick={() => onReplan()} disabled={actionsBusy}>重新生成方案</button><button className="design-secondary" onClick={() => onReplan(nextStylePack)} disabled={actionsBusy}>调整风格</button></>}
+        {previewsReady && ["review_ready", "pdf_ready", "ppt_ready", "failed"].includes(run.status) && <a className="design-secondary" href={imagesUrl}><Download/>下载图组</a>}
+        {run.status === "review_ready" && !hasPdf && <button className="design-secondary" onClick={() => void createPdf()} disabled={actionsBusy}>{exportBusy ? <LoaderCircle className="spin"/> : <FileText/>}生成 PDF</button>}
+        {hasPdf && ["review_ready", "pdf_ready", "ppt_ready", "failed"].includes(run.status) && <a className="design-secondary" href={pdfUrl}><Download/>下载 PDF</a>}
+        {["review_ready", "pdf_ready"].includes(run.status) && <button className="design-apply" onClick={onCreatePpt} disabled={actionsBusy}>生成 PPT</button>}
+        {run.status === "failed" && hasPdf && <button className="design-apply" onClick={onCreatePpt} disabled={actionsBusy}>重试生成 PPT</button>}
         {run.status === "ppt_ready" && <a className="design-apply" href={pptUrl}><Download/>下载 PPT</a>}
       </div>
     </div>
     {run.error && <div className="design-error">{run.error}</div>}
-    {["queued", "planning"].includes(run.status) && <section className="deck-waiting inline"><LoaderCircle className="spin"/><h3>正在生成大纲和视觉方案</h3><p>后台会先生成 visual_identity、visual_storyboard 和 slide_image_specs，再按页生成 16:9 页面图。</p></section>}
-    {run.status === "plan_ready" && <section className="deck-plan-review inline"><article><span>视觉方案</span><h3>{deckStylePacks.find(item => item.id === run.stylePack)?.label || run.stylePack}</h3><p>确认后会按页生成 16:9 页面图，最后合成 PDF 并通过 Codia 转成 PPTX。</p><label className="deck-plan-style">调整风格<select value={nextStylePack} onChange={event => setNextStylePack(event.target.value)}>{deckStylePacks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label></article><article><span>页面节奏</span><ol>{run.slides.map(slide => <li key={slide.id}><b>{slide.title || `第 ${slide.slideIndex} 页`}</b><small>{slide.role || "content"}</small></li>)}</ol></article></section>}
-    {["generating", "review_ready", "pdf_queued", "pdf_ready", "ppt_queued", "ppt_processing", "ppt_ready"].includes(run.status) && <section className="deck-slide-review inline"><div className="deck-progress"><b>{done}/{run.pageCount}</b><span>{statusText}</span></div><div className="deck-slide-grid">{run.slides.map(slide => {
+    {exportError && <div className="design-error">{exportError}</div>}
+    {["sources_queued", "source_processing", "queued", "planning", "confirmed"].includes(run.status) && <><DeckSourceSummary run={run}/><section className="deck-waiting inline"><LoaderCircle className="spin"/><h3>{["sources_queued", "source_processing"].includes(run.status) ? "正在读取并整理参考资料" : run.status === "confirmed" ? "方案已确认，正在安排页面生成" : "正在生成完整 PPT 方案"}</h3><p>{["sources_queued", "source_processing"].includes(run.status) ? "系统会保留文件名、页码、幻灯片号和工作表位置，再从可靠内容中组织方案。" : run.status === "confirmed" ? "页面预览将在这里逐张出现；确认之后仍可单页重新生成或要求贴近上一页。" : "快速版会自动组织页面结构、信息密度和视觉节奏；完成后仍由你确认，确认前不会生成图片。"}</p></section></>}
+    {run.status === "plan_ready" && <><DeckSourceSummary run={run}/><section className="deck-plan-review inline deck-quick-plan"><article><span>快速版视觉方案</span><h3>{deckStylePacks.find(item => item.id === run.stylePack)?.label || run.stylePack}</h3><p>系统已自动整理内容结构与页面节奏。正文页允许标准或紧凑信息密度，避免只放几个空卡片；数字、日期和专名只采用已读取资料中的内容。</p><label className="deck-plan-style">调整风格<select value={nextStylePack} onChange={event => setNextStylePack(event.target.value)}>{deckStylePacks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label></article><article><span>逐页方案</span><ol>{run.slides.map(slide => { const spec = parseDeckObject(slide.specJson); const density = String(spec.text_density || "medium"); const summary = String(spec.content_summary || ""); return <li key={slide.id}><b>{slide.title || `第 ${slide.slideIndex} 页`}</b><small>{slide.role || "content"} · {density === "high" ? "紧凑信息页" : density === "low" ? "少文字强视觉" : "标准信息页"}</small>{summary && <p>{summary}</p>}</li>; })}</ol></article></section></>}
+    {["generating", "review_ready", "pdf_queued", "pdf_ready", "ppt_queued", "ppt_processing", "ppt_ready", "failed"].includes(run.status) && <section className="deck-slide-review inline"><div className="deck-progress"><b>{done}/{run.pageCount}</b><span>{statusText}</span></div><div className="deck-slide-grid">{run.slides.map(slide => {
       const canRegenerate = ["completed", "failed"].includes(slide.status);
       return <article key={slide.id}><header><b>{slide.title || `第 ${slide.slideIndex} 页`}</b><span>{slide.role || slide.status}</span></header><button className="deck-slide-preview" disabled={!slide.storedName} onClick={() => slide.storedName && onPreview({ url: `/api/employee/services/${service.id}/deck-generation/runs/${run.id}/slides/${slide.id}/image?v=${encodeURIComponent(slide.updatedAt)}`, title: slide.title || `第 ${slide.slideIndex} 页` })}>{slide.storedName ? <img src={`/api/employee/services/${service.id}/deck-generation/runs/${run.id}/slides/${slide.id}/image?v=${encodeURIComponent(slide.updatedAt)}`} alt={slide.title}/> : <><LoaderCircle className="spin"/><span>{slide.status}</span></>}</button>{slide.error && <p>{slide.error}</p>}<footer><button onClick={() => onRegenerate(slide.id, "reroll")} disabled={busy || !canRegenerate}>重新生成本页</button><button onClick={() => onRegenerate(slide.id, "closer_previous")} disabled={busy || !canRegenerate}>更贴近上一页</button></footer></article>;
     })}</div></section>}
@@ -1675,6 +2319,8 @@ function AiPanel({ service, employee, refresh, notify }: { service: Service; emp
   const [textModelId, setTextModelId] = useState("");
   const [imageModelId, setImageModelId] = useState("");
   const [openAiHealth, setOpenAiHealth] = useState<OpenAiHealth | null>(null);
+  const [openAiHealthChecking, setOpenAiHealthChecking] = useState(false);
+  const [openAiHealthCheckNonce, setOpenAiHealthCheckNonce] = useState(0);
   const [chatText, setChatText] = useState("");
   const [pendingChat, setPendingChat] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
@@ -1704,15 +2350,19 @@ function AiPanel({ service, employee, refresh, notify }: { service: Service; emp
   const processingImageJobIds = displayImageJobs.filter(job => job.status === "processing").map(job => job.id).join("|");
   const imageFeedKey = images.map(image => image.id).join("|") + ":" + displayImageJobs.map(job => job.id + job.status).join("|");
   const selectedImageModel = imageModels.find(model => model.id === imageModelId) || imageModels[0];
-  const selectedImageSupportsReference = selectedImageModel?.provider !== "ark";
+  const selectedImageSupportsReference = selectedImageModel?.provider === "openai"
+    ? Boolean(openAiHealth?.image?.supportsEdits)
+    : false;
   const imageProviderHealth = selectedImageModel?.provider === "ark"
     ? {
       ok: selectedImageModel.available,
       text: selectedImageModel.available ? "Seedream 5.0 已配置 ARK_API_KEY" : "尚未配置 ARK_API_KEY"
     }
     : {
-      ok: Boolean(openAiHealth?.ok),
-      text: openAiHealth?.ok ? "OpenAI 已连通" : openAiHealth?.error || "正在检查 OpenAI..."
+      ok: Boolean(openAiHealth?.image?.ok),
+      text: openAiHealth?.image?.ok
+        ? `${openAiHealth.image.serviceName} 已配置`
+        : openAiHealth?.image?.error || openAiHealth?.error || "正在检查图片中转服务..."
     };
 
   useEffect(() => {
@@ -1734,18 +2384,31 @@ function AiPanel({ service, employee, refresh, notify }: { service: Service; emp
 
   useEffect(() => {
     let cancelled = false;
+    let nextCheck: number | undefined;
     async function loadOpenAiHealth() {
+      if (!cancelled) setOpenAiHealthChecking(true);
+      let retryAfter = 10000;
       try {
         const response = await fetch("/api/employee/ai/openai-health", { cache: "no-store" });
         const result = await response.json();
-        if (!cancelled) setOpenAiHealth(response.ok ? result : { ok: false, error: result.error || "OpenAI 检查失败" });
+        const health = response.ok ? result : { ok: false, error: result.error || "中转配置检查失败" };
+        retryAfter = health.ok ? 60000 : 10000;
+        if (!cancelled) setOpenAiHealth(health);
       } catch {
-        if (!cancelled) setOpenAiHealth({ ok: false, error: "OpenAI 检查失败" });
+        if (!cancelled) setOpenAiHealth({ ok: false, error: "中转配置检查失败" });
+      } finally {
+        if (!cancelled) {
+          setOpenAiHealthChecking(false);
+          nextCheck = window.setTimeout(() => void loadOpenAiHealth(), retryAfter);
+        }
       }
     }
     void loadOpenAiHealth();
-    return () => { cancelled = true; };
-  }, [service.id]);
+    return () => {
+      cancelled = true;
+      if (nextCheck !== undefined) window.clearTimeout(nextCheck);
+    };
+  }, [service.id, openAiHealthCheckNonce]);
 
   useEffect(() => {
     const target = tab === "chat" ? chatFeedRef.current : imageFeedRef.current;
@@ -1785,7 +2448,7 @@ function AiPanel({ service, employee, refresh, notify }: { service: Service; emp
 
   async function sendChat() {
     if (!chatText.trim() || chatBusy) return;
-    if (textModelId.startsWith("openai:") && openAiHealth && !openAiHealth.ok) return notify(openAiHealth.error || "OpenAI 当前不可用");
+    if (textModelId.startsWith("openai:") && openAiHealth?.text && !openAiHealth.text.ok) return notify(openAiHealth.text.error || "文字中转服务当前不可用");
     const content = chatText.trim();
     setPendingChat(content);
     setChatBusy(true);
@@ -1806,7 +2469,7 @@ function AiPanel({ service, employee, refresh, notify }: { service: Service; emp
 
   async function generate() {
     if (!prompt.trim() || busy) return;
-    if (selectedImageModel?.provider === "openai" && openAiHealth && !openAiHealth.ok) return notify(openAiHealth.error || "OpenAI 当前不可用");
+    if (selectedImageModel?.provider === "openai" && openAiHealth?.image && !openAiHealth.image.ok) return notify(openAiHealth.image.error || "图片中转服务当前不可用");
     if (selectedImageModel?.provider === "ark" && !selectedImageModel.available) return notify("尚未配置 ARK_API_KEY");
     const form = new FormData();
     form.set("prompt", prompt);
@@ -1876,8 +2539,8 @@ function AiPanel({ service, employee, refresh, notify }: { service: Service; emp
   return <aside className="ai-panel">
     <header><div><WandSparkles/><span><b>AI 创作助手</b><small>{employee.name} 的独立上下文</small></span></div><i>AI</i></header>
     <div className="ai-tabs"><button className={tab === "chat" ? "active" : ""} onClick={() => setTab("chat")}><Bot/>文本助手</button><button className={tab === "image" ? "active" : ""} onClick={() => setTab("image")}><ImagePlus/>AI 图片</button></div>
-    {tab === "image" && selectedImageModel && <div className={"ai-health " + (imageProviderHealth.ok ? "ok" : "error")}>{imageProviderHealth.text}</div>}
-    {tab === "chat" && openAiHealth && <div className={"ai-health " + (openAiHealth.ok ? "ok" : "error")}>{openAiHealth.ok ? "OpenAI 已连通" : openAiHealth.error}</div>}
+    {tab === "image" && selectedImageModel && <div className={"ai-health " + (imageProviderHealth.ok ? "ok" : "error")}><span>{imageProviderHealth.text}</span>{selectedImageModel.provider === "openai" && !imageProviderHealth.ok && <button title="重新检查图片中转配置" onClick={() => setOpenAiHealthCheckNonce(value => value + 1)} disabled={openAiHealthChecking}><RefreshCw className={openAiHealthChecking ? "spin" : ""}/></button>}</div>}
+    {tab === "chat" && openAiHealth?.text && <div className={"ai-health " + (openAiHealth.text.ok ? "ok" : "error")}><span>{openAiHealth.text.ok ? `${openAiHealth.text.serviceName} 已配置` : openAiHealth.text.error}</span>{!openAiHealth.text.ok && <button title="重新检查文字中转配置" onClick={() => setOpenAiHealthCheckNonce(value => value + 1)} disabled={openAiHealthChecking}><RefreshCw className={openAiHealthChecking ? "spin" : ""}/></button>}</div>}
     {tab === "chat" ? <>
       <div className="ai-model-row"><select value={textModelId} onChange={event => setTextModelId(event.target.value)}>{textModels.map(model => <option key={model.id} value={model.id}>{model.label}{model.available ? "" : "（未配置）"}</option>)}</select></div>
       <div ref={chatFeedRef} className="ai-chat-feed">
@@ -2385,6 +3048,8 @@ function SmartStudio({ service, notify }: { service: Service; notify: (text: str
   const [imagePrompt, setImagePrompt] = useState("");
   const [imageCount, setImageCount] = useState(1);
   const [imageBusy, setImageBusy] = useState(false);
+  const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
+
   const unityOptions = { ...defaultDeckUnityOptions };
 
   const loadRuns = useCallback(async () => {
@@ -2397,7 +3062,7 @@ function SmartStudio({ service, notify }: { service: Service; notify: (text: str
 
   useEffect(() => { const timer = window.setTimeout(() => void loadRuns(), 0); return () => window.clearTimeout(timer); }, [loadRuns]);
   useEffect(() => {
-    if (!activeRun || !["queued", "planning", "generating", "pdf_queued", "ppt_queued", "ppt_processing"].includes(activeRun.status)) return;
+    if (!activeRun || !["sources_queued", "source_processing", "queued", "planning", "matching_queued", "matching", "confirmed", "generating", "pdf_queued", "ppt_queued", "ppt_processing"].includes(activeRun.status)) return;
     const timer = window.setInterval(() => void loadRuns(), 2400);
     return () => window.clearInterval(timer);
   }, [activeRun, loadRuns]);
@@ -2458,6 +3123,25 @@ function SmartStudio({ service, notify }: { service: Service; notify: (text: str
     }
   }
 
+  async function replanRun(stylePack?: string) {
+    if (!activeRun) return;
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/employee/services/${service.id}/deck-generation/runs/${activeRun.id}/replan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stylePack: stylePack || activeRun.stylePack })
+      });
+      const result = await responseJson(response);
+      if (!response.ok) return notify(result.error || "重新整理方案失败");
+      setRun(result.run as DeckGenerationRun);
+      notify("已重新整理生成 PPT 方案");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+
   async function regenerateSlide(slideId: string, action: "reroll" | "closer_previous") {
     if (!activeRun) return;
     setBusy(true);
@@ -2493,10 +3177,6 @@ function SmartStudio({ service, notify }: { service: Service; notify: (text: str
     }
   }
 
-  const deckDone = activeRun?.slides.filter(slide => slide.status === "completed").length || 0;
-  const pptUrl = activeRun ? `/api/employee/services/${service.id}/deck-generation/runs/${activeRun.id}/ppt` : "";
-  const pdfUrl = activeRun ? `/api/employee/services/${service.id}/deck-generation/runs/${activeRun.id}/pdf` : "";
-  const statusText = activeRun ? deckStatusText(activeRun.status) : "尚未开始";
 
   return <main className="design-studio smart-studio">
     <section className="design-board smart-board">
@@ -2508,7 +3188,7 @@ function SmartStudio({ service, notify }: { service: Service; notify: (text: str
           <button className={tool === "polish" ? "active" : ""} onClick={() => setTool("polish")}><WandSparkles/><span><b>美化 PPT</b><small>粗稿统一重绘</small></span></button>
           <button className={tool === "image" ? "active" : ""} onClick={() => setTool("image")}><ImagePlus/><span><b>生图</b><small>生成 16:9 PNG</small></span></button>
         </div>
-        {tool === "polish" ? <PolishPptPlanner service={service} note={polishNote} setNote={setPolishNote} notify={notify}/> : tool !== "image" && <div className="deck-generation-form">
+        {tool === "polish" ? <PolishPptPlanner service={service} note={polishNote} setNote={setPolishNote} notify={notify}/> : tool === "generate" ? <DeckGenerationForm service={service} notify={notify} onCreated={setRun}/> : false && tool !== "image" && <div className="deck-generation-form">
           <label>项目名称<input value={projectName} onChange={event => setProjectName(event.target.value)} placeholder="例如：新能源品牌年度发布会"/></label>
           {tool === "generate" && <label>比赛类型 / 用途<input value={projectType} onChange={event => setProjectType(event.target.value)} placeholder="例如：创新创业大赛 / 商业计划书"/></label>}
           <div className="deck-page-slider"><label>PPT 页数</label><div><input type="range" min={2} max={20} value={pageCount} style={{ "--range-progress": `${((pageCount - 2) / 18) * 100}%` } as CSSProperties} onChange={event => setPageCount(Number(event.target.value))}/><b>{pageCount}页</b></div></div>
@@ -2531,13 +3211,8 @@ function SmartStudio({ service, notify }: { service: Service; notify: (text: str
       </section>
     </section>
     <aside className="design-run-history smart-run-history">{runs.map(run => <button key={run.id} className={activeRun?.id === run.id ? "active" : ""} onClick={() => setActiveRun(run)}><span>生成 PPT</span><b>{run.projectName}</b><small>{deckStatusText(run.status)}</small></button>)}</aside>
-    {activeRun && <section className="deck-generation-overlay smart-overlay">
-      <header><div><span>DECK GENERATION</span><h2>{activeRun.projectName}</h2><p>{deckStylePacks.find(item => item.id === activeRun.stylePack)?.label || activeRun.stylePack} · {activeRun.pageCount} 页 · {statusText}</p></div><div>{activeRun.status === "plan_ready" && <button onClick={() => void confirmRun()} disabled={busy}>确认生成</button>}{["review_ready", "pdf_ready"].includes(activeRun.status) && <button onClick={() => void createPpt()} disabled={busy}>生成 PPT</button>}{activeRun.status === "pdf_ready" && <a href={pdfUrl}><Download/>下载 PDF</a>}{activeRun.status === "ppt_ready" && <a href={pptUrl}><Download/>下载 PPT</a>}</div></header>
-      {activeRun.error && <div className="design-error">{activeRun.error}</div>}
-      {["queued", "planning"].includes(activeRun.status) && <section className="deck-waiting"><LoaderCircle className="spin"/><h3>正在生成大纲和视觉方案</h3><p>后台会生成统一视觉规则、页面节奏和逐页规格，避免每张图风格漂移。</p></section>}
-      {activeRun.status === "plan_ready" && <section className="deck-plan-review"><article><span>视觉方案</span><h3>{deckStylePacks.find(item => item.id === activeRun.stylePack)?.label}</h3><p>确认后会按页生成 16:9 页面图，最后合成 PDF 并通过 Codia 转成 PPTX。</p></article><article><span>页面节奏</span><ol>{activeRun.slides.map(slide => <li key={slide.id}><b>{slide.title || `第 ${slide.slideIndex} 页`}</b><small>{slide.role || "content"}</small></li>)}</ol></article></section>}
-      {["generating", "review_ready", "pdf_queued", "pdf_ready", "ppt_queued", "ppt_processing", "ppt_ready"].includes(activeRun.status) && <section className="deck-slide-review"><div className="deck-progress"><b>{deckDone}/{activeRun.pageCount}</b><span>{statusText}</span></div><div className="deck-slide-grid">{activeRun.slides.map(slide => { const canRegenerate = ["completed", "failed"].includes(slide.status); return <article key={slide.id}><header><b>{slide.title || `第 ${slide.slideIndex} 页`}</b><span>{slide.role || slide.status}</span></header><button className="deck-slide-preview" disabled={!slide.storedName}>{slide.storedName ? <img src={`/api/employee/services/${service.id}/deck-generation/runs/${activeRun.id}/slides/${slide.id}/image?v=${encodeURIComponent(slide.updatedAt)}`} alt={slide.title}/> : <><LoaderCircle className="spin"/><span>{slide.status}</span></>}</button>{slide.error && <p>{slide.error}</p>}<footer><button onClick={() => void regenerateSlide(slide.id, "reroll")} disabled={busy || !canRegenerate}>重新生成本页</button><button onClick={() => void regenerateSlide(slide.id, "closer_previous")} disabled={busy || !canRegenerate}>更贴近上一页</button></footer></article>; })}</div></section>}
-    </section>}
+    {activeRun && <section className="deck-generation-overlay smart-overlay"><DeckGenerationRunPanel service={service} run={activeRun} busy={busy} onRunUpdate={setRun} onConfirm={() => void confirmRun()} onReplan={(stylePack) => void replanRun(stylePack)} onCreatePpt={() => void createPpt()} onRegenerate={(slideId, action) => void regenerateSlide(slideId, action)} onPreview={setPreviewImage}/></section>}
+    {previewImage && <ExplodeImagePreview image={previewImage} onClose={() => setPreviewImage(null)}/>}
   </main>;
 }
 
@@ -2548,12 +3223,17 @@ function formatDateTime(value: string) { return new Date(value).toLocaleString("
 function deckStatusText(status: string) {
   return ({
     queued: "排队中",
+    sources_queued: "资料排队中",
+    source_processing: "正在读取资料",
+    outline_ready: "待确认逐页结构",
+    matching_queued: "逐页取材排队中",
+    matching: "正在逐页匹配资料",
     planning: "生成方案中",
     plan_ready: "待确认方案",
     confirmed: "排队执行",
     generating: "生成页面中",
     review_ready: "预览待确认",
-    pdf_queued: "准备转 PPT",
+    pdf_queued: "正在生成 PDF",
     pdf_ready: "PDF 已生成",
     ppt_queued: "Codia 排队中",
     ppt_processing: "Codia 转换中",
@@ -2564,4 +3244,153 @@ function deckStatusText(status: string) {
 
 function statusSlug(status: string) {
   return ({ "待开始": "waiting", "制作中": "making", "待客户确认": "confirm", "修改中": "revision", "已完成": "done" } as Record<string, string>)[status] || "making";
+}
+function formatDeckFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function DeckGenerationForm({ service, notify, onCreated }: {
+  service: Service;
+  notify: (text: string) => void;
+  onCreated: (run: DeckGenerationRun) => void;
+}) {
+  const [generationMode, setGenerationMode] = useState<"quick" | "advanced">("quick");
+  const [projectName, setProjectName] = useState(service.title);
+  const [projectType, setProjectType] = useState("");
+  const [pageCount, setPageCount] = useState(12);
+  const [stylePack, setStylePack] = useState("blue-gold-tech");
+  const [brief, setBrief] = useState("");
+  const [referenceText, setReferenceText] = useState("");
+  const [outlineText, setOutlineText] = useState("");
+  const [outlineFile, setOutlineFile] = useState<File | null>(null);
+  const [sourceFiles, setSourceFiles] = useState<File[]>([]);
+  const [paletteMode, setPaletteMode] = useState<"preset" | "reference">("preset");
+  const [themeReference, setThemeReference] = useState<File | null>(null);
+  const [themePreview, setThemePreview] = useState("");
+  const [unityOptions, setUnityOptions] = useState({ ...defaultDeckUnityOptions });
+  const [submitting, setSubmitting] = useState(false);
+  const sourceInputRef = useRef<HTMLInputElement>(null);
+  const outlineInputRef = useRef<HTMLInputElement>(null);
+  const themeInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => () => { if (themePreview) URL.revokeObjectURL(themePreview); }, [themePreview]);
+
+  function addSourceFiles(files: File[]) {
+    const allowed = /\.(pdf|docx|xlsx|pptx|txt|md|csv|json|png|jpe?g|webp)$/i;
+    const accepted = files.filter(file => allowed.test(file.name) && file.size <= 200 * 1024 * 1024);
+    if (!accepted.length) return notify("请选择 PDF、DOCX、XLSX、PPTX、文本或常见图片，单个不超过 200MB");
+    setSourceFiles(current => {
+      const unique = new Map(current.map(file => [`${file.name}:${file.size}:${file.lastModified}`, file]));
+      accepted.forEach(file => unique.set(`${file.name}:${file.size}:${file.lastModified}`, file));
+      const next = Array.from(unique.values()).slice(0, 30);
+      if (unique.size > 30) notify("一次最多读取 30 份参考资料");
+      return next;
+    });
+  }
+
+  function chooseTheme(file?: File) {
+    if (!file) return;
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type) || file.size > 20 * 1024 * 1024) {
+      return notify("配色参考图请使用不超过 20MB 的 PNG、JPEG 或 WebP");
+    }
+    if (themePreview) URL.revokeObjectURL(themePreview);
+    setThemeReference(file);
+    setThemePreview(URL.createObjectURL(file));
+    setPaletteMode("reference");
+  }
+
+  async function submit() {
+    if (!projectName.trim()) return notify("请填写项目名称");
+    if (!brief.trim()) return notify("请填写项目简介");
+    if (generationMode === "advanced" && !outlineText.trim() && !outlineFile) return notify("高级版请填写每页结构，或上传一份大纲文件");
+    if (paletteMode === "reference" && !themeReference) return notify("请上传一张配色参考图，或改用内置配色");
+    const totalBytes = sourceFiles.reduce((total, file) => total + file.size, 0) + (outlineFile?.size || 0) + (themeReference?.size || 0);
+    if (totalBytes > 500 * 1024 * 1024) return notify("本次全部资料合计不能超过 500MB");
+    const form = new FormData();
+    form.set("generationMode", generationMode);
+    form.set("projectName", projectName.trim());
+    form.set("projectType", projectType.trim());
+    form.set("pageCount", String(pageCount));
+    form.set("stylePack", stylePack);
+    form.set("brief", brief.trim());
+    form.set("referenceText", referenceText.trim());
+    form.set("outlineText", outlineText.trim());
+    form.set("paletteMode", paletteMode);
+    form.set("unityOptions", JSON.stringify(unityOptions));
+    sourceFiles.forEach(file => form.append("references", file));
+    if (outlineFile) form.set("outlineFile", outlineFile);
+    if (paletteMode === "reference" && themeReference) form.set("themeReference", themeReference);
+    setSubmitting(true);
+    try {
+      const response = await fetch(`/api/employee/services/${service.id}/deck-generation/runs`, { method: "POST", body: form });
+      const result = await responseJson(response);
+      if (!response.ok) return notify(result.error || "生成 PPT 任务创建失败");
+      onCreated(result.run as DeckGenerationRun);
+      notify(generationMode === "advanced" ? "已开始读取资料，完成后请确认逐页结构" : "已开始读取资料并生成快速方案");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return <section className="deck-generation-form deck-create-form">
+    <div className="deck-version-switch" role="tablist" aria-label="生成版本">
+      <button type="button" className={generationMode === "quick" ? "active" : ""} onClick={() => setGenerationMode("quick")}>
+        <Sparkles/><span><b>快速版</b><small>少填写，自动整理完整方案</small></span>
+      </button>
+      <button type="button" className={generationMode === "advanced" ? "active" : ""} onClick={() => setGenerationMode("advanced")}>
+        <FileText/><span><b>高级版</b><small>按你的逐页结构，从大量资料取材</small></span>
+      </button>
+    </div>
+
+    <div className="deck-create-grid">
+      <label>项目名称<input value={projectName} onChange={event => setProjectName(event.target.value)}/></label>
+      <label>汇报类型 / 用途<input value={projectType} onChange={event => setProjectType(event.target.value)} placeholder="例如：领导汇报 / 学校介绍 / 商业计划书"/></label>
+    </div>
+    {generationMode === "quick" ? <div className="deck-page-slider">
+      <label>PPT 页数</label>
+      <div><input type="range" min={2} max={30} value={pageCount} onChange={event => setPageCount(Number(event.target.value))} style={{ "--range-progress": `${((pageCount - 2) / 28) * 100}%` } as CSSProperties}/><b>{pageCount}页</b></div>
+    </div> : <div className="deck-page-count-note"><FileText/><span><b>页数由你的结构决定</b><small>资料读取完成后，可以增加、删除和调整每一页</small></span></div>}
+    <label>项目简介<textarea value={brief} onChange={event => setBrief(event.target.value)} placeholder="说明汇报背景、对象、目标和必须回答的问题。"/></label>
+
+    {generationMode === "advanced" && <section className="deck-outline-input">
+      <header><div><b>你决定 PPT 结构</b><span>可以只写每页大标题，也可以继续规定小标题和想讲的内容</span></div><button type="button" onClick={() => outlineInputRef.current?.click()}><Upload/>上传大纲</button></header>
+      <textarea value={outlineText} onChange={event => setOutlineText(event.target.value)} placeholder={"示例：\n第1页 封面：项目名称与核心口号\n第2页 学校办学条件\n- 小标题：学校规模、教学资源、实训条件\n- 想讲：用资料里的最新数据说明优势\n第3页 科研平台……"}/>
+      {outlineFile && <div className="deck-outline-file"><FileText/><span>{outlineFile.name}</span><button type="button" onClick={() => setOutlineFile(null)} aria-label="移除大纲文件"><X/></button></div>}
+      <input ref={outlineInputRef} type="file" hidden accept=".pdf,.docx,.xlsx,.pptx,.txt,.md" onChange={event => setOutlineFile(event.target.files?.[0] || null)}/>
+    </section>}
+
+    <label>补充要求（可选）<textarea value={referenceText} onChange={event => setReferenceText(event.target.value)} placeholder={generationMode === "quick" ? "可粘贴评审要求、重点信息和内容偏好；大量资料直接拖到下方。" : "可补充整套汇报的总要求、禁用表达和必须强调的结论。"}/></label>
+
+    <section className="deck-source-section">
+      <header><div><b>参考资料</b><span>{sourceFiles.length ? `已加入 ${sourceFiles.length} 份，系统会按页码和工作表保留来源` : "可一次拖入多份大资料，用户不用预先整理"}</span></div></header>
+      <div className="deck-reference-drop deck-source-drop" onClick={() => sourceInputRef.current?.click()} onDragOver={event => event.preventDefault()} onDrop={(event: DragEvent<HTMLDivElement>) => { event.preventDefault(); addSourceFiles(Array.from(event.dataTransfer.files || [])); }}>
+        <Upload/><b>把全部资料拖到这里</b><span>支持 PDF、Word、Excel、PPT、文本和图片；最多 30 份，合计 500MB</span>
+      </div>
+      <input ref={sourceInputRef} type="file" hidden multiple accept=".pdf,.docx,.xlsx,.pptx,.txt,.md,.csv,.json,.png,.jpg,.jpeg,.webp" onChange={event => addSourceFiles(Array.from(event.target.files || []))}/>
+      {sourceFiles.length > 0 && <div className="deck-source-list">{sourceFiles.map((file, index) => <article key={`${file.name}:${file.lastModified}`}><FileText/><span><b>{file.name}</b><small>{formatDeckFileSize(file.size)}</small></span><button type="button" onClick={() => setSourceFiles(current => current.filter((_, itemIndex) => itemIndex !== index))} aria-label={`移除 ${file.name}`}><X/></button></article>)}</div>}
+    </section>
+
+    <section className="deck-palette-section">
+      <header><b>配色主题</b><span>选内置配色，或让系统从参考图提取颜色关系</span></header>
+      <div className="deck-palette-grid">
+        <button type="button" className={paletteMode === "preset" ? "active" : ""} onClick={() => setPaletteMode("preset")}><Check/><span><b>内置配色</b><small>稳定、快速，适合没有参考图时</small></span></button>
+        <button type="button" className={paletteMode === "reference" ? "active" : ""} onClick={() => setPaletteMode("reference")}><ImagePlus/><span><b>参考图配色</b><small>分析颜色，不照抄参考图版式</small></span></button>
+      </div>
+      {paletteMode === "preset" ? <label>风格包<select value={stylePack} onChange={event => setStylePack(event.target.value)}>{deckStylePacks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label> : <div className="deck-theme-reference" onClick={() => themeInputRef.current?.click()} onDragOver={event => event.preventDefault()} onDrop={(event: DragEvent<HTMLDivElement>) => { event.preventDefault(); chooseTheme(event.dataTransfer.files?.[0]); }}>
+        {themePreview ? <><img src={themePreview} alt="配色参考"/><div><b>{themeReference?.name}</b><span>将提取背景、文字、强调色及使用比例</span></div></> : <><ImagePlus/><div><b>上传一张配色参考图</b><span>PNG、JPEG 或 WebP，不要求它是 PPT</span></div></>}
+        <input ref={themeInputRef} type="file" hidden accept=".png,.jpg,.jpeg,.webp" onChange={event => chooseTheme(event.target.files?.[0])}/>
+      </div>}
+    </section>
+
+    <div className="deck-unity-options">
+      <label><input type="checkbox" checked={unityOptions.mainColor} onChange={event => setUnityOptions(current => ({ ...current, mainColor: event.target.checked }))}/>主色统一</label>
+      <label><input type="checkbox" checked={unityOptions.headerFooter} onChange={event => setUnityOptions(current => ({ ...current, headerFooter: event.target.checked }))}/>页眉页脚统一</label>
+      <label><input type="checkbox" checked={unityOptions.backgroundTexture} onChange={event => setUnityOptions(current => ({ ...current, backgroundTexture: event.target.checked }))}/>背景质感统一</label>
+      <label><input type="checkbox" checked={unityOptions.cardStyle} onChange={event => setUnityOptions(current => ({ ...current, cardStyle: event.target.checked }))}/>卡片样式统一</label>
+      <label><input type="checkbox" checked={unityOptions.decorativeElements} onChange={event => setUnityOptions(current => ({ ...current, decorativeElements: event.target.checked }))}/>装饰元素统一</label>
+    </div>
+    <button type="button" className="deck-create-submit" onClick={() => void submit()} disabled={submitting}>{submitting ? <LoaderCircle className="spin"/> : <Sparkles/>}{generationMode === "advanced" ? "读取资料并整理大纲" : "生成快速方案"}</button>
+  </section>;
 }

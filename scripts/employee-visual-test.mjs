@@ -3,18 +3,30 @@ import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
 
 const cwd = process.cwd();
+const port = 3010;
+const baseUrl = `http://127.0.0.1:${port}`;
 mkdirSync(".artifacts", { recursive: true });
 
 const server = spawn(
-  "C:\\node.exe",
-  ["node_modules/next/dist/bin/next", "start", "-p", "3000"],
-  { cwd, stdio: "pipe", windowsHide: true }
+  process.execPath,
+  ["node_modules/next/dist/bin/next", "dev", "--webpack", "-p", String(port)],
+  {
+    cwd,
+    stdio: "pipe",
+    windowsHide: true,
+    env: {
+      ...process.env,
+      NEXT_DIST_DIR: ".next-employee-visual",
+      WECHAT_DEV_BYPASS: "1",
+      WECHAT_CALLBACK_ORIGIN: baseUrl
+    }
+  }
 );
 
 async function waitForServer() {
-  for (let i = 0; i < 40; i += 1) {
+  for (let i = 0; i < 120; i += 1) {
     try {
-      const response = await fetch("http://127.0.0.1:3000/employee");
+      const response = await fetch(`${baseUrl}/employee`);
       if (response.ok) return;
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -29,22 +41,21 @@ try {
     headless: true
   });
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 1 });
-  await page.goto("http://127.0.0.1:3000/employee", { waitUntil: "networkidle" });
+  await page.goto(`${baseUrl}/employee`, { waitUntil: "networkidle" });
   await page.screenshot({ path: ".artifacts/employee-login.png", fullPage: true });
+  await page.getByRole("tab", { name: "企业微信" }).click();
+  await page.waitForSelector("text=企业微信扫码登录尚未接通");
+  await page.screenshot({ path: ".artifacts/employee-login-wecom.png", fullPage: true });
+  await page.getByRole("tab", { name: "微信", exact: true }).click();
+  await page.waitForSelector("text=本地开发：进入平台管理员");
 
-  await page.getByPlaceholder("请输入绑定手机号").fill("15875754338");
-  await page.getByPlaceholder("8 位员工码").fill("12345678");
-  await page.getByRole("button", { name: "获取短信验证码" }).click();
-  const codeVisible = await page.getByPlaceholder("6 位验证码").waitFor({ state: "visible", timeout: 3000 }).then(() => true).catch(() => false);
-  if (!codeVisible) {
-    await page.waitForTimeout(61000);
-    await page.getByRole("button", { name: "获取短信验证码" }).click();
-    await page.getByPlaceholder("6 位验证码").waitFor({ state: "visible", timeout: 5000 });
-  }
-  await page.getByPlaceholder("6 位验证码").fill("123456");
-  await page.getByRole("button", { name: "验证并进入员工工作台" }).click();
+  await page.getByRole("button", { name: "本地开发：进入平台管理员" }).click();
   await page.waitForSelector("text=把每一份托付", { timeout: 15000 });
   await page.screenshot({ path: ".artifacts/employee-orders.png", fullPage: false });
+  await page.getByRole("button", { name: "管理控制台" }).click();
+  await page.waitForSelector(".employee-member-row", { timeout: 10000 });
+  await page.screenshot({ path: ".artifacts/employee-admin.png", fullPage: false });
+  await page.getByRole("button", { name: "订单任务" }).click();
   const workspaceButtonCount = await page.getByRole("button", { name: /进入工作台/ }).count();
 
   const firstWorkspaceButton = page.getByRole("button", { name: /进入工作台/ }).first();
@@ -59,14 +70,16 @@ try {
   const directReentry = await page.locator(".ppt-workspace").count();
 
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
-  await mobile.goto("http://127.0.0.1:3000/employee", { waitUntil: "networkidle" });
+  await mobile.goto(`${baseUrl}/employee`, { waitUntil: "networkidle" });
   await mobile.waitForTimeout(2500);
   await mobile.screenshot({ path: ".artifacts/employee-mobile-block.png", fullPage: true });
 
   console.log(JSON.stringify({
     screenshots: [
       "employee-login.png",
+      "employee-login-wecom.png",
       "employee-orders.png",
+      "employee-admin.png",
       "employee-workspace.png",
       "employee-mobile-block.png"
     ],

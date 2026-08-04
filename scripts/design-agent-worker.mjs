@@ -4,7 +4,7 @@ import path from "path";
 import sharp from "sharp";
 import { PrismaClient } from "@prisma/client";
 const root = process.cwd();
-import { ProxyAgent, fetch as undiciFetch } from "undici";
+import { aiImageConfig, aiTextConfig, createServiceFetch, imageGenerationBody, requireImageEdits, requireImageService, requireTextService, textEndpoint, textFromResponse as textFromServiceResponse, textRequestBody } from "./ai-service-client.mjs";
 import { cleanBackgroundSkill, masterRenderSkill, partCutoutSkill, partDecompositionSkill, rebuildAlignmentSkill, textArtCutoutSkill } from "./design-agent-skills.mjs";
 
 loadEnv();
@@ -17,19 +17,15 @@ const projectCutoutSkillPath = path.join(root, "\u62a0\u56fe\u51c6\u5907\u5de5\u
 const arkEndpoint = process.env.ARK_RESPONSES_ENDPOINT || "https://ark.cn-beijing.volces.com/api/v3/responses";
 const deepseekModel = process.env.DEEPSEEK_TEXT_MODEL || "deepseek-v4-pro-260425";
 const doubaoVisionModel = process.env.DOUBAO_VISION_MODEL || process.env.DOUBAO_TEXT_MODEL || "doubao-seed-2-0-pro-260215";
-const openAiBaseUrl = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
-const openAiImageModel = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1.5";
-const openAiTextModel = process.env.OPENAI_TEXT_MODEL || process.env.OPENAI_RESPONSES_MODEL || "gpt-5.1";
-const openAiImageSizes = Array.from(new Set(
-  (process.env.OPENAI_IMAGE_SIZE || "auto,1536x1024")
-    .split(",")
-    .map(item => item.trim())
-    .filter(Boolean)
-));
+const textService = aiTextConfig();
+const imageService = aiImageConfig();
+const textRequest = createServiceFetch(textService);
+const imageRequest = createServiceFetch(imageService);
+const openAiImageModel = imageService.model;
+const openAiImageSizes = [imageService.size];
 const openAiPrimaryImageSize = openAiImageSizes[0] || "1536x1024";
 const pollMs = Math.max(1000, Number(process.env.DESIGN_AGENT_POLL_MS || 2500));
 const workerHeartbeatPath = path.join(root, ".next-dev", "design-agent-worker-heartbeat.json");
-let proxyAgent;
 let cachedProjectCutoutSkill = null;
 let workerHeartbeatState = "booting";
 let workerHeartbeatTimer = null;
@@ -228,21 +224,6 @@ function summaryHeroPrompt(plan, vision) {
   const palette = (vision.palette?.length ? vision.palette : plan.palette).join(", ");
   return `Create one original isolated presentation hero asset: ${plan.heroSubject}. Use only this neutral visual summary: mood ${vision.style}; palette ${palette}; rendering ${plan.imageDirection}. Do not include readable text, logos, watermarks, UI, cards, panels, borders, a complete slide, unrelated subjects, or cropped-off body parts. Keep the full subject clearly separated from its surroundings.`;
 }
-function getOpenAiFetch() {
-  const proxy = process.env.OPENAI_PROXY_URL;
-  if (proxy && !proxyAgent) proxyAgent = new ProxyAgent(proxy);
-  return async (url, init) => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 300000);
-    try {
-      if (proxyAgent) {
-        return await undiciFetch(url, { ...init, signal: controller.signal, dispatcher: proxyAgent });
-      }
-      return await fetch(url, { ...init, signal: controller.signal });
-    }
-    finally { clearTimeout(timer); }
-  };
-}
 function multipartBody(fields, files) {
   const boundary = `----WzlcFDesign${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`;
   const cleanHeaderValue = (value) => String(value).replace(/[\r\n"]/g, "_");
@@ -279,12 +260,13 @@ async function toContactSheet(files) {
   return await output.png().toBuffer();
 }
 async function openAiImageRaw(plan, vision, mode, references, promptOverride = "") {
-  if (!process.env.OPENAI_API_KEY) throw new Error("灏氭湭閰嶇疆 OPENAI_API_KEY");
-  const request = getOpenAiFetch();
+  requireImageService(imageService);
   const prompt = promptOverride || visualPrompt(plan, vision, mode);
-  const headers = { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` };
+  const headers = { Authorization: `Bearer ${imageService.apiKey}` };
   let response;
+
   if (mode === "mixed" && references.length) {
+    requireImageEdits(imageService);
     const orderedReferences = [...references].sort((a, b) => {
       const primary = Number(Boolean(b.isPrimary)) - Number(Boolean(a.isPrimary));
       if (primary) return primary;
@@ -292,7 +274,7 @@ async function openAiImageRaw(plan, vision, mode, references, promptOverride = "
     });
     const files = await Promise.all(orderedReferences.map(referenceBuffer));
     const primary = multipartBody(
-      { model: openAiImageModel, prompt, n: "1", size: openAiPrimaryImageSize, quality: "medium", output_format: "png" },
+      { model: openAiImageModel, prompt, n: "1", size: openAiPrimaryImageSize },
       files.map((file, index) => ({
         field: files.length === 1 ? "image" : "image[]",
         buffer: file.buffer,
@@ -300,39 +282,47 @@ async function openAiImageRaw(plan, vision, mode, references, promptOverride = "
         mime: file.mime
       }))
     );
-    response = await request(`${openAiBaseUrl}/images/edits`, { method: "POST", headers: { ...headers, "Content-Type": primary.contentType }, body: primary.body });
+    response = await imageRequest(`${imageService.baseUrl}/images/edits`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": primary.contentType },
+      body: primary.body
+    });
     let result = safeJson(await response.text(), {});
     if (!response.ok && files.length > 1 && !isOpenAiSafetyRejection(result)) {
       const contactSheet = await toContactSheet(files);
       const fallback = multipartBody(
-        { model: openAiImageModel, prompt: `${prompt}\nThe supplied image is a numbered reference board. Consider every tile.`, n: "1", size: openAiPrimaryImageSize, quality: "medium", output_format: "png" },
+        { model: openAiImageModel, prompt: `${prompt}\nThe supplied image is a numbered reference board. Consider every tile.`, n: "1", size: openAiPrimaryImageSize },
         [{ field: "image", buffer: contactSheet, name: "all-references.png", mime: "image/png" }]
       );
-      response = await request(`${openAiBaseUrl}/images/edits`, { method: "POST", headers: { ...headers, "Content-Type": fallback.contentType }, body: fallback.body });
+      response = await imageRequest(`${imageService.baseUrl}/images/edits`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": fallback.contentType },
+        body: fallback.body
+      });
       result = safeJson(await response.text(), {});
     }
-    if (!response.ok || !result.data?.[0]) throw providerHttpError("OpenAI", response, result, "OpenAI image generation failed");
-    const image = result.data[0];
-    if (image.b64_json) return Buffer.from(image.b64_json, "base64");
-    if (image.url) {
-      const download = await request(image.url, {});
-      if (!download.ok) throw new Error("OpenAI 生成图下载失败");
-      return Buffer.from(await download.arrayBuffer());
-    }
-    throw new Error("OpenAI 没有返回图片内容");
-  } else {
-    response = await request(`${openAiBaseUrl}/images/generations`, { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify({ model: openAiImageModel, prompt, n: 1, size: openAiPrimaryImageSize, quality: "medium", output_format: "png" }) });
+    if (!response.ok || !result.data?.[0]) throw providerHttpError(imageService.serviceName, response, result, "图片中转生成失败");
+    return imageBufferFromServiceResult(result.data[0]);
   }
+
+  response = await imageRequest(`${imageService.baseUrl}/images/generations`, {
+    method: "POST",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify(imageGenerationBody(imageService, prompt))
+  });
   const result = safeJson(await response.text(), {});
-  if (!response.ok || !result.data?.[0]) throw providerHttpError("OpenAI", response, result, "OpenAI image generation failed");
-  const image = result.data[0];
+  if (!response.ok || !result.data?.[0]) throw providerHttpError(imageService.serviceName, response, result, "图片中转生成失败");
+  return imageBufferFromServiceResult(result.data[0]);
+}
+
+async function imageBufferFromServiceResult(image) {
   if (image.b64_json) return Buffer.from(image.b64_json, "base64");
   if (image.url) {
-    const download = await request(image.url, {});
-    if (!download.ok) throw new Error("OpenAI 生成图下载失败");
+    const download = await imageRequest(image.url, {});
+    if (!download.ok) throw new Error(`${imageService.serviceName} 生成图下载失败`);
     return Buffer.from(await download.arrayBuffer());
   }
-  throw new Error("OpenAI 没有返回图片内容");
+  throw new Error(`${imageService.serviceName} 没有返回图片内容`);
 }
 function isOpenAiSafetyRejection(error) {
   const message = error && typeof error === "object" && !(error instanceof Error)
@@ -567,27 +557,26 @@ Background direction: ${plan.backgroundDirection || ""}
 Return only the clean background image.`;
 }
 async function openAiEditPng(buffer, prompt, name = "source.png") {
-  if (!process.env.OPENAI_API_KEY) throw new Error("灏氭湭閰嶇疆 OPENAI_API_KEY");
-  const request = getOpenAiFetch();
+  requireImageEdits(imageService);
   const body = multipartBody(
-    { model: openAiImageModel, prompt, n: "1", size: openAiPrimaryImageSize, quality: "medium", output_format: "png" },
+    { model: openAiImageModel, prompt, n: "1", size: openAiPrimaryImageSize },
     [{ field: "image", buffer, name, mime: "image/png" }]
   );
-  const response = await request(`${openAiBaseUrl}/images/edits`, {
+  const response = await imageRequest(`${imageService.baseUrl}/images/edits`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": body.contentType },
+    headers: { Authorization: `Bearer ${imageService.apiKey}`, "Content-Type": body.contentType },
     body: body.body
   });
   const result = safeJson(await response.text(), {});
-  if (!response.ok || !result.data?.[0]) throw providerHttpError("OpenAI", response, result, "OpenAI image edit returned no usable result");
+  if (!response.ok || !result.data?.[0]) throw providerHttpError(imageService.serviceName, response, result, "图片中转编辑没有返回可用结果");
   const image = result.data[0];
   if (image.b64_json) return Buffer.from(image.b64_json, "base64");
   if (image.url) {
-    const download = await request(image.url, {});
-    if (!download.ok) throw new Error("OpenAI 鍥剧墖缂栬緫缁撴灉涓嬭浇澶辫触");
+    const download = await imageRequest(image.url, {});
+    if (!download.ok) throw new Error(`${imageService.serviceName} 图片编辑结果下载失败`);
     return Buffer.from(await download.arrayBuffer());
   }
-  throw new Error("OpenAI 鍥剧墖缂栬緫娌℃湁杩斿洖鍥剧墖鍐呭");
+  throw new Error(`${imageService.serviceName} 图片编辑没有返回图片内容`);
 }
 // Legacy rebuild helper retained for the later downstream workflow.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -978,16 +967,15 @@ Strict output contract:
 Return only the clean 16:9 background plate.`;
 }
 async function openAiJsonResponse(content, label) {
-  if (!process.env.OPENAI_API_KEY) throw new Error("灏氭湭閰嶇疆 OPENAI_API_KEY");
-  const request = getOpenAiFetch();
-  const response = await request(`${openAiBaseUrl}/responses`, {
+  requireTextService(textService);
+  const response = await textRequest(textEndpoint(textService), {
     method: "POST",
-    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: openAiTextModel, input: [{ role: "user", content }], text: { format: { type: "json_object" } } })
+    headers: { Authorization: `Bearer ${textService.apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify(textRequestBody(textService, [{ role: "user", content }], { json: true }))
   });
   const result = safeJson(await response.text(), {});
-  if (!response.ok) throw providerHttpError("OpenAI", response, result, `${label} call failed`);
-  const text = textFromResponse(result);
+  if (!response.ok) throw providerHttpError(textService.serviceName, response, result, `${label} call failed`);
+  const text = textFromServiceResponse(result);
   if (!text) throw new Error(`${label} 娌℃湁杩斿洖鍐呭`);
   return jsonFromModel(text);
 }

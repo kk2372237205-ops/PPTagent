@@ -1,7 +1,8 @@
 import { spawn, spawnSync } from "child_process";
 import { closeSync, existsSync, openSync } from "fs";
-import { createServer } from "net";
 import path from "path";
+import { canListen, chooseDevPort } from "./dev-port.mjs";
+import { superviseProcessGroup } from "./process-group.mjs";
 
 function isBusyLockError(error) {
   return error?.code === "EBUSY" || error?.code === "EPERM";
@@ -31,30 +32,6 @@ if (existingDevHint) {
   process.exit(1);
 }
 
-function candidatePorts() {
-  const requested = Number(process.env.DEV_PORT || process.env.PORT || 0);
-  const defaults = [3000, 3001, ...Array.from({ length: 24 }, (_, index) => 3120 + index)];
-  return [...new Set([requested, ...defaults].filter(port => Number.isInteger(port) && port > 0 && port < 65536))];
-}
-
-function canListen(port, host = "0.0.0.0") {
-  return new Promise(resolve => {
-    const server = createServer();
-    const finish = (available) => {
-      server.removeAllListeners();
-      resolve(available);
-    };
-    server.once("error", () => finish(false));
-    server.listen({ host, port, exclusive: true }, () => server.close(() => finish(true)));
-  });
-}
-
-async function chooseDevPort() {
-  for (const port of candidatePorts()) {
-    if (await canListen(port)) return port;
-  }
-  throw new Error("找不到可用开发端口；请关闭占用端口的程序后重试。");
-}
 
 function componentExtractorPorts() {
   const requested = Number(process.env.COMPONENT_EXTRACTOR_PORT || 0);
@@ -117,26 +94,17 @@ const children = [
   { name: "Image explode worker", process: spawn(process.execPath, ["scripts/image-explode-worker.mjs"], { stdio: "inherit", shell: false, env: devEnv }) }
 ];
 
-let stopping = false;
-function stop(signal) {
-  if (stopping) return;
-  stopping = true;
-  children.forEach(child => child.process.kill(signal));
-}
-process.on("SIGINT", () => stop("SIGINT"));
-process.on("SIGTERM", () => stop("SIGTERM"));
+const supervisor = superviseProcessGroup(children, "development services");
 children.forEach(child => {
   child.process.on("spawn", () => console.log(`${child.name} started.`));
   child.process.on("error", (error) => {
     console.error(`${child.name} failed to start: ${error.message}`);
-    stop("SIGTERM");
-    process.exit(1);
+    supervisor.stop(1);
   });
   child.process.on("exit", (code) => {
-  if (!stopping && code && code !== 0) {
-    console.error(`${child.name} exited with code ${code}. Stopping development services.`);
-    stop("SIGTERM");
-    process.exit(code);
-  }
+    if (!supervisor.isStopping() && code && code !== 0) {
+      console.error(`${child.name} exited with code ${code}. Stopping development services.`);
+      supervisor.stop(code);
+    }
   });
 });

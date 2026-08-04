@@ -1,16 +1,13 @@
 import path from "path";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { currentEmployee } from "@/lib/employee-auth";
+import { authorizeEmployeeService } from "@/lib/employee-auth";
 import { documentRoot, imageRoot, uniqueStoredName } from "@/lib/workspace-storage";
 import { insertImageIntoPptxFile } from "@/lib/pptx-image-insert";
 
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
-
   const { id } = await context.params;
   const body = await request.json().catch(() => null) as {
     imageId?: string;
@@ -25,6 +22,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     db.generatedImage.findUnique({ where: { id: body.imageId }, include: { job: true } })
   ]);
   if (!document) return NextResponse.json({ error: "工作文件不存在" }, { status: 404 });
+  const authorization = await authorizeEmployeeService(document.serviceId, "officeEditor");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  const employee = authorization.access.employee;
   if (document.fileType !== "pptx") {
     return NextResponse.json({ error: "当前工作文件不是 PPTX，暂时无法自动写入图片" }, { status: 400 });
   }

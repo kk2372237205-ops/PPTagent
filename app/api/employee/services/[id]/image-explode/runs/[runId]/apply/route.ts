@@ -3,16 +3,17 @@ import path from "path";
 import { copyFile } from "fs/promises";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { currentEmployee } from "@/lib/employee-auth";
+import { authorizeEmployeeService } from "@/lib/employee-auth";
 import { appendExplodedImageSlide, type ExplodedSlidePart } from "@/lib/pptx-design-slide";
 import { documentRoot, imageRoot, uniqueStoredName, versionRoot } from "@/lib/workspace-storage";
 
 export const runtime = "nodejs";
 
 export async function POST(_request: Request, context: { params: Promise<{ id: string; runId: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
   const { id, runId } = await context.params;
+  const authorization = await authorizeEmployeeService(id, "imageTools");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  const employee = authorization.access.employee;
   const run = await db.imageExplodeRun.findFirst({
     where: { id: runId, serviceId: id, employeeId: employee.id, status: "completed" },
     include: { parts: { where: { selected: true }, orderBy: [{ zIndex: "asc" }, { createdAt: "asc" }] }, textLayers: { orderBy: { createdAt: "asc" } }, service: { include: { workDocument: { include: { versions: true } } } } }

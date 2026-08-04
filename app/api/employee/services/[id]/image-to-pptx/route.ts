@@ -3,7 +3,7 @@ import sharp from "sharp";
 import { ProxyAgent, fetch as undiciFetch } from "undici";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { currentEmployee } from "@/lib/employee-auth";
+import { authorizeEmployeeService } from "@/lib/employee-auth";
 import { documentRoot, ensureWorkspaceDirectories, imageRoot, readStoredFile, uniqueStoredName } from "@/lib/workspace-storage";
 import { writeFile } from "fs/promises";
 
@@ -13,9 +13,9 @@ let proxyAgent: ProxyAgent | undefined;
 let proxyAgentUrl = "";
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
   const { id } = await context.params;
+  const authorization = await authorizeEmployeeService(id, "imageTools");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
   const service = await db.service.findUnique({ where: { id } });
   if (!service) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
 
@@ -63,9 +63,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 }
 
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
   const { id } = await context.params;
+  const authorization = await authorizeEmployeeService(id, "exports");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
   const service = await db.service.findUnique({ where: { id } });
   if (!service) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
   const file = request.nextUrl.searchParams.get("file") || "";
@@ -94,23 +94,40 @@ async function imageToOnePagePdf(input: Buffer) {
 function codiaConfig() {
   const key = process.env.CODIA_API_KEY?.replace(/^["']|["']$/g, "").trim();
   if (!key) throw new Error("尚未配置 CODIA_API_KEY，请先在 .env 里补全 Codia key。");
-  return { key, baseUrl: (process.env.CODIA_BASE_URL || "https://api.codia.ai").replace(/\/$/, "") };
+  return { key, baseUrl: (process.env.CODIA_BASE_URL || "https://openapi.codia.ai").replace(/\/$/, "") };
 }
 
 async function codiaFetch(url: string, init: Parameters<typeof undiciFetch>[1] = {}, timeoutMs = 180000) {
-  const proxyUrl = process.env.CODIA_PROXY_URL || process.env.OPENAI_PROXY_URL;
+  const proxyUrl = process.env.CODIA_PROXY_URL;
   if (proxyUrl && proxyAgentUrl !== proxyUrl) {
     proxyAgent = new ProxyAgent(proxyUrl);
     proxyAgentUrl = proxyUrl;
   }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const undiciInit = proxyAgent ? { ...init, signal: controller.signal, dispatcher: proxyAgent } : { ...init, signal: controller.signal };
-    return await undiciFetch(url, undiciInit as Parameters<typeof undiciFetch>[1]);
-  } finally {
-    clearTimeout(timer);
+  const retryDelays = [1200, 3000];
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retryDelays.length; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const undiciInit = proxyAgent ? { ...init, signal: controller.signal, dispatcher: proxyAgent } : { ...init, signal: controller.signal };
+      return await undiciFetch(url, undiciInit as Parameters<typeof undiciFetch>[1]);
+    } catch (error) {
+      lastError = error;
+      const cause = error && typeof error === "object" ? (error as { cause?: { code?: string; message?: string } }).cause : undefined;
+      const reason = [error instanceof Error ? error.message : String(error), cause?.code, cause?.message]
+        .map(value => String(value || "").trim())
+        .filter(Boolean)
+        .join(" · ");
+      const transientNetworkFailure = /fetch failed|enotfound|econn|etimedout|socket|tls|network/i.test(reason);
+      if (!transientNetworkFailure || attempt >= retryDelays.length) {
+        throw new Error(`Codia 连接失败：${reason}`, { cause: error });
+      }
+      await new Promise(resolve => setTimeout(resolve, retryDelays[attempt]));
+    } finally {
+      clearTimeout(timer);
+    }
   }
+  throw lastError;
 }
 
 async function readCodiaJson(response: Response, fallback: string) {
@@ -133,7 +150,6 @@ async function codiaUploadPdf(pdfBuffer: Buffer, fileName: string) {
     headers: {
       Authorization: `Bearer ${key}`,
       "Content-Type": `multipart/form-data; boundary=${multipart.boundary}`,
-      "Content-Length": String(multipart.body.length)
     },
     body: multipart.body
   });

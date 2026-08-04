@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { currentEmployee } from "@/lib/employee-auth";
+import { authorizeEmployeeService } from "@/lib/employee-auth";
 
 export async function GET(_request: NextRequest, context: { params: Promise<{ id: string; runId: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
   const { id, runId } = await context.params;
+  const authorization = await authorizeEmployeeService(id, "aiAssistant");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  const employee = authorization.access.employee;
   const run = await db.designAgentRun.findFirst({
     where: { id: runId, serviceId: id, employeeId: employee.id },
     include: { references: { orderBy: { sortOrder: "asc" }, include: { generatedImage: true } }, events: { orderBy: { createdAt: "asc" } }, evaluations: { orderBy: { createdAt: "asc" } }, generatedJob: { include: { images: true } } }
@@ -15,9 +16,10 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
 }
 
 export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string; runId: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
   const { id, runId } = await context.params;
+  const authorization = await authorizeEmployeeService(id, "aiAssistant");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  const employee = authorization.access.employee;
   const body = await request.json().catch(() => ({})) as { selectedBatchIndex?: number };
   const selectedBatchIndex = Number(body.selectedBatchIndex);
   if (!Number.isInteger(selectedBatchIndex) || selectedBatchIndex < 0 || selectedBatchIndex > 3) {

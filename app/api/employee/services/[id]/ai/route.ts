@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { currentEmployee } from "@/lib/employee-auth";
+import { authorizeEmployeeService } from "@/lib/employee-auth";
 import { defaultTextModelId, imageModelOptions, textModelOptions } from "@/lib/ai-providers";
 
 export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
   const { id } = await context.params;
-  const service = await db.service.findUnique({ where: { id }, select: { id: true } });
-  if (!service) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
+  const authorization = await authorizeEmployeeService(id, "aiAssistant");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  const employee = authorization.access.employee;
 
   const conversation = await db.aiConversation.upsert({
     where: { serviceId_employeeId: { serviceId: id, employeeId: employee.id } },

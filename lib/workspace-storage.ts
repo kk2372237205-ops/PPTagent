@@ -7,13 +7,18 @@ export const documentRoot = path.join(workspaceRoot, "documents");
 export const versionRoot = path.join(workspaceRoot, "versions");
 export const imageRoot = path.join(workspaceRoot, "images");
 export const referenceRoot = path.join(workspaceRoot, "references");
+export const deckGenerationRoot = path.join(workspaceRoot, "deck-generation");
+export const deckSourceRoot = path.join(deckGenerationRoot, "sources");
+export const deckThemeRoot = path.join(deckGenerationRoot, "themes");
 
 export async function ensureWorkspaceDirectories() {
   await Promise.all([
     mkdir(documentRoot, { recursive: true }),
     mkdir(versionRoot, { recursive: true }),
     mkdir(imageRoot, { recursive: true }),
-    mkdir(referenceRoot, { recursive: true })
+    mkdir(referenceRoot, { recursive: true }),
+    mkdir(deckSourceRoot, { recursive: true }),
+    mkdir(deckThemeRoot, { recursive: true })
   ]);
 }
 

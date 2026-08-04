@@ -2,7 +2,7 @@ import path from "path";
 import { writeFile } from "fs/promises";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { currentEmployee } from "@/lib/employee-auth";
+import { authorizeEmployeeService } from "@/lib/employee-auth";
 import { techszImageToolById } from "@/lib/techsz-image-tools";
 import { ensureWorkspaceDirectories, imageRoot, readStoredFile, uniqueStoredName } from "@/lib/workspace-storage";
 
@@ -21,13 +21,14 @@ type SourceImage = {
 };
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
+  const { id } = await context.params;
+  const authorization = await authorizeEmployeeService(id, "imageTools");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  const employee = authorization.access.employee;
   if (!configuredApiKey()) {
     return NextResponse.json({ error: "请先在服务端 .env 配置 TECHSZ_API_KEY" }, { status: 503 });
   }
 
-  const { id } = await context.params;
   const service = await db.service.findUnique({ where: { id } });
   if (!service) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
 

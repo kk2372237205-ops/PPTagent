@@ -4,11 +4,19 @@
 
 ## 推荐阅读顺序
 
-1. `project-archive-2026-07-03.md`
-   - 当前项目完整存档。
-   - 记录智能模式、生成 PPT、Codia 转 PPT、OpenAI 生图和协作边界。
+1. `model-handoff.md`
+   - 新模型或新任务的最短接手说明。
+   - 先规定阅读顺序、安全边界和任务开始前应向项目 owner 汇报的内容。
 
-2. `maintenance-audit-2026-07-03.md`
+2. `project-control-workflows.md`
+   - 项目掌控手册。
+   - 用非工程黑话说明微信/企业微信双扫码登录、管理员控制台、生成 PPT、美化 PPT、图片转 PPT 的用户流程、验收点和真实文件位置。
+
+3. `project-archive-2026-07-03.md`
+   - 历史完整存档。
+   - 用于追溯早期方案；当前规则以 `AGENTS.md` 与掌控手册为准。
+
+4. `maintenance-audit-2026-07-03.md`
    - 瘦身、提速、可读性审计。
    - 记录哪些文件已清理，哪些目录不能乱删，后续如何继续瘦身。
 
@@ -26,7 +34,7 @@ npm run dev
 npm run dev:lite
 ```
 
-`dev:lite` 只启动 Next、旧生图 worker、生成 PPT worker，适合日常改智能模式。需要 ONLYOFFICE 检查、图片炸开、组件拆图时仍使用 `npm run dev`。
+`dev:lite` 只启动 Next、设计/生图后台执行脚本、生成 PPT 后台执行脚本和美化 PPT 后台执行脚本，适合日常改智能模式。需要 ONLYOFFICE 检查、图片炸开、组件拆图时仍使用 `npm run dev`。
 
 查看项目体积来源：
 
@@ -38,21 +46,43 @@ npm run storage:report
 
 - `components/employee-app.tsx`
   - 员工工作台主前端。
-  - 包含 SmartStudio、DesignStudio、小 W 面板、图片工具等。
+  - 包含默认微信、可切企业微信的双扫码入口、管理员控制台、小 W 面板、图片工具等。
+
+- `lib/wechat.ts`
+  - 微信开放平台配置、扫码地址、微信身份读取。
+
+- `lib/employee-workspaces.ts`
+  - 单学校与多学校工作区配置，不依赖微信或企业微信。
+
+- `lib/wecom.ts`
+  - 企业微信学校应用配置、扫码地址和通讯录成员身份读取；没有学校凭据时入口显示待配置。
+
+- `lib/employee-auth.ts`
+  - 员工登录会话、学校边界、角色和功能权限的统一判断。
+
+- `app/api/employee/admin/`
+  - 管理员控制台读取成员、统计使用情况和修改权限的后端入口。
 
 - `scripts/deck-generation-worker.mjs`
-  - 生成 PPT 的核心 worker。
+  - 生成 PPT 的后台执行脚本。
   - 负责方案规划、逐页生图、PDF 合成、Codia 转 PPT。
+
+- `scripts/ppt-polish-worker.mjs`
+  - 美化 PPT 的后台执行脚本。
+  - 负责确认方案后逐页重绘、生成预览图，并配合转 PDF/PPT。
 
 - `skills/deck-generation/`
   - 生成 PPT 的可读 Markdown 技能规则。
   - 这里是“图组导演层”的人类可读版本。
 
 - `scripts/design-agent-worker.mjs`
-  - 单页生图和旧智能设计任务 worker。
+  - 单页生图和旧智能设计任务后台执行脚本。
 
 - `app/api/employee/services/[id]/deck-generation/`
   - 生成 PPT 相关 API。
+
+- `app/api/employee/services/[id]/ppt-polish/`
+  - 美化 PPT 相关 API。
 
 更多目录说明：
 

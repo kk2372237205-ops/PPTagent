@@ -1,62 +1,33 @@
 import { NextResponse } from "next/server";
-import { currentEmployee } from "@/lib/employee-auth";
-import { openAiDiagnosticsConfig, openAiFetch, readProviderError } from "@/lib/ai-providers";
+import { currentEmployeeAccess, hasEmployeeFeature } from "@/lib/employee-auth";
+import { openAiDiagnosticsConfig } from "@/lib/ai-providers";
 
 export const runtime = "nodejs";
 
 export async function GET() {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
-
-  const config = openAiDiagnosticsConfig();
-  if (!config.keyConfigured) {
-    return NextResponse.json({
-      ok: false,
-      ...config,
-      error: "尚未配置 OPENAI_API_KEY"
-    });
+  const access = await currentEmployeeAccess();
+  if (!access) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
+  if (!hasEmployeeFeature(access, "aiAssistant")) {
+    return NextResponse.json({ error: "你的账号未开通 AI 助手权限" }, { status: 403 });
   }
 
-  try {
-    const response = await openAiFetch(`${config.baseUrl}/models`, {
-      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }
-    }, 20000);
-    const result = await response.json();
-    if (!response.ok) {
-      return NextResponse.json({
-        ok: false,
-        ...config,
-        status: response.status,
-        error: classifyOpenAiError(response.status, readProviderError(result, "OpenAI 检查失败"))
-      });
-    }
+  const services = openAiDiagnosticsConfig();
+  const text = {
+    ...services.text,
+    ok: services.text.configured,
+    error: services.text.configured ? "" : "尚未配置 AI_TEXT_API_KEY"
+  };
+  const image = {
+    ...services.image,
+    ok: services.image.configured,
+    error: services.image.configured ? "" : "尚未配置 AI_IMAGE_API_KEY"
+  };
+  const errors = [text.error, image.error].filter(Boolean);
 
-    const ids = Array.isArray(result.data) ? result.data.map((item: { id?: string }) => item.id).filter(Boolean) : [];
-    const textModelAvailable = ids.includes(config.textModel);
-    const imageModelAvailable = ids.includes(config.imageModel);
-    return NextResponse.json({
-      ok: textModelAvailable && imageModelAvailable,
-      ...config,
-      textModelAvailable,
-      imageModelAvailable,
-      error: !textModelAvailable
-        ? `当前项目暂不可用文本模型 ${config.textModel}`
-        : !imageModelAvailable
-          ? `当前项目暂不可用图片模型 ${config.imageModel}`
-          : ""
-    });
-  } catch (error) {
-    return NextResponse.json({
-      ok: false,
-      ...config,
-      error: error instanceof Error ? error.message : "OpenAI 健康检查失败"
-    });
-  }
-}
-
-function classifyOpenAiError(status: number, message: string) {
-  if (status === 401) return `OpenAI API Key 无效或未授权：${message}`;
-  if (status === 403) return `当前项目或密钥没有访问权限：${message}`;
-  if (status === 429) return `OpenAI 额度、限速或账单限制：${message}`;
-  return message;
+  return NextResponse.json({
+    ok: text.ok && image.ok,
+    text,
+    image,
+    error: errors.join("；")
+  });
 }

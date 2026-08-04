@@ -2,19 +2,20 @@ import path from "path";
 import { stat } from "fs/promises";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { currentEmployee } from "@/lib/employee-auth";
+import { authorizeEmployeeService } from "@/lib/employee-auth";
 import { signFileToken, signJwt } from "@/lib/office";
 import { documentRoot } from "@/lib/workspace-storage";
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
   const { id } = await context.params;
   const document = await db.workDocument.findUnique({
     where: { id },
     include: { service: true }
   });
   if (!document) return NextResponse.json({ error: "工作文件不存在" }, { status: 404 });
+  const authorization = await authorizeEmployeeService(document.serviceId, "officeEditor");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  const employee = authorization.access.employee;
 
   // ONLYOFFICE fetches files and callbacks server-to-server, so it needs an
   // address reachable from its container. APP_BASE_URL remains as a legacy

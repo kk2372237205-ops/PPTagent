@@ -2,7 +2,7 @@
 import { existsSync, readFileSync, statSync } from "fs";
 import path from "path";
 import { db } from "@/lib/db";
-import { currentEmployee } from "@/lib/employee-auth";
+import { authorizeEmployeeService } from "@/lib/employee-auth";
 import { referenceRoot, saveFile } from "@/lib/workspace-storage";
 
 export const runtime = "nodejs";
@@ -46,9 +46,10 @@ function designAgentWorkerHealth() {
 }
 
 export async function GET(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
   const { id } = await context.params;
+  const authorization = await authorizeEmployeeService(id, "aiAssistant");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  const employee = authorization.access.employee;
   const runs = await db.designAgentRun.findMany({
     where: { serviceId: id, employeeId: employee.id },
     orderBy: { createdAt: "desc" },
@@ -59,9 +60,10 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
 }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
   const { id } = await context.params;
+  const authorization = await authorizeEmployeeService(id, "aiAssistant");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  const employee = authorization.access.employee;
   const service = await db.service.findUnique({ where: { id } });
   if (!service) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
 

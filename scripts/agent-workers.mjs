@@ -1,4 +1,5 @@
 import { spawn } from "child_process";
+import { superviseProcessGroup } from "./process-group.mjs";
 
 const children = [
   spawn(process.execPath, ["scripts/design-agent-worker.mjs"], { stdio: "inherit", shell: false }),
@@ -6,8 +7,7 @@ const children = [
   spawn(process.execPath, ["scripts/ppt-polish-worker.mjs"], { stdio: "inherit", shell: false }),
   spawn(process.execPath, ["scripts/image-explode-worker.mjs"], { stdio: "inherit", shell: false })
 ];
-let stopping = false;
-function stop(signal) { if (!stopping) { stopping = true; children.forEach(child => child.kill(signal)); } }
-process.on("SIGINT", () => stop("SIGINT"));
-process.on("SIGTERM", () => stop("SIGTERM"));
-children.forEach(child => child.on("exit", code => { if (!stopping && code) { stop("SIGTERM"); process.exit(code); } }));
+const supervisor = superviseProcessGroup(children, "background task services");
+children.forEach(child => child.on("exit", code => {
+  if (!supervisor.isStopping() && code) supervisor.stop(code);
+}));

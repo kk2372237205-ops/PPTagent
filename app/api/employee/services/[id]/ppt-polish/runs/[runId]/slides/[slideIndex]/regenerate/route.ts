@@ -1,8 +1,7 @@
 import path from "path";
 import { readFile, writeFile } from "fs/promises";
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { currentEmployee } from "@/lib/employee-auth";
+import { authorizeEmployeeService } from "@/lib/employee-auth";
 import { pptPolishWorkerHealth } from "@/lib/ppt-polish-worker-health";
 import { workspaceRoot } from "@/lib/workspace-storage";
 
@@ -21,11 +20,10 @@ const closerRoutes = [
 ];
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string; runId: string; slideIndex: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
   const { id, runId, slideIndex } = await context.params;
-  const service = await db.service.findUnique({ where: { id } });
-  if (!service) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
+  const authorization = await authorizeEmployeeService(id, "smartPpt");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  const employee = authorization.access.employee;
   const run = await readPolishRun(runId);
   if (!run || run.serviceId !== id || run.employeeId !== employee.id) return NextResponse.json({ error: "美化任务不存在" }, { status: 404 });
   if (!["generating", "review_ready", "pdf_ready", "ppt_ready", "failed"].includes(run.status)) {

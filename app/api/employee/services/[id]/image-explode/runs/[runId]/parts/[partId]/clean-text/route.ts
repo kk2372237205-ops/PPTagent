@@ -3,17 +3,25 @@ import { writeFile } from "fs/promises";
 import sharp from "sharp";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { currentEmployee } from "@/lib/employee-auth";
-import { openAiBaseUrl, openAiFetch, readProviderError } from "@/lib/ai-providers";
+import { authorizeEmployeeService } from "@/lib/employee-auth";
+import { aiImageConfig, aiImageFetch, readProviderError } from "@/lib/ai-providers";
 import { imageRoot, readStoredFile, referenceRoot, uniqueStoredName } from "@/lib/workspace-storage";
 
 export const runtime = "nodejs";
 
 export async function POST(_request: Request, context: { params: Promise<{ id: string; runId: string; partId: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
-  if (!(process.env.OPENAI_API_KEY || "").trim()) return NextResponse.json({ error: "未配置 OPENAI_API_KEY，暂时不能使用 AI 清字精修" }, { status: 503 });
   const { id, runId, partId } = await context.params;
+  const authorization = await authorizeEmployeeService(id, "imageTools");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  const employee = authorization.access.employee;
+  const imageService = aiImageConfig();
+  if (!imageService.apiKey) return NextResponse.json({ error: "未配置 AI_IMAGE_API_KEY，暂时不能使用 AI 清字精修" }, { status: 503 });
+  if (!imageService.supportsEdits) {
+    return NextResponse.json({
+      error: `${imageService.serviceName} 当前只接通文字生图，尚未提供 /images/edits，AI 清字精修暂不可用。`
+    }, { status: 503 });
+  }
+
   const part = await db.imageExplodePart.findFirst({
     where: { id: partId, runId, variant: "clean-text", run: { serviceId: id, employeeId: employee.id } },
     include: {
@@ -31,11 +39,10 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   try {
     const crop = await originalCrop(part);
     const form = new FormData();
-    form.set("model", process.env.OPENAI_IMAGE_MODEL || "gpt-image-1.5");
+    form.set("model", imageService.model);
     form.set("image", new Blob([new Uint8Array(crop)], { type: "image/png" }), `clean-text-${part.id}.png`);
     form.set("prompt", `Remove only these readable text elements from this presentation component: ${targetTexts.join(", ")}. Preserve the frame, colors, gradients, lighting, borders, icons, spacing, aspect ratio, and every non-text visual detail. Do not add any new text, logos, objects, or decorations. Return the same component with the text area clean.`);
-    form.set("output_format", "png");
-    const response = await openAiFetch(`${openAiBaseUrl()}/images/edits`, { method: "POST", headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, body: form }, 300000);
+    const response = await aiImageFetch(`${imageService.baseUrl}/images/edits`, { method: "POST", headers: { Authorization: `Bearer ${imageService.apiKey}` }, body: form }, 300000);
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result?.data?.[0]) throw new Error(readProviderError(result, "AI 清字精修失败"));
     const output = result.data[0];
@@ -70,7 +77,7 @@ async function originalCrop(part: { x: number; y: number; width: number; height:
 }
 
 async function download(url: string) {
-  const response = await openAiFetch(url, {}, 300000);
+  const response = await aiImageFetch(url, {}, 300000);
   if (!response.ok) throw new Error("AI 清字结果下载失败");
   return Buffer.from(await response.arrayBuffer());
 }

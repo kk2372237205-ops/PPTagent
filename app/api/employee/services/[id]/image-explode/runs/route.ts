@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { currentEmployee } from "@/lib/employee-auth";
+import { authorizeEmployeeService } from "@/lib/employee-auth";
 import { referenceRoot, saveFile } from "@/lib/workspace-storage";
 
 export const runtime = "nodejs";
 const maxImageBytes = 20 * 1024 * 1024;
 
 export async function GET(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
   try {
     const { id } = await context.params;
+    const authorization = await authorizeEmployeeService(id, "imageTools");
+    if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+    const employee = authorization.access.employee;
     const runs = await db.imageExplodeRun.findMany({
       where: { serviceId: id, employeeId: employee.id },
       orderBy: { createdAt: "desc" }, take: 12,
@@ -24,13 +25,13 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
 }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
   try {
   const { id } = await context.params;
+  const authorization = await authorizeEmployeeService(id, "imageTools");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  const employee = authorization.access.employee;
   const service = await db.service.findUnique({ where: { id } });
   if (!service) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
-  if (!employee.isAdmin && service.assigneeId !== employee.id) return NextResponse.json({ error: "你没有操作这个订单的权限" }, { status: 403 });
 
   const active = await db.imageExplodeRun.count({ where: { employeeId: employee.id, status: { in: ["queued", "running"] } } });
   if (active >= 2) return NextResponse.json({ error: "已有拆图任务正在处理中，请等待它完成后再提交" }, { status: 429 });

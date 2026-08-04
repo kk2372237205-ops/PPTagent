@@ -2,7 +2,7 @@ import path from "path";
 import { copyFile } from "fs/promises";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { currentEmployee } from "@/lib/employee-auth";
+import { canAccessService, currentEmployeeAccess, hasEmployeeFeature } from "@/lib/employee-auth";
 import { workPresentationMaxBytes, workPresentationMaxLabel } from "@/lib/upload-limits";
 import {
   documentRoot,
@@ -12,14 +12,20 @@ import {
 } from "@/lib/workspace-storage";
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
+  const access = await currentEmployeeAccess();
+  if (!access) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
+  if (!hasEmployeeFeature(access, "officeEditor")) {
+    return NextResponse.json({ error: "你的账号未开通在线编辑权限" }, { status: 403 });
+  }
   const { id } = await context.params;
   const service = await db.service.findUnique({
     where: { id },
     include: { workDocument: true }
   });
   if (!service) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
+  if (!canAccessService(access, service)) {
+    return NextResponse.json({ error: "你无权打开该订单工作区" }, { status: 403 });
+  }
   if (service.workDocument) return NextResponse.json({ workDocument: service.workDocument });
 
   const form = await request.formData();
@@ -83,7 +89,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   await db.serviceActivity.create({
     data: {
       serviceId: id,
-      employeeId: employee.id,
+      employeeId: access.employee.id,
       action: "workspace",
       detail: source === "blank" ? "创建空白 16:9 工作文件" : `创建工作文件：${originalName}`
     }

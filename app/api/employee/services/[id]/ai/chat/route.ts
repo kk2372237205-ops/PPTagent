@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { currentEmployee } from "@/lib/employee-auth";
+import { authorizeEmployeeService } from "@/lib/employee-auth";
 import { generateTextResponse, resolveTextModel } from "@/lib/ai-providers";
 
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
   const { id } = await context.params;
+  const authorization = await authorizeEmployeeService(id, "aiAssistant");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  const employee = authorization.access.employee;
   const service = await db.service.findUnique({
     where: { id },
     include: {
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
   const model = resolveTextModel(String(modelId || ""));
   if (!model.available) {
-    return NextResponse.json({ error: `尚未配置 ${model.provider === "ark" ? "ARK_API_KEY" : "OPENAI_API_KEY"}` }, { status: 503 });
+    return NextResponse.json({ error: `尚未配置 ${model.provider === "ark" ? "ARK_API_KEY" : "AI_TEXT_API_KEY"}` }, { status: 503 });
   }
 
   const conversation = await db.aiConversation.upsert({

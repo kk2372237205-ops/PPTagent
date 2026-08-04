@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { canManageService, currentEmployee } from "@/lib/employee-auth";
+import { canAccessService, currentEmployeeAccess, hasEmployeeFeature } from "@/lib/employee-auth";
 import { copyStoredFile, documentRoot, versionRoot } from "@/lib/workspace-storage";
 
 const statuses = ["待开始", "制作中", "待客户确认", "修改中", "已完成"];
 
 export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
+  const access = await currentEmployeeAccess();
+  if (!access) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
+  if (!hasEmployeeFeature(access, "orders")) {
+    return NextResponse.json({ error: "你的账号未开通订单任务权限" }, { status: 403 });
+  }
   const { id } = await context.params;
   const service = await db.service.findUnique({
     where: { id },
@@ -17,7 +20,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     }
   });
   if (!service) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
-  if (!canManageService(employee, service)) {
+  if (!canAccessService(access, service)) {
     return NextResponse.json({ error: "仅负责人或管理员可以推进订单" }, { status: 403 });
   }
   const { status, progress } = await request.json();
@@ -48,14 +51,14 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
           label,
           storedName,
           workDocumentId: service.workDocument.id,
-          createdById: employee.id
+          createdById: access.employee.id
         }
       }),
       db.deliveryVersion.create({
         data: {
           version: deliveryVersionNumber,
           label,
-          note: `${employee.name} 于员工工作台发布`,
+          note: `${access.employee.name} 于员工工作台发布`,
           serviceId: service.id
         }
       })
@@ -64,7 +67,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   await db.serviceActivity.create({
     data: {
       serviceId: id,
-      employeeId: employee.id,
+      employeeId: access.employee.id,
       action: "status",
       detail: `状态更新为“${status}”，进度 ${status === "已完成" ? 100 : normalizedProgress}%`
     }

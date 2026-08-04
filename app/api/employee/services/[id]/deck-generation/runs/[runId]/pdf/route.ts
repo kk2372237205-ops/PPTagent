@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { currentEmployee } from "@/lib/employee-auth";
+import { authorizeEmployeeService } from "@/lib/employee-auth";
 import { documentRoot, readStoredFile } from "@/lib/workspace-storage";
 
 export async function POST(_request: NextRequest, context: { params: Promise<{ id: string; runId: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
   const { id, runId } = await context.params;
+  const authorization = await authorizeEmployeeService(id, "exports");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  const employee = authorization.access.employee;
   const run = await db.deckGenerationRun.findFirst({
     where: { id: runId, serviceId: id, employeeId: employee.id },
     include: { slides: true }
@@ -26,13 +27,14 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
 }
 
 export async function GET(_request: NextRequest, context: { params: Promise<{ id: string; runId: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
   const { id, runId } = await context.params;
+  const authorization = await authorizeEmployeeService(id, "exports");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  const employee = authorization.access.employee;
   const run = await db.deckGenerationRun.findFirst({
     where: { id: runId, serviceId: id, employeeId: employee.id }
   });
-  if (!run?.pdfStoredName || run.status !== "pdf_ready") {
+  if (!run?.pdfStoredName) {
     return NextResponse.json({ error: "PDF 尚未生成完成" }, { status: 404 });
   }
   const file = await readStoredFile(documentRoot, run.pdfStoredName);

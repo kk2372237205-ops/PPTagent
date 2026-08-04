@@ -3,16 +3,17 @@ import { writeFile } from "fs/promises";
 import { NextResponse } from "next/server";
 import sharp from "sharp";
 import { db } from "@/lib/db";
-import { currentEmployee } from "@/lib/employee-auth";
+import { authorizeEmployeeService } from "@/lib/employee-auth";
 import { imageRoot, readStoredFile, referenceRoot, uniqueStoredName } from "@/lib/workspace-storage";
 
 export const runtime = "nodejs";
 const endpoint = "https://techsz.aoscdn.com/api/tasks/visual/segmentation";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string; runId: string; partId: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
   const { id, runId, partId } = await context.params;
+  const authorization = await authorizeEmployeeService(id, "imageTools");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  const employee = authorization.access.employee;
   const part = await db.imageExplodePart.findFirst({ where: { id: partId, runId, run: { serviceId: id, employeeId: employee.id } }, include: { run: { include: { sourceImage: true } } } });
   if (!part?.storedName || part.textContent) return NextResponse.json({ error: "只能对图片候选进行抠图精修" }, { status: 400 });
   const body = await request.json().catch(() => ({})) as { action?: string };

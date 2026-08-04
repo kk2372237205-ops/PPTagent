@@ -15,13 +15,6 @@ for (const file of [".env.local", ".env"]) {
   }
 }
 
-if (env.OPENAI_PROXY_URL) {
-  env.NODE_USE_ENV_PROXY = "1";
-  env.HTTPS_PROXY = env.OPENAI_PROXY_URL;
-  env.HTTP_PROXY = env.OPENAI_PROXY_URL;
-  env.NO_PROXY = env.NO_PROXY || "localhost,127.0.0.1,::1,10.130.178.92,host.docker.internal";
-}
-
 const nextArgs = mode === "start"
   ? ["start", "-H", "0.0.0.0", ...args]
   : mode === "build"

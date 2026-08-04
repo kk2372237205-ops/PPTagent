@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { currentEmployee } from "@/lib/employee-auth";
+import { authorizeEmployeeService, currentEmployee } from "@/lib/employee-auth";
 import { enqueueOfficeImageCommand, finishOfficeImageCommand, getOfficeImageCommand, takeNextOfficeImageCommand } from "@/lib/onlyoffice-image-bridge";
 import { signFileToken, verifyFileToken } from "@/lib/office";
 
@@ -51,6 +51,9 @@ export async function POST(request: NextRequest) {
   ]);
   if (!document) return json({ error: "工作文件不存在" }, { status: 404 });
   if (!image) return json({ error: "图片不存在" }, { status: 404 });
+  const authorization = await authorizeEmployeeService(document.serviceId, "officeEditor");
+  if (!authorization.ok) return json({ error: authorization.error }, { status: authorization.status });
+  if (authorization.access.employee.id !== employee.id) return json({ error: "当前身份无权操作该文稿" }, { status: 403 });
   if (image.job.serviceId !== document.serviceId) {
     return json({ error: "这张图片不属于当前订单" }, { status: 400 });
   }

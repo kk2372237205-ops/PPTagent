@@ -38,5 +38,5 @@
 - main_visual 只描述与项目有关的主视觉，不要乱加无关机器人、人物或城市。
 - inherited_elements 必须引用 visual_identity 和 storyboard 中的统一元素。
 - changed_elements 负责让页面有变化。
-- text_density 建议 low 或 medium，减少 AI 乱码。
+- text_density 使用 low / medium / high：封面和结尾固定 low，普通正文 medium，资料型综述和数据页可用 high，但必须分区清楚且可读。
 - 所有重要文字、图表、底部横幅、页脚和装饰必须留在安全区内，距离四边至少 6%，不要贴边，不要被裁切。

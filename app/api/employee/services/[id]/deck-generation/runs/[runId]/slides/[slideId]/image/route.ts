@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { currentEmployee } from "@/lib/employee-auth";
+import { authorizeEmployeeService } from "@/lib/employee-auth";
 import { imageRoot, readStoredFile } from "@/lib/workspace-storage";
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string; runId: string; slideId: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
   const { id, runId, slideId } = await context.params;
+  const authorization = await authorizeEmployeeService(id, "smartPpt");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  const employee = authorization.access.employee;
   const slide = await db.deckGenerationSlide.findFirst({
     where: {
       id: slideId,

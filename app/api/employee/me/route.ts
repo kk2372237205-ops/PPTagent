@@ -1,17 +1,41 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { currentEmployee } from "@/lib/employee-auth";
+import {
+  currentEmployeeAccess,
+  hasEmployeeFeature,
+  resolveEmployeePermissions
+} from "@/lib/employee-auth";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ employee: null });
+  const access = await currentEmployeeAccess();
+  if (!access) return NextResponse.json({ employee: null });
 
-  const [employees, services, consultations] = await Promise.all([
-    db.employee.findMany({
-      select: { id: true, code: true, name: true, phone: true, isAdmin: true, enabled: true, createdAt: true },
-      orderBy: { code: "asc" }
-    }),
-    db.service.findMany({
+  const employee = {
+    ...access.employee,
+    membership: {
+      ...access.membership,
+      organization: access.organization
+    },
+    permissions: access.permissions
+  };
+  if (access.membership.status !== "active") {
+    return NextResponse.json({ employee, employees: [], services: [], consultations: [] });
+  }
+
+  const isPlatformAdmin = access.employee.isAdmin || access.membership.role === "platform_admin";
+  const canManageOrganization =
+    access.membership.role === "org_admin" || access.membership.role === "manager";
+  const serviceWhere = isPlatformAdmin
+    ? {}
+    : canManageOrganization
+      ? { organizationId: access.organization.id }
+      : { organizationId: access.organization.id, assigneeId: access.employee.id };
+
+  const services = hasEmployeeFeature(access, "orders")
+    ? await db.service.findMany({
+      where: serviceWhere,
       orderBy: { purchasedAt: "desc" },
       include: {
         user: { select: { phone: true } },
@@ -54,8 +78,37 @@ export async function GET() {
           }
         }
       }
-    }),
-    db.consultation.findMany({
+    })
+    : [];
+
+  const organizationMemberships =
+    hasEmployeeFeature(access, "team") || isPlatformAdmin || access.membership.role === "org_admin"
+      ? await db.employeeMembership.findMany({
+        where: isPlatformAdmin ? {} : { organizationId: access.organization.id },
+        include: {
+          employee: true,
+          organization: true
+        },
+        orderBy: [{ status: "asc" }, { updatedAt: "desc" }]
+      })
+      : [];
+  const employees = organizationMemberships.map((membership) => ({
+    ...membership.employee,
+    membership: {
+      ...membership,
+      employee: undefined,
+      organization: membership.organization
+    },
+    permissions: resolveEmployeePermissions(membership, membership.employee.isAdmin)
+  }));
+
+  let consultations: Awaited<ReturnType<typeof db.consultation.findMany>> = [];
+  if (hasEmployeeFeature(access, "customerMessages")) {
+    const visibleConsultationIds = services
+      .map((service) => service.consultationId)
+      .filter((id): id is string => Boolean(id));
+    consultations = await db.consultation.findMany({
+      where: isPlatformAdmin ? {} : { id: { in: visibleConsultationIds } },
       orderBy: { updatedAt: "desc" },
       include: {
         user: { select: { phone: true } },
@@ -68,8 +121,8 @@ export async function GET() {
           }
         }
       }
-    })
-  ]);
+    });
+  }
 
   return NextResponse.json({ employee, employees, services, consultations });
 }

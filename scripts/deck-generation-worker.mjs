@@ -3,7 +3,18 @@ import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import sharp from "sharp";
 import { PrismaClient } from "@prisma/client";
-import { ProxyAgent, fetch as undiciFetch } from "undici";
+import { buildEvidenceChunks, parseDeckSourceFile } from "./deck-source-parser.mjs";
+import {
+  aiImageConfig,
+  aiTextConfig,
+  createServiceFetch,
+  imageGenerationBody,
+  requireImageService,
+  requireTextService,
+  textEndpoint,
+  textFromResponse,
+  textRequestBody
+} from "./ai-service-client.mjs";
 
 const root = process.cwd();
 loadEnv();
@@ -12,15 +23,17 @@ const db = new PrismaClient();
 const workspaceRoot = path.join(root, "uploads", "employee-workspace");
 const imageRoot = path.join(workspaceRoot, "images");
 const documentRoot = path.join(workspaceRoot, "documents");
+const deckSourceRoot = path.join(workspaceRoot, "deck-generation", "sources");
+const deckThemeRoot = path.join(workspaceRoot, "deck-generation", "themes");
 const skillRoot = path.join(root, "skills", "deck-generation");
 const pollMs = Math.max(1200, Number(process.env.DECK_GENERATION_POLL_MS || 2500));
 const deckGenerationConcurrency = Math.min(4, Math.max(1, Number(process.env.DECK_GENERATION_CONCURRENCY || 2)));
-const openAiBaseUrl = trimSlash(process.env.OPENAI_BASE_URL || "https://api.openai.com/v1");
-const openAiTextModel = process.env.OPENAI_TEXT_MODEL || process.env.OPENAI_RESPONSES_MODEL || "gpt-5.5";
-const openAiImageModel = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1.5";
-const openAiImageSize = process.env.OPENAI_IMAGE_SIZE?.split(",").map(item => item.trim()).find(Boolean) || "1536x864";
-const codiaBaseUrl = trimSlash(process.env.CODIA_BASE_URL || "https://api.codia.ai");
-let proxyAgent;
+const textService = aiTextConfig();
+const imageService = aiImageConfig();
+const textRequest = createServiceFetch(textService);
+const imageRequest = createServiceFetch(imageService);
+const externalRequest = createServiceFetch({ serviceName: "Codia", proxyUrl: process.env.CODIA_PROXY_URL || "" });
+const codiaBaseUrl = trimSlash(process.env.CODIA_BASE_URL || "https://openapi.codia.ai");
 
 function loadEnv() {
   for (const fileName of [".env.local", ".env"]) {
@@ -43,6 +56,23 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+async function codiaRequest(url, init = {}, timeoutMs = 300000) {
+  let lastError;
+  const retryDelays = [1200, 3000];
+  for (let attempt = 0; attempt <= retryDelays.length; attempt += 1) {
+    try {
+      return await externalRequest(url, init, timeoutMs);
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      const transientNetworkFailure = /fetch failed|enotfound|econn|etimedout|socket|tls|network/i.test(message);
+      if (!transientNetworkFailure || attempt >= retryDelays.length) throw error;
+      await sleep(retryDelays[attempt]);
+    }
+  }
+  throw lastError;
+}
+
 function nowName(extension) {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}.${extension}`;
 }
@@ -50,7 +80,9 @@ function nowName(extension) {
 async function ensureDirs() {
   await Promise.all([
     mkdir(imageRoot, { recursive: true }),
-    mkdir(documentRoot, { recursive: true })
+    mkdir(documentRoot, { recursive: true }),
+    mkdir(deckSourceRoot, { recursive: true }),
+    mkdir(deckThemeRoot, { recursive: true })
   ]);
 }
 
@@ -65,29 +97,25 @@ function skillBundle() {
     readSkill("visual-identity.md"),
     readSkill("visual-storyboard.md"),
     readSkill("slide-image-specs.md"),
-    readSkill("regeneration-controls.md")
+    readSkill("regeneration-controls.md"),
+    readSkill("source-grounding.md"),
+    readSkill("outline-control.md"),
+    readSkill("content-density.md"),
+    readSkill("palette-reference.md"),
+    readSkill("quality-audit.md")
   ].join("\n\n---\n\n");
 }
 
-function getOpenAiFetch() {
-  const proxy = process.env.OPENAI_PROXY_URL;
-  if (proxy && !proxyAgent) proxyAgent = new ProxyAgent(proxy);
-  return async (url, init, timeoutMs = 300000) => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      if (proxyAgent) {
-        return await undiciFetch(url, { ...init, signal: controller.signal, dispatcher: proxyAgent });
-      }
-      return await fetch(url, { ...init, signal: controller.signal });
-    } finally {
-      clearTimeout(timer);
-    }
-  };
-}
 
 function providerError(result, fallback) {
-  return result?.error?.message || result?.message || fallback;
+  const message = String(result?.error?.message || result?.message || fallback);
+  if (/insufficient account balance|insufficient balance|account balance/i.test(message)) {
+    if (/图片/.test(fallback)) {
+      return "gpt-image-2 图片中转账户余额不足。请补充 AI_IMAGE_API_KEY 所属账户或分组的余额后重试本页。";
+    }
+    return "YZStudio 已收到 GPT-5.6 请求，但返回文字账户余额不足；这不是配置缺项。请在 YZStudio 为 AI_TEXT_API_KEY 所属文字分组兑换或补充额度，确认套餐、每日额度和永久额度可用后，再点击“重新分析资料”。";
+  }
+  return message;
 }
 
 function codiaConfig() {
@@ -96,33 +124,26 @@ function codiaConfig() {
   return { key };
 }
 
-function textFromResponse(result) {
-  if (typeof result?.output_text === "string" && result.output_text.trim()) return result.output_text.trim();
-  const chunks = result?.output?.flatMap(item => item.content || [])
-    .map(item => item.text || item.value || "")
-    .filter(Boolean);
-  return chunks?.join("\n").trim() || "";
-}
 
-async function openAiText(prompt) {
-  if (!process.env.OPENAI_API_KEY) throw new Error("尚未配置 OPENAI_API_KEY");
-  const request = getOpenAiFetch();
-  const response = await request(`${openAiBaseUrl}/responses`, {
+async function openAiInput(input) {
+  requireTextService(textService);
+  const response = await textRequest(textEndpoint(textService), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+      Authorization: `Bearer ${textService.apiKey}`
     },
-    body: JSON.stringify({
-      model: openAiTextModel,
-      input: prompt
-    })
+    body: JSON.stringify(textRequestBody(textService, input))
   });
   const result = await response.json();
-  if (!response.ok) throw new Error(providerError(result, "OpenAI 文本生成失败"));
+  if (!response.ok) throw new Error(providerError(result, "文字中转服务生成失败"));
   const text = textFromResponse(result);
-  if (!text) throw new Error("OpenAI 没有返回可读文本");
+  if (!text) throw new Error("文字中转服务没有返回可读文本");
   return text;
+}
+
+async function openAiText(prompt) {
+  return openAiInput(prompt);
 }
 
 function jsonFromText(text) {
@@ -144,33 +165,25 @@ async function openAiJson(prompt) {
 }
 
 async function openAiImage(prompt) {
-  if (!process.env.OPENAI_API_KEY) throw new Error("尚未配置 OPENAI_API_KEY");
-  const request = getOpenAiFetch();
-  const response = await request(`${openAiBaseUrl}/images/generations`, {
+  requireImageService(imageService);
+  const response = await imageRequest(`${imageService.baseUrl}/images/generations`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+      Authorization: `Bearer ${imageService.apiKey}`
     },
-    body: JSON.stringify({
-      model: openAiImageModel,
-      prompt,
-      n: 1,
-      size: openAiImageSize,
-      quality: "medium",
-      output_format: "png"
-    })
+    body: JSON.stringify(imageGenerationBody(imageService, prompt))
   });
   const result = await response.json();
-  if (!response.ok || !result.data?.[0]) throw new Error(providerError(result, "OpenAI 图片生成失败"));
+  if (!response.ok || !result.data?.[0]) throw new Error(providerError(result, "图片中转服务生成失败"));
   const image = result.data[0];
   if (image.b64_json) return Buffer.from(image.b64_json, "base64");
   if (image.url) {
-    const download = await request(image.url, {}, 120000);
-    if (!download.ok) throw new Error("OpenAI 生成图下载失败");
+    const download = await imageRequest(image.url, {}, 120000);
+    if (!download.ok) throw new Error("图片中转服务生成图下载失败");
     return Buffer.from(await download.arrayBuffer());
   }
-  throw new Error("OpenAI 图片接口没有返回图片内容");
+  throw new Error("图片中转服务没有返回图片内容");
 }
 
 function stylePackName(id) {
@@ -256,14 +269,16 @@ function normalizePlan(plan, run) {
       slide_index: index + 1,
       title: cleanSlideTitle(slide.title, index === 0 ? run.projectName : `Page ${index + 1}`),
       role: normalizedSlideRole(index, run.pageCount, slide.role || plan.visual_storyboard?.slides?.[index]?.role),
-      content_summary: String(slide.content_summary || "").slice(0, 500),
-      composition: String(slide.composition || "").slice(0, 700),
+      content_summary: String(slide.content_summary || "").slice(0, 4000),
+      composition: String(slide.composition || "").slice(0, 1600),
       main_visual: String(slide.main_visual || "").slice(0, 700),
       inherited_elements: normalizeArray(slide.inherited_elements).map(String).slice(0, 8),
       changed_elements: normalizeArray(slide.changed_elements).map(String).slice(0, 8),
-      text_density: String(slide.text_density || "low"),
+      text_density: ["low", "medium", "high"].includes(slide.text_density)
+        ? slide.text_density
+        : (index === 0 || index === run.pageCount - 1 ? "low" : "medium"),
       white_space: String(slide.white_space || "").slice(0, 300),
-      must_include: normalizeArray(slide.must_include).map(String).slice(0, 10),
+      must_include: normalizeArray(slide.must_include).map(String).slice(0, 30),
       must_avoid: normalizeArray(slide.must_avoid).map(String).slice(0, 10)
     }));
   while (slides.length < run.pageCount) {
@@ -272,12 +287,12 @@ function normalizePlan(plan, run) {
       slide_index: index + 1,
       title: index === 0 ? run.projectName : `Page ${index + 1}`,
       role: normalizedSlideRole(index, run.pageCount),
-      content_summary: run.brief,
+      content_summary: [run.brief, run.referenceText].filter(Boolean).join("\n").slice(0, 4000),
       composition: "完整 16:9 PPT 页面，标题清晰，内容区有层级，保留高级留白。",
       main_visual: run.projectName,
       inherited_elements: [],
       changed_elements: [],
-      text_density: "low",
+      text_density: index === 0 || index === run.pageCount - 1 ? "low" : "medium",
       white_space: "保留清楚的阅读空间。",
       must_include: [],
       must_avoid: []
@@ -320,7 +335,534 @@ function normalizePlan(plan, run) {
   };
 }
 
-function planPrompt(run) {
+function jsonArray(value) {
+  const parsed = safeJson(value, []);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+function cleanStringList(value, limit = 20) {
+  return normalizeArray(value).map(item => String(item || "").trim()).filter(Boolean).slice(0, limit);
+}
+
+function sourceFilePath(source) {
+  const base = source.kind === "theme" ? deckThemeRoot : deckSourceRoot;
+  return path.join(base, path.basename(source.storedName));
+}
+
+
+async function openAiVisionJson(source, instruction) {
+  const raw = await readFile(sourceFilePath(source));
+  const resized = await sharp(raw).resize(1800, 1800, { fit: "inside", withoutEnlargement: true }).png().toBuffer();
+  const text = await openAiInput([{
+    role: "user",
+    content: [
+      { type: "input_text", text: instruction },
+      { type: "input_image", image_url: `data:image/png;base64,${resized.toString("base64")}` }
+    ]
+  }]);
+  return jsonFromText(text);
+}
+
+async function extractOneSource(source) {
+  await db.deckGenerationSource.update({
+    where: { id: source.id },
+    data: { status: "processing", error: null }
+  });
+  try {
+    let parsed;
+    if (source.kind === "theme") {
+      const palette = await openAiVisionJson(source, `分析这张 PPT 配色参考图。只返回 JSON object：
+{
+  "palette":["#RRGGBB"],
+  "background":"#RRGGBB",
+  "surface":"#RRGGBB",
+  "primary_text":"#RRGGBB",
+  "secondary_text":"#RRGGBB",
+  "accent":"#RRGGBB",
+  "accent_secondary":"#RRGGBB",
+  "usage_rules":[""],
+  "avoid":[""],
+  "visual_tone":""
+}
+要求提取 5-8 个真实可复用颜色，并说明每种颜色在 PPT 页面里的职责。不要分析页面内容。所有字段必须有值。`);
+      parsed = {
+        kind: "theme",
+        text: "",
+        sections: [],
+        metadata: { palette }
+      };
+    } else {
+      parsed = await parseDeckSourceFile(sourceFilePath(source), source.originalName, source.mimeType);
+      if (parsed.kind === "image") {
+        const vision = await openAiVisionJson(source, `读取这张参考资料图片。只返回 JSON object：
+{
+  "transcription":"尽量完整抄录图片中的可读文字和数字",
+  "facts":["图片中明确表达的事实、数字、日期、人物、结论"],
+  "description":"对图表、照片、结构和视觉信息的客观说明",
+  "warnings":["无法确认或模糊的信息"]
+}
+不要猜测看不清的内容，不要补造数字。`);
+        parsed = {
+          ...parsed,
+          text: [vision.transcription, ...cleanStringList(vision.facts), vision.description].filter(Boolean).join("\n"),
+          sections: [{
+            locator: "整张图片",
+            text: [vision.transcription, ...cleanStringList(vision.facts), vision.description].filter(Boolean).join("\n")
+          }],
+          metadata: { ...parsed.metadata, vision }
+        };
+      }
+    }
+
+    const chunks = source.kind === "theme" ? [] : buildEvidenceChunks(parsed);
+    await db.$transaction([
+      db.deckGenerationEvidence.deleteMany({ where: { sourceId: source.id } }),
+      ...(chunks.length ? [db.deckGenerationEvidence.createMany({
+        data: chunks.map(chunk => ({
+          runId: source.runId,
+          sourceId: source.id,
+          locator: chunk.locator,
+          content: chunk.content,
+          summary: chunk.content.slice(0, 240)
+        }))
+      })] : []),
+      db.deckGenerationSource.update({
+        where: { id: source.id },
+        data: {
+          status: "completed",
+          extractedText: String(parsed.text || "").slice(0, 2_000_000),
+          metadataJson: JSON.stringify(parsed.metadata || {}),
+          error: null
+        }
+      })
+    ]);
+    return { source, parsed, chunkCount: chunks.length };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await db.deckGenerationSource.update({
+      where: { id: source.id },
+      data: { status: "failed", error: message }
+    });
+    return { source, error: message, chunkCount: 0 };
+  }
+}
+
+function normalizeAdvancedOutline(result, run) {
+  const rawPages = normalizeArray(result.pages || result.slides);
+  const requestedCount = Math.max(2, Math.min(30, rawPages.length || run.pageCount));
+  const pages = rawPages.slice(0, requestedCount).map((page, index) => {
+    const rawBlocks = normalizeArray(page.blocks || page.sections || page.subtitles);
+    const blocks = rawBlocks.map((block, blockIndex) => typeof block === "string"
+      ? { id: `block-${blockIndex + 1}`, subtitle: block, instruction: "", constraintMode: "polish", content: "", evidenceIds: [] }
+      : {
+        id: String(block.id || `block-${blockIndex + 1}`),
+        subtitle: String(block.subtitle || block.title || "").slice(0, 120),
+        instruction: String(block.instruction || block.intent || block.content || "").slice(0, 1200),
+        constraintMode: ["exact", "polish", "direction"].includes(block.constraintMode || block.constraint_mode)
+          ? String(block.constraintMode || block.constraint_mode)
+          : "polish",
+        content: String(block.content || "").slice(0, 2000),
+        evidenceIds: cleanStringList(block.evidenceIds || block.evidence_ids, 20)
+      });
+    return {
+      pageIndex: index + 1,
+      title: cleanSlideTitle(page.title, index === 0 ? run.projectName : `第 ${index + 1} 页`),
+      role: normalizedSlideRole(index, requestedCount, page.role),
+      purpose: String(page.purpose || page.intent || page.key_message || "").slice(0, 1200),
+      blocks,
+      mustInclude: cleanStringList(page.must_include || page.mustInclude, 30),
+      conclusion: String(page.conclusion || page.takeaway || "").slice(0, 1000),
+      density: ["sparse", "standard", "compact"].includes(page.density) ? page.density : (index === 0 || index === requestedCount - 1 ? "sparse" : "standard"),
+      layoutType: String(page.layout_type || page.layoutType || "auto").slice(0, 80),
+      constraintMode: ["exact", "polish", "direction"].includes(page.constraint_mode || page.constraintMode)
+        ? String(page.constraint_mode || page.constraintMode)
+        : "polish",
+      evidence: [],
+      warnings: [],
+      locked: Boolean(page.locked)
+    };
+  });
+  while (pages.length < requestedCount) {
+    const index = pages.length;
+    pages.push({
+      pageIndex: index + 1,
+      title: index === 0 ? run.projectName : index === requestedCount - 1 ? "结语" : `第 ${index + 1} 页`,
+      role: normalizedSlideRole(index, requestedCount),
+      purpose: "",
+      blocks: [],
+      mustInclude: [],
+      conclusion: "",
+      density: index === 0 || index === requestedCount - 1 ? "sparse" : "standard",
+      layoutType: "auto",
+      constraintMode: "polish",
+      evidence: [],
+      warnings: ["该页来自页数补位，请确认标题和内容意图"],
+      locked: false
+    });
+  }
+  return pages;
+}
+
+function outlinePrompt(run, outlineMaterial) {
+  return `${readSkill("outline-control.md")}
+
+你正在把用户已经决定的大标题框架整理成可编辑的逐页结构，不能擅自改写汇报逻辑。
+项目：${run.projectName}
+用途：${run.projectType || "未填写"}
+项目说明：${run.brief}
+
+用户提供的大纲：
+${outlineMaterial.slice(0, 120_000)}
+
+只返回 JSON object：
+{
+  "pages":[{
+    "title":"",
+    "role":"cover|problem|insight|solution|architecture|feature|scenario|data|roadmap|ending",
+    "purpose":"这一页要回答什么",
+    "blocks":[{"subtitle":"","instruction":"","constraint_mode":"exact|polish|direction"}],
+    "must_include":[],
+    "conclusion":"",
+    "density":"sparse|standard|compact",
+    "layout_type":"auto|overview|comparison|timeline|data-dashboard|matrix|process|case-study"
+  }]
+}
+
+规则：
+- 用户写明“第几页”的顺序必须保留；没有页码时按原大纲顺序拆分。
+- 用户只给大标题时，可补“待匹配资料”的内容块，但不能凭空补事实。
+- 用户给了小标题和想讲的内容时必须完整保留。
+- exact 表示原样保留，polish 表示允许润色，direction 表示只作方向。
+- 封面和结尾默认 sparse；资料型正文允许 compact。
+- 不要输出视觉方案，不要开始生图。`;
+}
+
+async function processSourcesRun(run) {
+  await db.deckGenerationRun.update({
+    where: { id: run.id },
+    data: { status: "source_processing", startedAt: run.startedAt || new Date(), error: null }
+  });
+  const sources = await db.deckGenerationSource.findMany({
+    where: { runId: run.id },
+    orderBy: { createdAt: "asc" }
+  });
+  const results = [];
+  for (const source of sources) results.push(await extractOneSource(source));
+
+  const refreshedSources = await db.deckGenerationSource.findMany({
+    where: { runId: run.id },
+    orderBy: { createdAt: "asc" }
+  });
+  const evidence = await db.deckGenerationEvidence.findMany({
+    where: { runId: run.id },
+    include: { source: { select: { originalName: true } } },
+    orderBy: { createdAt: "asc" },
+    take: 160
+  });
+  const theme = refreshedSources.find(source => source.kind === "theme" && source.status === "completed");
+  const themeMetadata = theme ? safeJson(theme.metadataJson, {}) : {};
+  const sourceCatalog = refreshedSources.map(source => ({
+    id: source.id,
+    kind: source.kind,
+    name: source.originalName,
+    status: source.status,
+    error: source.error,
+    characters: source.extractedText.length
+  }));
+  const analysisSummary = {
+    sourceCatalog,
+    evidencePreview: evidence.map(item => ({
+      id: item.id,
+      source: item.source.originalName,
+      locator: item.locator,
+      content: item.content.slice(0, 1200)
+    })),
+    failedCount: refreshedSources.filter(source => source.status === "failed").length,
+    completedCount: refreshedSources.filter(source => source.status === "completed").length
+  };
+
+  if (run.generationMode !== "advanced") {
+    await db.deckGenerationRun.update({
+      where: { id: run.id },
+      data: {
+        status: "queued",
+        analysisSummaryJson: JSON.stringify(analysisSummary),
+        paletteContractJson: JSON.stringify(themeMetadata.palette || {}),
+        error: analysisSummary.failedCount ? "部分资料读取失败，方案将使用其余已成功读取的资料。" : null
+      }
+    });
+    return;
+  }
+
+  const outlineInput = safeJson(run.outlineInputJson, {});
+  const outlineSources = refreshedSources.filter(source => source.kind === "outline" && source.status === "completed");
+  const outlineMaterial = [
+    String(outlineInput.text || "").trim(),
+    ...outlineSources.map(source => `[${source.originalName}]\n${source.extractedText}`)
+  ].filter(Boolean).join("\n\n");
+  if (!outlineMaterial) throw new Error("没有读取到可用的 PPT 结构，请返回并重新填写或上传大纲");
+
+  const pages = normalizeAdvancedOutline(await openAiJson(outlinePrompt(run, outlineMaterial)), run);
+  await db.$transaction([
+    db.deckGenerationPagePlan.deleteMany({ where: { runId: run.id } }),
+    db.deckGenerationPagePlan.createMany({
+      data: pages.map(page => ({
+        runId: run.id,
+        pageIndex: page.pageIndex,
+        title: page.title,
+        role: page.role,
+        purpose: page.purpose,
+        blocksJson: JSON.stringify(page.blocks),
+        mustIncludeJson: JSON.stringify(page.mustInclude),
+        conclusion: page.conclusion,
+        density: page.density,
+        layoutType: page.layoutType,
+        constraintMode: page.constraintMode,
+        evidenceJson: "[]",
+        warningsJson: JSON.stringify(page.warnings),
+        locked: page.locked
+      }))
+    }),
+    db.deckGenerationRun.update({
+      where: { id: run.id },
+      data: {
+        status: "outline_ready",
+        pageCount: pages.length,
+        analysisSummaryJson: JSON.stringify(analysisSummary),
+        paletteContractJson: JSON.stringify(themeMetadata.palette || {}),
+        error: analysisSummary.failedCount ? "部分资料读取失败，请在逐页匹配前检查资料状态。" : null
+      }
+    })
+  ]);
+}
+
+function searchTokens(value) {
+  const normalized = String(value || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+  const tokens = new Set();
+  for (const word of String(value || "").toLowerCase().match(/[a-z0-9]{2,}|[\p{Script=Han}]{2,}/gu) || []) tokens.add(word);
+  for (let index = 0; index < normalized.length - 1; index += 1) tokens.add(normalized.slice(index, index + 2));
+  return tokens;
+}
+
+function evidenceScore(queryTokens, evidence) {
+  const contentTokens = searchTokens(`${evidence.locator} ${evidence.summary} ${evidence.content.slice(0, 1000)}`);
+  let score = 0;
+  for (const token of queryTokens) if (contentTokens.has(token)) score += token.length > 2 ? 3 : 1;
+  return score;
+}
+
+function matchingPrompt(run, pages, candidates) {
+  return `${readSkill("source-grounding.md")}
+
+你是领导汇报 PPT 的资料编辑。用户已经决定每一页讲什么，你只负责从证据候选中选择可靠内容并整理成逐页内容包。
+
+项目：${run.projectName}
+用途：${run.projectType || "未填写"}
+项目说明：${run.brief}
+用户粘贴的补充资料：${run.referenceText || "无"}
+
+逐页结构：
+${JSON.stringify(pages)}
+
+证据候选（id、文件、位置、原文）：
+${JSON.stringify(candidates)}
+
+只返回 JSON object：
+{
+  "pages":[{
+    "page_index":1,
+    "title":"",
+    "purpose":"",
+    "blocks":[{"subtitle":"","instruction":"","constraint_mode":"exact|polish|direction","content":"","evidence_ids":[]}],
+    "must_include":[],
+    "conclusion":"",
+    "density":"sparse|standard|compact",
+    "layout_type":"",
+    "evidence_ids":[],
+    "warnings":[]
+  }]
+}
+
+硬规则：
+- 不允许编造证据候选中没有的数字、日期、荣誉、姓名或结论。
+- 每个事实块必须填写 evidence_ids；资料不足就在 warnings 写明，不要硬凑。
+- 保持用户的页序、大标题、小标题和约束模式。
+- compact 页面可以信息紧凑，但必须有层级，不堆成长段。
+- 第 1 页和最后一页少文字、强情绪；正文页根据内容密度组织。
+- 不要输出视觉设计或图片提示词。`;
+}
+
+function pagePlanPayload(page) {
+  return {
+    page_index: page.pageIndex,
+    title: page.title,
+    role: page.role,
+    purpose: page.purpose,
+    blocks: jsonArray(page.blocksJson),
+    must_include: jsonArray(page.mustIncludeJson),
+    conclusion: page.conclusion,
+    density: page.density,
+    layout_type: page.layoutType,
+    constraint_mode: page.constraintMode,
+    evidence: jsonArray(page.evidenceJson),
+    warnings: jsonArray(page.warningsJson),
+    locked: page.locked
+  };
+}
+
+async function persistDeckPlan(run, plan) {
+  await db.deckGenerationSlide.deleteMany({ where: { runId: run.id } });
+  await db.deckGenerationRun.update({
+    where: { id: run.id },
+    data: {
+      status: "plan_ready",
+      outlineJson: JSON.stringify(plan.outline),
+      visualIdentityJson: JSON.stringify(plan.visual_identity),
+      visualStoryboardJson: JSON.stringify(plan.visual_storyboard),
+      slideImageSpecsJson: JSON.stringify(plan.slide_image_specs),
+      planReadyAt: new Date(),
+      error: null
+    }
+  });
+  await db.deckGenerationSlide.createMany({
+    data: plan.slide_image_specs.slides.map(slide => ({
+      runId: run.id,
+      slideIndex: slide.slide_index,
+      title: slide.title,
+      role: slide.role,
+      specJson: JSON.stringify(slide),
+      status: "waiting"
+    }))
+  });
+}
+
+async function planAdvancedRun(run) {
+  const pages = await db.deckGenerationPagePlan.findMany({
+    where: { runId: run.id },
+    orderBy: { pageIndex: "asc" }
+  });
+  const pagePayload = pages.map(pagePlanPayload);
+  const prompt = `${skillBundle()}
+
+请把下面已经由用户确认、并且已匹配资料依据的逐页内容包，转成整套 PPT 视觉方案。不要改页序，不要删除用户指定的小标题、事实和结论。
+
+项目：${run.projectName}
+用途：${run.projectType || "未填写"}
+风格包：${stylePackName(run.stylePack)}
+主题配色合同：${run.paletteContractJson}
+统一元素选项：${run.unityOptionsJson}
+逐页内容包：${JSON.stringify(pagePayload)}
+
+只返回 JSON object：
+{
+  "outline":{"title":"","slides":[]},
+  "visual_identity":{},
+  "visual_storyboard":{"slides":[]},
+  "slide_image_specs":{"slides":[]}
+}
+
+要求：
+- 页数必须是 ${pages.length}，标题、页序和 role 与逐页内容包一致。
+- exact 内容必须原样进入 must_include；polish 只允许压缩表达，不得改变事实；direction 可以转成合适的版式表达。
+- sparse 用于封面/结尾；standard 为普通正文；compact 必须做成高密度但有清楚分区的专业汇报页。
+- 所有数字、日期和专名只能来自逐页内容包的 evidence。
+- 使用主题参考图时严格遵守 paletteContractJson 的色彩职责，不照抄参考图版式。`;
+  const normalized = normalizePlan(await openAiJson(prompt), { ...run, pageCount: pages.length });
+  normalized.slide_image_specs.slides = normalized.slide_image_specs.slides.map((slide, index) => {
+    const page = pages[index];
+    const blocks = jsonArray(page.blocksJson);
+    const mustInclude = [
+      ...jsonArray(page.mustIncludeJson),
+      ...blocks.filter(block => block.constraintMode === "exact" || block.constraint_mode === "exact").flatMap(block => [block.subtitle, block.content]).filter(Boolean)
+    ];
+    const density = page.density === "compact" ? "high" : page.density === "sparse" ? "low" : "medium";
+    return {
+      ...slide,
+      title: page.title,
+      role: page.role,
+      content_summary: [page.purpose, ...blocks.map(block => [block.subtitle, block.content || block.instruction].filter(Boolean).join("：")), page.conclusion].filter(Boolean).join("\n").slice(0, 6000),
+      composition: `版式类型：${page.layoutType}；信息密度：${page.density}。 ${slide.composition}`,
+      text_density: density,
+      must_include: Array.from(new Set([...mustInclude.map(String), ...normalizeArray(slide.must_include).map(String)])).slice(0, 30),
+      evidence: jsonArray(page.evidenceJson),
+      warnings: jsonArray(page.warningsJson)
+    };
+  });
+  normalized.outline = normalizeOutline(normalized, run, normalized.slide_image_specs.slides);
+  normalized.visual_storyboard = normalizeStoryboard(normalized, normalized.slide_image_specs.slides);
+  await persistDeckPlan(run, normalized);
+}
+
+async function matchAdvancedRun(run) {
+  await db.deckGenerationRun.update({
+    where: { id: run.id },
+    data: { status: "matching", error: null }
+  });
+  const pages = await db.deckGenerationPagePlan.findMany({
+    where: { runId: run.id },
+    orderBy: { pageIndex: "asc" }
+  });
+  const evidence = await db.deckGenerationEvidence.findMany({
+    where: { runId: run.id },
+    include: { source: { select: { originalName: true } } },
+    take: 2500
+  });
+  const candidateMap = new Map();
+  for (const page of pages) {
+    const query = searchTokens([page.title, page.purpose, page.conclusion, page.blocksJson, page.mustIncludeJson].join(" "));
+    evidence
+      .map(item => ({ item, score: evidenceScore(query, item) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 10)
+      .forEach(({ item }) => candidateMap.set(item.id, {
+        id: item.id,
+        file: item.source.originalName,
+        locator: item.locator,
+        content: item.content.slice(0, 1400)
+      }));
+  }
+  const candidates = Array.from(candidateMap.values()).slice(0, 120);
+  const result = await openAiJson(matchingPrompt(run, pages.map(pagePlanPayload), candidates));
+  const returned = normalizeArray(result.pages);
+  const evidenceById = new Map(candidates.map(item => [item.id, item]));
+
+  for (const page of pages) {
+    if (page.locked) continue;
+    const item = returned.find(candidate => Number(candidate.page_index) === page.pageIndex) || {};
+    const evidenceIds = Array.from(new Set([
+      ...cleanStringList(item.evidence_ids, 30),
+      ...normalizeArray(item.blocks).flatMap(block => cleanStringList(block.evidence_ids, 20))
+    ])).filter(id => evidenceById.has(id));
+    const matchedEvidence = evidenceIds.map(id => evidenceById.get(id));
+    const blocks = normalizeArray(item.blocks).map((block, index) => ({
+      id: String(block.id || `block-${index + 1}`),
+      subtitle: String(block.subtitle || "").slice(0, 120),
+      instruction: String(block.instruction || "").slice(0, 1200),
+      constraintMode: ["exact", "polish", "direction"].includes(block.constraint_mode) ? block.constraint_mode : "polish",
+      content: String(block.content || "").slice(0, 2400),
+      evidenceIds: cleanStringList(block.evidence_ids, 20).filter(id => evidenceById.has(id))
+    }));
+    await db.deckGenerationPagePlan.update({
+      where: { id: page.id },
+      data: {
+        title: cleanSlideTitle(item.title, page.title),
+        purpose: String(item.purpose || page.purpose).slice(0, 1200),
+        blocksJson: JSON.stringify(blocks.length ? blocks : jsonArray(page.blocksJson)),
+        mustIncludeJson: JSON.stringify(cleanStringList(item.must_include, 30).length ? cleanStringList(item.must_include, 30) : jsonArray(page.mustIncludeJson)),
+        conclusion: String(item.conclusion || page.conclusion).slice(0, 1000),
+        density: ["sparse", "standard", "compact"].includes(item.density) ? item.density : page.density,
+        layoutType: String(item.layout_type || page.layoutType || "auto").slice(0, 80),
+        evidenceJson: JSON.stringify(matchedEvidence),
+        warningsJson: JSON.stringify(cleanStringList(item.warnings, 20))
+      }
+    });
+  }
+  const refreshed = await db.deckGenerationRun.findUnique({ where: { id: run.id } });
+  if (!refreshed) throw new Error("生成 PPT 任务不存在");
+  await planAdvancedRun(refreshed);
+}
+
+function planPrompt(run, sourceContext = "") {
   return `${skillBundle()}
 
 你是 WZLCF 的 PPT 图组导演。请根据下面输入，先生成方案，不要生成图片。
@@ -332,6 +874,15 @@ function planPrompt(run) {
 统一元素选项：${run.unityOptionsJson}
 项目简介：
 ${run.brief}
+用户粘贴的补充资料：
+${run.referenceText || "无"}
+
+已读取资料中的证据（文件名、页码/工作表位置、原文）：
+${sourceContext || "无上传资料"}
+
+主题配色合同：
+${run.paletteContractJson || "{}"}
+
 
 请返回 JSON object，结构必须是：
 {
@@ -349,39 +900,29 @@ ${run.brief}
 - title 字段必须是纯标题，不要带页码、序号、"01"、"第 1 页"、"1." 这类数字前缀。
 - 不要把页码做成左上角或标题旁的大号数字装饰；如需页码，只能作为统一页脚或角落里的很小辅助信息。
 - 所有重要文字、图表和装饰必须在画面安全区内，距离四边至少 6%，不要贴边，不要被裁切。
-- 避免大段乱码文字，文字密度 low 或 medium。
+- 封面和结尾必须 low；普通正文使用 medium；资料丰富、数据或综述页允许 high，但必须分区清楚、层级明确。
+- 不能编造资料中没有的数字、日期、人物、荣誉和结论。资料不足时宁可减少事实，也不能猜测。
+- 每页内容必须服务于明确结论，避免只有大标题、几个空泛卡片和大量无意义留白。
+- 使用配色参考图时只吸收色彩职责和气质，不照抄参考图的版式和内容。
 - 必须体现组图连续性和风格统一。`;
 }
 
 async function planRun(run) {
   await db.deckGenerationRun.update({
     where: { id: run.id },
-    data: { status: "planning", startedAt: new Date(), error: null }
+    data: { status: "planning", startedAt: run.startedAt || new Date(), error: null }
   });
-  const plan = normalizePlan(await openAiJson(planPrompt(run)), run);
-  await db.deckGenerationRun.update({
-    where: { id: run.id },
-    data: {
-      status: "plan_ready",
-      outlineJson: JSON.stringify(plan.outline),
-      visualIdentityJson: JSON.stringify(plan.visual_identity),
-      visualStoryboardJson: JSON.stringify(plan.visual_storyboard),
-      slideImageSpecsJson: JSON.stringify(plan.slide_image_specs),
-      planReadyAt: new Date(),
-      error: null
-    }
+  const evidence = await db.deckGenerationEvidence.findMany({
+    where: { runId: run.id },
+    include: { source: { select: { originalName: true } } },
+    orderBy: { createdAt: "asc" },
+    take: 180
   });
-  await db.deckGenerationSlide.deleteMany({ where: { runId: run.id } });
-  await db.deckGenerationSlide.createMany({
-    data: plan.slide_image_specs.slides.map(slide => ({
-      runId: run.id,
-      slideIndex: slide.slide_index,
-      title: slide.title,
-      role: slide.role,
-      specJson: JSON.stringify(slide),
-      status: "waiting"
-    }))
-  });
+  const sourceContext = evidence.map(item =>
+    `[${item.source.originalName} / ${item.locator}]\n${item.content.slice(0, 1200)}`
+  ).join("\n\n").slice(0, 140_000);
+  const plan = normalizePlan(await openAiJson(planPrompt(run, sourceContext)), run);
+  await persistDeckPlan(run, plan);
 }
 
 function safeJson(value, fallback) {
@@ -606,21 +1147,26 @@ async function readCodiaJson(response, fallback) {
   }
   if (!response.ok || result.code) {
     const message = result?.message || fallback;
-    throw new Error(`Codia API error ${response.status}: ${message}`);
+    const status = Number(response.status || 0);
+    const providerCode = String(result?.code || "");
+    const detail = `${providerCode} ${message}`.toLowerCase();
+    if ([402, 403].includes(status) || /insufficient|balance|quota|credit|payment|余额|额度/.test(detail)) {
+      throw new Error(`Codia 返回 HTTP ${status || providerCode || "未知"}：账户额度不足，或当前 API Key/套餐无权执行 PDF 转 PPT。充值或修复权限后，可直接点击“重试生成 PPT”；预览图和 PDF 不会丢失。`);
+    }
+    throw new Error(`Codia API 返回 HTTP ${status || providerCode || "未知"}：${message}`);
   }
   return result;
 }
 
 async function codiaUploadPdf(pdfBuffer, fileName) {
   const { key } = codiaConfig();
-  const request = getOpenAiFetch();
+  const request = codiaRequest;
   const multipart = multipartFileBody("file", fileName, "application/pdf", pdfBuffer);
   const response = await request(`${codiaBaseUrl}/v2/open/uploads`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${key}`,
       "Content-Type": `multipart/form-data; boundary=${multipart.boundary}`,
-      "Content-Length": String(multipart.body.length)
     },
     body: multipart.body
   }, 120000);
@@ -645,18 +1191,23 @@ function multipartFileBody(fieldName, fileName, contentType, content) {
 
 async function codiaCreatePdfToPptTask(run, uploadId) {
   const { key } = codiaConfig();
-  const request = getOpenAiFetch();
+  const pageCount = Number(run.pageCount);
+  const pageNumbers = Number.isInteger(pageCount) && pageCount > 0
+    ? Array.from({ length: pageCount }, (_, index) => index)
+    : null;
+  const request = codiaRequest;
   const response = await request(`${codiaBaseUrl}/v2/open/tasks`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${key}`,
-      "Idempotency-Key": `deck-pdf-to-ppt-${run.id}`
+      "Idempotency-Key": `deck-pdf-to-ppt-${run.id}-${new Date(run.updatedAt).getTime()}`
     },
     body: JSON.stringify({
       operation: "pdf_to_ppt",
       input: {
         upload_id: uploadId,
+        ...(pageNumbers ? { page_no: pageNumbers } : {}),
         title: run.projectName
       }
     })
@@ -669,7 +1220,7 @@ async function codiaCreatePdfToPptTask(run, uploadId) {
 
 async function codiaGetTask(taskId) {
   const { key } = codiaConfig();
-  const request = getOpenAiFetch();
+  const request = codiaRequest;
   const response = await request(`${codiaBaseUrl}/v2/open/tasks/${encodeURIComponent(taskId)}`, {
     headers: { Authorization: `Bearer ${key}` }
   }, 45000);
@@ -677,7 +1228,7 @@ async function codiaGetTask(taskId) {
 }
 
 async function downloadCodiaPpt(pptUrl) {
-  const request = getOpenAiFetch();
+  const request = codiaRequest;
   const response = await request(pptUrl, {}, 180000);
   if (!response.ok) throw new Error(`Codia PPTX 下载失败：HTTP ${response.status}`);
   return Buffer.from(await response.arrayBuffer());
@@ -735,6 +1286,38 @@ async function processPptRun(run) {
 
 async function tick() {
   await ensureDirs();
+  const sourceRun = await db.deckGenerationRun.findFirst({
+    where: { status: "sources_queued" },
+    orderBy: { createdAt: "asc" }
+  });
+  if (sourceRun) {
+    try {
+      await processSourcesRun(sourceRun);
+    } catch (error) {
+      await db.deckGenerationRun.update({
+        where: { id: sourceRun.id },
+        data: { status: "failed", error: error instanceof Error ? error.message : String(error) }
+      });
+    }
+    return;
+  }
+
+  const matching = await db.deckGenerationRun.findFirst({
+    where: { status: "matching_queued" },
+    orderBy: { createdAt: "asc" }
+  });
+  if (matching) {
+    try {
+      await matchAdvancedRun(matching);
+    } catch (error) {
+      await db.deckGenerationRun.update({
+        where: { id: matching.id },
+        data: { status: "outline_ready", error: error instanceof Error ? error.message : String(error) }
+      });
+    }
+    return;
+  }
+
   const planning = await db.deckGenerationRun.findFirst({
     where: { status: "queued" },
     orderBy: { createdAt: "asc" }
@@ -791,9 +1374,17 @@ async function tick() {
     try {
       await processPptRun(ppt);
     } catch (error) {
+      const rawError = error instanceof Error ? error.message : String(error);
+      const quotaFailure = /insufficient|balance|quota|credit|payment|http 402|http 403|余额|额度/i.test(rawError);
+      const networkFailure = /fetch failed|enotfound|econn|etimedout|socket|tls|certificate|network/i.test(rawError);
+      const userMessage = quotaFailure
+        ? "Codia 账户额度不足，或当前 API Key/套餐无权执行 PDF 转 PPT。充值或修复权限后，可直接点击“重试生成 PPT”；预览图和 PDF 不会丢失。"
+        : networkFailure
+          ? `Codia 网络连接失败：本次没有收到 402/403 响应，因此不能判断为额度问题。请检查 CODIA_BASE_URL、CODIA_PROXY_URL 或网络后点击“重试生成 PPT”。预览图和 PDF 已保留。原始错误：${rawError}`
+          : rawError;
       await db.deckGenerationRun.update({
         where: { id: ppt.id },
-        data: { status: "review_ready", error: error instanceof Error ? error.message : String(error) }
+        data: { status: "failed", error: userMessage }
       });
     }
   }

@@ -3,7 +3,12 @@ import { mkdir, readdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import sharp from "sharp";
 import JSZip from "jszip";
-import { ProxyAgent, fetch as undiciFetch } from "undici";
+import {
+  aiImageConfig,
+  createServiceFetch,
+  imageGenerationBody,
+  requireImageService
+} from "./ai-service-client.mjs";
 
 const root = process.cwd();
 loadEnv();
@@ -16,11 +21,10 @@ const workerHeartbeatPath = path.join(root, ".next-dev", "ppt-polish-worker-hear
 const pollMs = Math.max(1500, Number(process.env.PPT_POLISH_POLL_MS || 3000));
 const staleGeneratingMs = Math.max(60_000, Number(process.env.PPT_POLISH_STALE_GENERATING_MS || 60_000));
 const polishConcurrency = Math.min(4, Math.max(1, Number(process.env.PPT_POLISH_CONCURRENCY || 2)));
-const openAiBaseUrl = trimSlash(process.env.OPENAI_BASE_URL || "https://api.openai.com/v1");
-const openAiImageModel = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1.5";
-const openAiImageSize = process.env.OPENAI_IMAGE_SIZE?.split(",").map(item => item.trim()).find(Boolean) || "1536x864";
-const codiaBaseUrl = trimSlash(process.env.CODIA_BASE_URL || "https://api.codia.ai");
-let proxyAgent;
+const imageService = aiImageConfig();
+const imageRequest = createServiceFetch(imageService);
+const externalRequest = createServiceFetch({ serviceName: "Codia", proxyUrl: process.env.CODIA_PROXY_URL || "" });
+const codiaBaseUrl = trimSlash(process.env.CODIA_BASE_URL || "https://openapi.codia.ai");
 let workerHeartbeatState = "starting";
 let workerHeartbeatTimer;
 
@@ -43,6 +47,23 @@ function trimSlash(value) {
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function codiaRequest(url, init = {}, timeoutMs = 300000) {
+  let lastError;
+  const retryDelays = [1200, 3000];
+  for (let attempt = 0; attempt <= retryDelays.length; attempt += 1) {
+    try {
+      return await externalRequest(url, init, timeoutMs);
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      const transientNetworkFailure = /fetch failed|enotfound|econn|etimedout|socket|tls|network/i.test(message);
+      if (!transientNetworkFailure || attempt >= retryDelays.length) throw error;
+      await sleep(retryDelays[attempt]);
+    }
+  }
+  throw lastError;
 }
 
 function nowName(extension) {
@@ -107,20 +128,6 @@ async function listRuns() {
   return runs.sort((a, b) => Date.parse(b.updatedAt || b.createdAt || "") - Date.parse(a.updatedAt || a.createdAt || ""));
 }
 
-function getOpenAiFetch() {
-  const proxy = process.env.OPENAI_PROXY_URL || process.env.CODIA_PROXY_URL;
-  if (proxy && !proxyAgent) proxyAgent = new ProxyAgent(proxy);
-  return async (url, init, timeoutMs = 300000) => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      if (proxyAgent) return await undiciFetch(url, { ...init, signal: controller.signal, dispatcher: proxyAgent });
-      return await fetch(url, { ...init, signal: controller.signal });
-    } finally {
-      clearTimeout(timer);
-    }
-  };
-}
 
 function providerError(result, fallback) {
   return result?.error?.message || result?.message || fallback;
@@ -128,45 +135,37 @@ function providerError(result, fallback) {
 
 function readableExternalFailure(error) {
   const message = error instanceof Error ? error.message : String(error);
-  if (error instanceof Error && error.name === "AbortError") return "OpenAI 图片生成等待超时，请稍后重试。";
+  if (error instanceof Error && error.name === "AbortError") return "图片中转服务等待超时，请稍后重试。";
   if (/fetch failed|network|connect|socket|econn|enotfound|etimedout|tls|ssl/i.test(message)) {
-    return `无法连接 OpenAI 图片服务：${message}。请检查 OPENAI_PROXY_URL 或网络代理后重试。`;
+    return `无法直连图片中转服务：${message}。请检查 AI_IMAGE_BASE_URL 和中转站状态。`;
   }
-  if (/401|invalid_api_key|incorrect api key|unauthorized/i.test(message)) return "OpenAI 服务端授权异常，请检查 API Key 配置。";
-  if (/403|forbidden|permission|not have access|does not have access|not authorized/i.test(message)) return "OpenAI 模型或项目权限异常，请检查模型、Project 与组织权限。";
-  if (/quota|billing|credits|balance|insufficient/i.test(message)) return "OpenAI API 额度或余额不足，请检查计费与额度。";
-  if (/rate limit|too many requests|429/i.test(message)) return "OpenAI 请求较多，请稍后重试。";
-  return message || "外部图片服务暂时不可用，请稍后重试。";
+  if (/401|invalid_api_key|incorrect api key|unauthorized/i.test(message)) return "图片中转服务授权异常，请检查 AI_IMAGE_API_KEY。";
+  if (/403|forbidden|permission|not have access|does not have access|not authorized/i.test(message)) return "图片中转服务没有当前模型权限，请检查 AI_IMAGE_MODEL。";
+  if (/quota|billing|credits|balance|insufficient/i.test(message)) return "图片中转站额度或余额不足，请检查中转站账户。";
+  if (/rate limit|too many requests|429/i.test(message)) return "图片中转站当前请求较多，请稍后重试。";
+  return message || "图片中转服务暂时不可用，请稍后重试。";
 }
 
 async function openAiImage(prompt) {
-  if (!process.env.OPENAI_API_KEY) throw new Error("尚未配置 OPENAI_API_KEY，无法逐页重绘 PPT。");
-  const request = getOpenAiFetch();
-  const response = await request(`${openAiBaseUrl}/images/generations`, {
+  requireImageService(imageService);
+  const response = await imageRequest(`${imageService.baseUrl}/images/generations`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+      Authorization: `Bearer ${imageService.apiKey}`
     },
-    body: JSON.stringify({
-      model: openAiImageModel,
-      prompt,
-      n: 1,
-      size: openAiImageSize,
-      quality: "medium",
-      output_format: "png"
-    })
+    body: JSON.stringify(imageGenerationBody(imageService, prompt))
   });
   const result = await response.json();
-  if (!response.ok || !result.data?.[0]) throw new Error(providerError(result, "OpenAI 图片生成失败"));
+  if (!response.ok || !result.data?.[0]) throw new Error(providerError(result, "图片中转服务生成失败"));
   const image = result.data[0];
   if (image.b64_json) return Buffer.from(image.b64_json, "base64");
   if (image.url) {
-    const download = await request(image.url, {}, 120000);
-    if (!download.ok) throw new Error("OpenAI 生成图下载失败");
+    const download = await imageRequest(image.url, {}, 120000);
+    if (!download.ok) throw new Error("图片中转服务生成图下载失败");
     return Buffer.from(await download.arrayBuffer());
   }
-  throw new Error("OpenAI 图片接口没有返回图片内容");
+  throw new Error("图片中转服务没有返回图片内容");
 }
 
 function stylePackName(id) {
@@ -551,14 +550,13 @@ function multipartFileBody(fieldName, fileName, contentType, content) {
 
 async function codiaUploadPdf(pdfBuffer, fileName) {
   const { key } = codiaConfig();
-  const request = getOpenAiFetch();
+  const request = codiaRequest;
   const multipart = multipartFileBody("file", fileName, "application/pdf", pdfBuffer);
   const response = await request(`${codiaBaseUrl}/v2/open/uploads`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${key}`,
       "Content-Type": `multipart/form-data; boundary=${multipart.boundary}`,
-      "Content-Length": String(multipart.body.length)
     },
     body: multipart.body
   }, 120000);
@@ -570,7 +568,7 @@ async function codiaUploadPdf(pdfBuffer, fileName) {
 
 async function codiaCreatePdfToPptTask(run, uploadId) {
   const { key } = codiaConfig();
-  const request = getOpenAiFetch();
+  const request = codiaRequest;
   const response = await request(`${codiaBaseUrl}/v2/open/tasks`, {
     method: "POST",
     headers: {
@@ -594,7 +592,7 @@ async function codiaCreatePdfToPptTask(run, uploadId) {
 
 async function codiaGetTask(taskId) {
   const { key } = codiaConfig();
-  const request = getOpenAiFetch();
+  const request = codiaRequest;
   const response = await request(`${codiaBaseUrl}/v2/open/tasks/${encodeURIComponent(taskId)}`, {
     headers: { Authorization: `Bearer ${key}` }
   }, 45000);
@@ -602,7 +600,7 @@ async function codiaGetTask(taskId) {
 }
 
 async function downloadCodiaPpt(pptUrl) {
-  const request = getOpenAiFetch();
+  const request = codiaRequest;
   const response = await request(pptUrl, {}, 180000);
   if (!response.ok) throw new Error(`Codia PPTX 下载失败：HTTP ${response.status}`);
   return Buffer.from(await response.arrayBuffer());

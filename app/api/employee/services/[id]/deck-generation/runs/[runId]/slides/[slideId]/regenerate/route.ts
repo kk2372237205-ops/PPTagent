@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { currentEmployee } from "@/lib/employee-auth";
+import { authorizeEmployeeService } from "@/lib/employee-auth";
 
 const instructions: Record<string, string> = {
   reroll: "重新生成本页：必须产生一张新的页面图，保留整套视觉身份、本页角色和故事目标，但重新组织构图、主视觉和局部信息呈现，不要复用上一版的画面布局。",
@@ -8,9 +8,10 @@ const instructions: Record<string, string> = {
 };
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string; runId: string; slideId: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
   const { id, runId, slideId } = await context.params;
+  const authorization = await authorizeEmployeeService(id, "smartPpt");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  const employee = authorization.access.employee;
   const body = await request.json().catch(() => ({})) as { action?: string };
   const instruction = `${instructions[body.action || ""] || instructions.reroll}\nRegeneration request id: ${Date.now()}.`;
   const run = await db.deckGenerationRun.findFirst({

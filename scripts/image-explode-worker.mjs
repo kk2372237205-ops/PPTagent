@@ -3,20 +3,20 @@ import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import sharp from "sharp";
 import { PrismaClient } from "@prisma/client";
-import { ProxyAgent, fetch as undiciFetch } from "undici";
+import { aiImageConfig, createServiceFetch, requireImageEdits } from "./ai-service-client.mjs";
 
 const root = process.cwd();
 loadEnv();
 const db = new PrismaClient();
 const workspaceRoot = path.join(root, "uploads", "employee-workspace");
+const imageService = aiImageConfig();
+const imageRequest = createServiceFetch(imageService);
 const imageRoot = path.join(workspaceRoot, "images");
 const referenceRoot = path.join(workspaceRoot, "references");
 const extractorUrl = (process.env.COMPONENT_EXTRACTOR_URL || "http://127.0.0.1:8765").replace(/\/$/, "");
 const pollMs = Math.max(1200, Number(process.env.IMAGE_EXPLODE_POLL_MS || 2400));
 const arkEndpoint = process.env.ARK_RESPONSES_ENDPOINT || "https://ark.cn-beijing.volces.com/api/v3/responses";
 const visionModel = process.env.DOUBAO_VISION_MODEL || process.env.DOUBAO_TEXT_MODEL || "doubao-seed-2-0-pro-260215";
-const openAiBaseUrl = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
-let proxyAgent;
 
 function loadEnv() {
   for (const fileName of [".env.local", ".env"]) {
@@ -46,28 +46,30 @@ function normalBox(box) {
   const [x, y, width, height] = Array.isArray(box) ? box : [];
   return { x: clamp(x, 0, 1000), y: clamp(y, 0, 1000), width: clamp(width, 1, 1000), height: clamp(height, 1, 1000) };
 }
-function request(url, init = {}, timeout = 300000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout);
-  const dispatcher = process.env.OPENAI_PROXY_URL ? (proxyAgent ||= new ProxyAgent(process.env.OPENAI_PROXY_URL)) : undefined;
-  return undiciFetch(url, { ...init, dispatcher, signal: controller.signal }).finally(() => clearTimeout(timer));
-}
 async function cleanBackgroundWithOpenAi(source, plan) {
-  if (!(process.env.OPENAI_API_KEY || "").trim()) return { error: "未配置 OpenAI 背景清图密钥，已保留本地候选供人工确认。" };
+  try {
+    requireImageEdits(imageService);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { error: `${message} 已保留本地候选供人工确认。` };
+  }
   const labels = plan.components.map(item => String(item.label || item.kind || "视觉主体")).slice(0, 12).join("、");
   const form = new FormData();
-  form.set("model", process.env.OPENAI_IMAGE_MODEL || "gpt-image-1.5");
+  form.set("model", imageService.model);
   form.set("image", new Blob([new Uint8Array(source.buffer)], { type: mime(source.name) }), `background-${source.name}`);
   form.set("prompt", `Create a clean PPT background from this image. Remove these foreground layers completely: ${labels}. Also remove every readable title, subtitle, label, card and logo. Preserve only the abstract atmospheric background, canvas size, palette, lighting direction, subtle particles and non-semantic texture. Do not add text, subjects, cards, icons, borders or new decorations. Return a clean background image only.`);
-  form.set("output_format", "png");
-  const response = await request(`${openAiBaseUrl}/images/edits`, { method: "POST", headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, body: form });
+  const response = await imageRequest(`${imageService.baseUrl}/images/edits`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${imageService.apiKey}` },
+    body: form
+  });
   const result = await response.json().catch(() => ({}));
-  if (!response.ok || !result?.data?.[0]) return { error: result?.error?.message || result?.message || "OpenAI 背景清图没有返回可用图片。" };
+  if (!response.ok || !result?.data?.[0]) return { error: result?.error?.message || result?.message || `${imageService.serviceName} 背景清图没有返回可用图片。` };
   const image = result.data[0];
   if (image.b64_json) return { buffer: Buffer.from(image.b64_json, "base64") };
-  if (!image.url) return { error: "OpenAI 背景清图未返回图片数据。" };
-  const download = await request(image.url, {}, 300000);
-  return download.ok ? { buffer: Buffer.from(await download.arrayBuffer()) } : { error: "OpenAI 背景清图结果下载失败。" };
+  if (!image.url) return { error: `${imageService.serviceName} 背景清图未返回图片数据。` };
+  const download = await imageRequest(image.url, {}, 300000);
+  return download.ok ? { buffer: Buffer.from(await download.arrayBuffer()) } : { error: `${imageService.serviceName} 背景清图结果下载失败。` };
 }
 
 async function event(runId, stage, status, detail) {

@@ -1,19 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { currentEmployee } from "@/lib/employee-auth";
+import { authorizeEmployeeService } from "@/lib/employee-auth";
 import { documentRoot, readStoredFile } from "@/lib/workspace-storage";
 
 export async function POST(_request: NextRequest, context: { params: Promise<{ id: string; runId: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
   const { id, runId } = await context.params;
+  const authorization = await authorizeEmployeeService(id, "exports");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  const employee = authorization.access.employee;
   const run = await db.deckGenerationRun.findFirst({
     where: { id: runId, serviceId: id, employeeId: employee.id },
     include: { slides: true }
   });
   if (!run) return NextResponse.json({ error: "生成 PPT 任务不存在" }, { status: 404 });
   if (run.status === "ppt_ready") return NextResponse.json({ run });
-  if (!["review_ready", "pdf_ready"].includes(run.status)) {
+  const canRetryExistingPdf = run.status === "failed" && Boolean(run.pdfStoredName);
+  if (!["review_ready", "pdf_ready"].includes(run.status) && !canRetryExistingPdf) {
     return NextResponse.json({ error: "请等待全部页面生成完成后再生成 PPT" }, { status: 400 });
   }
   if (!run.slides.length || run.slides.some(slide => slide.status !== "completed" || !slide.storedName)) {
@@ -21,16 +23,17 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
   }
   const updated = await db.deckGenerationRun.update({
     where: { id: run.id },
-    data: { status: "ppt_queued", error: null },
+    data: { status: "ppt_queued", codiaTaskId: null, codiaResponseJson: "{}", error: null },
     include: { slides: { orderBy: { slideIndex: "asc" } } }
   });
   return NextResponse.json({ run: updated }, { status: 202 });
 }
 
 export async function GET(_request: NextRequest, context: { params: Promise<{ id: string; runId: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
   const { id, runId } = await context.params;
+  const authorization = await authorizeEmployeeService(id, "exports");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  const employee = authorization.access.employee;
   const run = await db.deckGenerationRun.findFirst({
     where: { id: runId, serviceId: id, employeeId: employee.id }
   });

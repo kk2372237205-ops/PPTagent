@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { currentEmployee } from "@/lib/employee-auth";
+import { authorizeEmployeeService } from "@/lib/employee-auth";
+import { deckSourceRoot, deckThemeRoot, saveFile } from "@/lib/workspace-storage";
 
 export const runtime = "nodejs";
+
+const deckRunInclude = {
+  slides: { orderBy: { slideIndex: "asc" as const } },
+  sources: { orderBy: { createdAt: "asc" as const } },
+  pagePlans: { orderBy: { pageIndex: "asc" as const } }
+};
 
 const allowedStylePacks = new Set([
   "blue-gold-tech",
@@ -15,22 +22,24 @@ const allowedStylePacks = new Set([
 ]);
 
 export async function GET(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
   const { id } = await context.params;
+  const authorization = await authorizeEmployeeService(id, "smartPpt");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  const employee = authorization.access.employee;
   const runs = await db.deckGenerationRun.findMany({
     where: { serviceId: id, employeeId: employee.id },
     orderBy: { createdAt: "desc" },
     take: 8,
-    include: { slides: { orderBy: { slideIndex: "asc" } } }
+    include: deckRunInclude
   });
   return NextResponse.json({ runs });
 }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
   const { id } = await context.params;
+  const authorization = await authorizeEmployeeService(id, "smartPpt");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+  const employee = authorization.access.employee;
   const service = await db.service.findUnique({ where: { id } });
   if (!service) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
 
@@ -39,38 +48,93 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   const projectType = String(form.get("projectType") || "").trim();
   const brief = String(form.get("brief") || "").trim();
   const referenceText = String(form.get("referenceText") || "").trim();
-  const pageCount = Math.max(2, Math.min(20, Number(form.get("pageCount") || 12) || 12));
+  const generationMode = form.get("generationMode") === "advanced" ? "advanced" : "quick";
+  const outlineText = String(form.get("outlineText") || "").trim();
+  const pageCount = Math.max(2, Math.min(30, Number(form.get("pageCount") || 12) || 12));
   const stylePack = String(form.get("stylePack") || "blue-gold-tech");
+  const paletteMode = form.get("paletteMode") === "reference" ? "reference" : "preset";
   const unityOptionsJson = normalizeUnityOptions(String(form.get("unityOptions") || "{}"));
-  const referenceFiles = form.getAll("references").filter((value): value is File => value instanceof File && value.size > 0);
+  const referenceFiles = form.getAll("references").filter(isUploadedFile);
+  const outlineFile = isUploadedFile(form.get("outlineFile")) ? form.get("outlineFile") as File : null;
+  const themeReference = isUploadedFile(form.get("themeReference")) ? form.get("themeReference") as File : null;
+  const allFiles = [...referenceFiles, ...(outlineFile ? [outlineFile] : []), ...(themeReference ? [themeReference] : [])];
 
   if (!projectName) return NextResponse.json({ error: "请填写项目名称" }, { status: 400 });
   if (!brief) return NextResponse.json({ error: "请填写项目简介" }, { status: 400 });
-  if (!allowedStylePacks.has(stylePack)) return NextResponse.json({ error: "风格包无效" }, { status: 400 });
-  if (referenceFiles.length > 8) return NextResponse.json({ error: "参考资料最多上传 8 个文件" }, { status: 400 });
-  for (const file of referenceFiles) {
-    if (file.size > 200 * 1024 * 1024) return NextResponse.json({ error: "单个参考资料不能超过 200MB" }, { status: 400 });
+  if (generationMode === "advanced" && !outlineText && !outlineFile) {
+    return NextResponse.json({ error: "高级版需要填写 PPT 结构，或上传一份大纲文件" }, { status: 400 });
   }
-  const fileSummary = referenceFiles.map(file => `- ${file.name} (${file.type || "unknown"}, ${Math.ceil(file.size / 1024)}KB)`).join("\n");
-  const referenceSection = [referenceText && `文字摘要：\n${referenceText}`, fileSummary && `上传文件：\n${fileSummary}`].filter(Boolean).join("\n\n");
-  const fullBrief = referenceSection ? `${brief}\n\n参考资料：\n${referenceSection}` : brief;
-  if (fullBrief.length > 6000) return NextResponse.json({ error: "项目简介和参考资料不能超过 6000 字" }, { status: 400 });
+  if (paletteMode === "reference" && !themeReference) {
+    return NextResponse.json({ error: "选择参考图配色后，请上传一张配色参考图" }, { status: 400 });
+  }
+  if (!allowedStylePacks.has(stylePack)) return NextResponse.json({ error: "风格包无效" }, { status: 400 });
+  if (referenceText.length > 50_000) return NextResponse.json({ error: "粘贴的参考资料不能超过 5 万字，可改为上传文件" }, { status: 400 });
+  if (referenceFiles.length > 30) return NextResponse.json({ error: "参考资料最多上传 30 个文件" }, { status: 400 });
+  if (allFiles.reduce((total, file) => total + file.size, 0) > 500 * 1024 * 1024) {
+    return NextResponse.json({ error: "本次全部资料合计不能超过 500MB" }, { status: 400 });
+  }
+  for (const file of allFiles) {
+    if (file.size > 200 * 1024 * 1024) return NextResponse.json({ error: "单个资料不能超过 200MB" }, { status: 400 });
+    if (!isSupportedSource(file, file === themeReference)) {
+      return NextResponse.json({ error: `暂不支持 ${file.name}，请使用 PDF、DOCX、XLSX、PPTX、TXT、Markdown、CSV、JSON 或常见图片` }, { status: 400 });
+    }
+  }
+
+  const savedReferences = await Promise.all(referenceFiles.map(async file => ({
+    kind: "reference",
+    originalName: file.name.slice(0, 240),
+    storedName: await saveFile(file, deckSourceRoot),
+    mimeType: file.type || "",
+    size: file.size
+  })));
+  const savedOutline = outlineFile ? {
+    kind: "outline",
+    originalName: outlineFile.name.slice(0, 240),
+    storedName: await saveFile(outlineFile, deckSourceRoot),
+    mimeType: outlineFile.type || "",
+    size: outlineFile.size
+  } : null;
+  const savedTheme = themeReference ? {
+    kind: "theme",
+    originalName: themeReference.name.slice(0, 240),
+    storedName: await saveFile(themeReference, deckThemeRoot),
+    mimeType: themeReference.type || "",
+    size: themeReference.size
+  } : null;
+  const sources = [...savedReferences, ...(savedOutline ? [savedOutline] : []), ...(savedTheme ? [savedTheme] : [])];
 
   const run = await db.deckGenerationRun.create({
     data: {
       serviceId: id,
       employeeId: employee.id,
+      generationMode,
       projectName: projectName.slice(0, 80),
       projectType: projectType.slice(0, 80),
-      brief: fullBrief,
+      brief: brief.slice(0, 12_000),
+      referenceText: referenceText.slice(0, 50_000),
       pageCount,
       stylePack,
+      paletteMode,
+      outlineInputJson: JSON.stringify({ text: outlineText.slice(0, 80_000) }),
+      themeReferenceStoredName: savedTheme?.storedName || null,
+      sourceCount: sources.length,
       unityOptionsJson,
-      status: "queued"
+      status: generationMode === "advanced" || sources.length ? "sources_queued" : "queued",
+      sources: { create: sources }
     },
-    include: { slides: { orderBy: { slideIndex: "asc" } } }
+    include: deckRunInclude
   });
   return NextResponse.json({ run }, { status: 202 });
+}
+
+function isUploadedFile(value: FormDataEntryValue | null): value is File {
+  return value instanceof File && value.size > 0;
+}
+
+function isSupportedSource(file: File, themeOnly = false) {
+  const extension = file.name.toLowerCase().match(/\.[^.]+$/)?.[0] || "";
+  if (themeOnly) return [".png", ".jpg", ".jpeg", ".webp"].includes(extension) || file.type.startsWith("image/");
+  return [".pdf", ".docx", ".xlsx", ".pptx", ".txt", ".md", ".csv", ".json", ".png", ".jpg", ".jpeg", ".webp"].includes(extension);
 }
 
 function normalizeUnityOptions(value: string) {

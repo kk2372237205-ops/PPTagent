@@ -2,7 +2,7 @@ import path from "path";
 import { NextResponse } from "next/server";
 import JSZip from "jszip";
 import { db } from "@/lib/db";
-import { currentEmployee } from "@/lib/employee-auth";
+import { authorizeEmployeeService } from "@/lib/employee-auth";
 import { documentRoot, readStoredFile } from "@/lib/workspace-storage";
 
 export const runtime = "nodejs";
@@ -18,12 +18,11 @@ type ExtractedPptImage = {
 };
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
-  const employee = await currentEmployee();
-  if (!employee) return NextResponse.json({ error: "请先登录员工模式" }, { status: 401 });
-
   const { id } = await context.params;
   const document = await db.workDocument.findUnique({ where: { id } });
   if (!document) return NextResponse.json({ error: "工作文件不存在" }, { status: 404 });
+  const authorization = await authorizeEmployeeService(document.serviceId, "imageTools");
+  if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
   if (document.fileType !== "pptx") {
     return NextResponse.json({ error: "当前工作文件不是 PPTX，暂时无法提取图片" }, { status: 400 });
   }
