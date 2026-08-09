@@ -1,13 +1,13 @@
-import { ProxyAgent, fetch as undiciFetch } from "undici";
+import { Agent, ProxyAgent, fetch as undiciFetch } from "undici";
 
 const agents = new Map();
 
 export function aiTextConfig(env = process.env) {
   return {
-    serviceName: trimEnv(env.AI_TEXT_SERVICE_NAME) || "YZStudio GPT-5.6",
+    serviceName: trimEnv(env.AI_TEXT_SERVICE_NAME) || "YZStudio GPT-5.6 Sol",
     baseUrl: normalizeAiApiBaseUrl(env.AI_TEXT_BASE_URL),
     apiKey: trimEnv(env.AI_TEXT_API_KEY),
-    model: trimEnv(env.AI_TEXT_MODEL) || "gpt-5.6",
+    model: trimEnv(env.AI_TEXT_MODEL) || "gpt-5.6-sol",
     apiMode: trimEnv(env.AI_TEXT_API_MODE) === "responses" ? "responses" : "chat-completions",
     proxyUrl: trimEnv(env.AI_TEXT_PROXY_URL)
   };
@@ -26,20 +26,25 @@ export function aiImageConfig(env = process.env) {
 }
 
 export function createServiceFetch(config) {
-  const dispatcher = serviceAgent(config.proxyUrl, config.serviceName);
   return async (url, init = {}, timeoutMs = 300000) => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    // Keep Undici's own first-byte and body timers behind the caller's overall
+    // timeout. Otherwise its 300-second defaults can abort a permitted long task.
+    const dispatcher = serviceAgent(config.proxyUrl, config.serviceName, timeoutMs + 5000);
     try {
-      if (dispatcher) {
-        return await undiciFetch(url, { ...init, signal: controller.signal, dispatcher });
-      }
-      return await fetch(url, { ...init, signal: controller.signal });
+      return await undiciFetch(url, { ...init, signal: controller.signal, dispatcher });
     } catch (error) {
-      const reason = externalErrorReason(error);
+      const seconds = Math.max(1, Math.round(timeoutMs / 1000));
+      const timedOut = controller.signal.aborted;
+      const reason = timedOut
+        ? `请求超过 ${seconds} 秒，本机已停止等待`
+        : externalErrorReason(error);
       const host = new URL(url).host;
-      const route = dispatcher ? "配置的专用代理" : "直连";
-      throw new Error(`${config.serviceName} 无法通过${route}访问 ${host}：${reason}`, { cause: error });
+      const route = config.proxyUrl ? "配置的专用代理" : "直连";
+      const wrapped = new Error(`${config.serviceName} 无法通过${route}访问 ${host}：${reason}`, { cause: error });
+      if (timedOut) wrapped.code = "AI_REQUEST_TIMEOUT";
+      throw wrapped;
     } finally {
       clearTimeout(timer);
     }
@@ -136,13 +141,14 @@ function normalizeChatContent(content) {
   });
 }
 
-function serviceAgent(proxyUrl, serviceName = "AI 服务") {
-  if (!proxyUrl) return undefined;
-  assertProxyUrl(proxyUrl, serviceName);
-  let agent = agents.get(proxyUrl);
+function serviceAgent(proxyUrl, serviceName = "AI 服务", timeoutMs = 300000) {
+  if (proxyUrl) assertProxyUrl(proxyUrl, serviceName);
+  const key = `${proxyUrl || "direct"}:${timeoutMs}`;
+  let agent = agents.get(key);
   if (!agent) {
-    agent = new ProxyAgent(proxyUrl);
-    agents.set(proxyUrl, agent);
+    const options = { headersTimeout: timeoutMs, bodyTimeout: timeoutMs };
+    agent = proxyUrl ? new ProxyAgent({ uri: proxyUrl, ...options }) : new Agent(options);
+    agents.set(key, agent);
   }
   return agent;
 }

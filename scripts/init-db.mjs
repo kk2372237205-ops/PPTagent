@@ -399,6 +399,16 @@ CREATE TABLE IF NOT EXISTS "DeckGenerationRun" (
   "visualIdentityJson" TEXT NOT NULL DEFAULT '{}',
   "visualStoryboardJson" TEXT NOT NULL DEFAULT '{}',
   "slideImageSpecsJson" TEXT NOT NULL DEFAULT '{}',
+  "styleFingerprintJson" TEXT NOT NULL DEFAULT '{}',
+  "styleStripStoredName" TEXT,
+  "deckQualityStatus" TEXT NOT NULL DEFAULT 'pending',
+  "deckQualityReportJson" TEXT NOT NULL DEFAULT '{}',
+  "deckQualityAttempts" INTEGER NOT NULL DEFAULT 0,
+  "initialImageBudget" INTEGER NOT NULL DEFAULT 0,
+  "imageCallsStarted" INTEGER NOT NULL DEFAULT 0,
+  "imageCallsCompleted" INTEGER NOT NULL DEFAULT 0,
+  "manualImageCalls" INTEGER NOT NULL DEFAULT 0,
+  "automaticRedraws" INTEGER NOT NULL DEFAULT 0,
   "pdfStoredName" TEXT,
   "pptStoredName" TEXT,
   "coverStoredName" TEXT,
@@ -447,6 +457,28 @@ CREATE TABLE IF NOT EXISTS "DeckGenerationEvidence" (
   CONSTRAINT "DeckGenerationEvidence_runId_fkey" FOREIGN KEY ("runId") REFERENCES "DeckGenerationRun" ("id") ON DELETE CASCADE,
   CONSTRAINT "DeckGenerationEvidence_sourceId_fkey" FOREIGN KEY ("sourceId") REFERENCES "DeckGenerationSource" ("id") ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS "DeckGenerationVisualEvidence" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "kind" TEXT NOT NULL DEFAULT 'context',
+  "locator" TEXT NOT NULL DEFAULT '',
+  "originalName" TEXT NOT NULL DEFAULT '',
+  "storedName" TEXT NOT NULL UNIQUE,
+  "thumbnailStoredName" TEXT NOT NULL UNIQUE,
+  "mimeType" TEXT NOT NULL DEFAULT 'image/png',
+  "width" INTEGER NOT NULL DEFAULT 0,
+  "height" INTEGER NOT NULL DEFAULT 0,
+  "size" INTEGER NOT NULL DEFAULT 0,
+  "contentHash" TEXT NOT NULL,
+  "description" TEXT NOT NULL DEFAULT '',
+  "tagsJson" TEXT NOT NULL DEFAULT '[]',
+  "usefulness" INTEGER NOT NULL DEFAULT 0,
+  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "runId" TEXT NOT NULL,
+  "sourceId" TEXT NOT NULL,
+  CONSTRAINT "DeckGenerationVisualEvidence_runId_fkey" FOREIGN KEY ("runId") REFERENCES "DeckGenerationRun" ("id") ON DELETE CASCADE,
+  CONSTRAINT "DeckGenerationVisualEvidence_sourceId_fkey" FOREIGN KEY ("sourceId") REFERENCES "DeckGenerationSource" ("id") ON DELETE CASCADE,
+  UNIQUE("runId", "contentHash")
+);
 CREATE TABLE IF NOT EXISTS "DeckGenerationPagePlan" (
   "id" TEXT NOT NULL PRIMARY KEY,
   "pageIndex" INTEGER NOT NULL,
@@ -460,6 +492,8 @@ CREATE TABLE IF NOT EXISTS "DeckGenerationPagePlan" (
   "layoutType" TEXT NOT NULL DEFAULT 'auto',
   "constraintMode" TEXT NOT NULL DEFAULT 'polish',
   "evidenceJson" TEXT NOT NULL DEFAULT '[]',
+  "visualEvidenceJson" TEXT NOT NULL DEFAULT '[]',
+  "directorContractJson" TEXT NOT NULL DEFAULT '{}',
   "warningsJson" TEXT NOT NULL DEFAULT '[]',
   "locked" BOOLEAN NOT NULL DEFAULT false,
   "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -475,16 +509,39 @@ CREATE TABLE IF NOT EXISTS "DeckGenerationSlide" (
   "role" TEXT NOT NULL DEFAULT '',
   "prompt" TEXT NOT NULL DEFAULT '',
   "specJson" TEXT NOT NULL DEFAULT '{}',
+  "renderContractJson" TEXT NOT NULL DEFAULT '{}',
   "storedName" TEXT,
   "status" TEXT NOT NULL DEFAULT 'queued',
+  "qualityStatus" TEXT NOT NULL DEFAULT 'pending',
+  "qualityReportJson" TEXT NOT NULL DEFAULT '{}',
+  "qualityAttempts" INTEGER NOT NULL DEFAULT 0,
+  "qualityCheckedAt" DATETIME,
   "error" TEXT,
   "regenerationCount" INTEGER NOT NULL DEFAULT 0,
   "lastInstruction" TEXT NOT NULL DEFAULT '',
+  "pendingImageCallKey" TEXT NOT NULL DEFAULT '',
   "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "runId" TEXT NOT NULL,
   CONSTRAINT "DeckGenerationSlide_runId_fkey" FOREIGN KEY ("runId") REFERENCES "DeckGenerationRun" ("id") ON DELETE CASCADE,
   UNIQUE("runId", "slideIndex")
+);
+CREATE TABLE IF NOT EXISTS "DeckGenerationImageCall" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "requestKey" TEXT NOT NULL UNIQUE,
+  "kind" TEXT NOT NULL DEFAULT 'initial',
+  "status" TEXT NOT NULL DEFAULT 'reserved',
+  "endpoint" TEXT NOT NULL DEFAULT '',
+  "referenceCount" INTEGER NOT NULL DEFAULT 0,
+  "transport" TEXT NOT NULL DEFAULT 'none',
+  "error" TEXT,
+  "startedAt" DATETIME,
+  "finishedAt" DATETIME,
+  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "runId" TEXT NOT NULL,
+  "slideId" TEXT NOT NULL,
+  CONSTRAINT "DeckGenerationImageCall_runId_fkey" FOREIGN KEY ("runId") REFERENCES "DeckGenerationRun" ("id") ON DELETE CASCADE,
+  CONSTRAINT "DeckGenerationImageCall_slideId_fkey" FOREIGN KEY ("slideId") REFERENCES "DeckGenerationSlide" ("id") ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS "ImageExplodePart" (
   "id" TEXT NOT NULL PRIMARY KEY,
@@ -561,7 +618,10 @@ CREATE INDEX IF NOT EXISTS "DeckGenerationRun_serviceId_status_createdAt_idx" ON
 CREATE INDEX IF NOT EXISTS "DeckGenerationSlide_runId_slideIndex_idx" ON "DeckGenerationSlide"("runId", "slideIndex");
 CREATE INDEX IF NOT EXISTS "DeckGenerationSource_runId_kind_createdAt_idx" ON "DeckGenerationSource"("runId", "kind", "createdAt");
 CREATE INDEX IF NOT EXISTS "DeckGenerationEvidence_runId_sourceId_idx" ON "DeckGenerationEvidence"("runId", "sourceId");
+CREATE INDEX IF NOT EXISTS "DeckGenerationVisualEvidence_runId_sourceId_usefulness_idx" ON "DeckGenerationVisualEvidence"("runId", "sourceId", "usefulness");
 CREATE INDEX IF NOT EXISTS "DeckGenerationPagePlan_runId_pageIndex_idx" ON "DeckGenerationPagePlan"("runId", "pageIndex");
+CREATE INDEX IF NOT EXISTS "DeckGenerationImageCall_runId_status_createdAt_idx" ON "DeckGenerationImageCall"("runId", "status", "createdAt");
+CREATE INDEX IF NOT EXISTS "DeckGenerationImageCall_slideId_createdAt_idx" ON "DeckGenerationImageCall"("slideId", "createdAt");
 CREATE INDEX IF NOT EXISTS "ImageExplodePart_runId_zIndex_idx" ON "ImageExplodePart"("runId", "zIndex");
 CREATE INDEX IF NOT EXISTS "ImageExplodeTextLayer_runId_groupKey_createdAt_idx" ON "ImageExplodeTextLayer"("runId", "groupKey", "createdAt");
 CREATE INDEX IF NOT EXISTS "ImageExplodeEvent_runId_createdAt_idx" ON "ImageExplodeEvent"("runId", "createdAt");
@@ -636,7 +696,25 @@ ensureColumn("DeckGenerationRun", "coverStoredName", "TEXT");
 ensureColumn("DeckGenerationRun", "codiaTaskId", "TEXT");
 ensureColumn("DeckGenerationRun", "codiaResponseJson", "TEXT NOT NULL DEFAULT '{}'");
 ensureColumn("DeckGenerationRun", "pptGeneratedAt", "DATETIME");
+ensureColumn("DeckGenerationRun", "styleFingerprintJson", "TEXT NOT NULL DEFAULT '{}'");
+ensureColumn("DeckGenerationRun", "styleStripStoredName", "TEXT");
+ensureColumn("DeckGenerationRun", "deckQualityStatus", "TEXT NOT NULL DEFAULT 'pending'");
+ensureColumn("DeckGenerationRun", "deckQualityReportJson", "TEXT NOT NULL DEFAULT '{}'");
+ensureColumn("DeckGenerationRun", "deckQualityAttempts", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("DeckGenerationRun", "initialImageBudget", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("DeckGenerationRun", "imageCallsStarted", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("DeckGenerationRun", "imageCallsCompleted", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("DeckGenerationRun", "manualImageCalls", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("DeckGenerationRun", "automaticRedraws", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("DeckGenerationSlide", "lastInstruction", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("DeckGenerationSlide", "renderContractJson", "TEXT NOT NULL DEFAULT '{}'");
+ensureColumn("DeckGenerationSlide", "qualityStatus", "TEXT NOT NULL DEFAULT 'pending'");
+ensureColumn("DeckGenerationSlide", "qualityReportJson", "TEXT NOT NULL DEFAULT '{}'");
+ensureColumn("DeckGenerationSlide", "qualityAttempts", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("DeckGenerationSlide", "qualityCheckedAt", "DATETIME");
+ensureColumn("DeckGenerationSlide", "pendingImageCallKey", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("DeckGenerationPagePlan", "visualEvidenceJson", "TEXT NOT NULL DEFAULT '[]'");
+ensureColumn("DeckGenerationPagePlan", "directorContractJson", "TEXT NOT NULL DEFAULT '{}'");
 db.exec('CREATE INDEX IF NOT EXISTS "ImageExplodePart_runId_groupKey_idx" ON "ImageExplodePart"("runId", "groupKey")');
 
 const admins = db.prepare(`

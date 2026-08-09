@@ -18,14 +18,55 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   if (run.generationMode === "advanced" && !run.pagePlans.length) {
     return NextResponse.json({ error: "高级版缺少已确认的逐页内容方案" }, { status: 400 });
   }
-  await db.deckGenerationSlide.updateMany({
-    where: { runId: run.id, status: "waiting" },
-    data: { status: "queued", error: null }
-  });
-  const updated = await db.deckGenerationRun.update({
-    where: { id: run.id },
-    data: { status: "generating", confirmedAt: new Date(), error: null },
-    include: { slides: { orderBy: { slideIndex: "asc" } }, sources: true, pagePlans: { orderBy: { pageIndex: "asc" } } }
+  if (run.generationMode === "advanced" && run.pagePlans.length !== run.slides.length) {
+    return NextResponse.json({ error: "高级版整套方案与页面规格数量不一致，请重新整理方案后再确认" }, { status: 400 });
+  }
+  const updated = await db.$transaction(async tx => {
+    for (const slide of run.slides) {
+      const requestKey = `initial:${run.id}:${slide.id}`;
+      if (run.generationMode === "advanced") {
+        await tx.deckGenerationImageCall.create({
+          data: { requestKey, kind: "initial", runId: run.id, slideId: slide.id }
+        });
+      }
+      await tx.deckGenerationSlide.update({
+        where: { id: slide.id },
+        data: {
+          status: "queued",
+          ...(run.generationMode === "advanced" ? {
+            qualityStatus: "not_applicable",
+            qualityReportJson: "{}",
+            qualityAttempts: 0,
+            qualityCheckedAt: null,
+            pendingImageCallKey: requestKey
+          } : {}),
+          error: null
+        }
+      });
+    }
+    await tx.deckGenerationRun.update({
+      where: { id: run.id },
+      data: {
+        status: "generating",
+        ...(run.generationMode === "advanced" ? {
+          deckQualityStatus: "pending",
+          deckQualityReportJson: "{}",
+          deckQualityAttempts: 0,
+          initialImageBudget: run.slides.length,
+          imageCallsStarted: 0,
+          imageCallsCompleted: 0,
+          manualImageCalls: 0,
+          automaticRedraws: 0
+        } : {}),
+        confirmedAt: new Date(),
+        finishedAt: null,
+        error: null
+      }
+    });
+    return tx.deckGenerationRun.findUnique({
+      where: { id: run.id },
+      include: { slides: { orderBy: { slideIndex: "asc" } }, sources: true, pagePlans: { orderBy: { pageIndex: "asc" } } }
+    });
   });
   return NextResponse.json({ run: updated }, { status: 202 });
 }

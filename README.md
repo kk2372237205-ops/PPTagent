@@ -9,7 +9,7 @@
 
 ## 核心能力
 
-- **生成 PPT**：快速版适合普通任务；高级版支持批量资料读取、用户逐页规定结构、来源定位、两次确认、逐页预览与返工。
+- **生成 PPT**：快速版适合普通任务；高级版由 GPT-5.6 按用户逐页结构整理大量文字资料，一次确认完整方案后由 Image2 最多 6 页并发成图。
 - **美化 PPT**：先提交整套与逐页修改要求，再确认美化方案、生成预览图、单页重做，最后导出 PDF 或 PPT。
 - **生图与图片工具**：16:9 页面生图、智能抠图、图片拆分、PPT 图片提取和素材回填。
 - **可控交付**：预览图可放大，页面可单独重新生成或贴近上一页，确认后再进入最终文件转换。
@@ -83,12 +83,12 @@ npm run dev:lite
 
 所有原先使用 ChatGPT Key 的文字分析、方案规划、逐页内容整理和生图功能，现已改走 YZStudio 中转站，并使用两把互不混用的服务端密钥：
 
-- `AI_TEXT_API_KEY`：文字、资料分析、大纲、方案和 JSON 规划；按中转站要求填写 `AI_TEXT_BASE_URL=https://yzstudio.vip`，程序自动请求 `/v1/chat/completions`，默认模型为 `gpt-5.6`。
-- `AI_IMAGE_API_KEY`：生成 PPT、美化 PPT、AI 图片和相关页面预览图；按中转站要求填写 `AI_IMAGE_BASE_URL=https://yzstudio.vip`，程序自动请求 `/v1/images/generations`，默认模型为 `gpt-image-2`。
+- `AI_TEXT_API_KEY`：文字、资料分析、大纲、方案和 JSON 规划；按中转站要求填写 `AI_TEXT_BASE_URL=https://yzstudio.vip`，程序自动请求 `/v1/chat/completions`，默认模型为 `gpt-5.6-sol`。
+- `AI_IMAGE_API_KEY`：生成 PPT、美化 PPT、AI 图片和相关页面预览图；按中转站要求填写 `AI_IMAGE_BASE_URL=https://yzstudio.vip`，普通生图请求 `/v1/images/generations`，生成 PPT 高级版的配色参考图/风格条带链路请求 `/v1/images/edits`，默认模型为 `gpt-image-2`。内容资料图片不会作为高级版成图素材。
 - 两个 Base URL 同时兼容带 `/v1` 的旧写法，程序会统一处理，不会重复拼接 `/v1`。
 - `AI_TEXT_PROXY_URL`、`AI_IMAGE_PROXY_URL` 默认留空，表示 Node.js 直接连接中转站；只有部署环境确实需要额外代理时才填写。
 - 旧的 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_PROXY_URL` 已不再被功能代码读取。
-- 中转站当前公开的是文字生图接口，没有公开 `/images/edits`。因此参考图编辑、AI 清字等依赖图片编辑接口的功能默认明确停用，不会偷偷回退到旧 Key；只有确认服务支持后才能设置 `AI_IMAGE_SUPPORTS_EDITS=1`。
+- 生成 PPT 高级版已单独验证并启用 `/images/edits`，由 `DECK_ADVANCED_REFERENCE_IMAGES=1` 控制；这不会打开 AI 清字或其他图片编辑功能。其他功能仍需独立确认后设置 `AI_IMAGE_SUPPORTS_EDITS=1`，默认不会偷偷回退到旧 Key。
 
 管理控制台只显示两条中转链路的服务名、模型、地址和是否已配置，不会向浏览器返回密钥。修改 `.env` 后需要重新启动 `npm run dev`。
 

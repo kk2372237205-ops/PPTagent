@@ -64,6 +64,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   if (generationMode === "advanced" && !outlineText && !outlineFile) {
     return NextResponse.json({ error: "高级版需要填写 PPT 结构，或上传一份大纲文件" }, { status: 400 });
   }
+  if (generationMode === "advanced" && referenceFiles.length === 0) {
+    return NextResponse.json({ error: "高级版至少需要上传一份内容资料；大纲文件和配色参考图不算内容资料" }, { status: 400 });
+  }
   if (paletteMode === "reference" && !themeReference) {
     return NextResponse.json({ error: "选择参考图配色后，请上传一张配色参考图" }, { status: 400 });
   }
