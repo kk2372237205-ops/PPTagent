@@ -521,6 +521,16 @@ model DeckGenerationRun {
   visualIdentityJson   String                @default("{}")
   visualStoryboardJson String                @default("{}")
   slideImageSpecsJson  String                @default("{}")
+  styleFingerprintJson String                @default("{}")
+  styleStripStoredName String?
+  deckQualityStatus    String                @default("pending")
+  deckQualityReportJson String               @default("{}")
+  deckQualityAttempts Int                   @default(0)
+  initialImageBudget   Int                   @default(0)
+  imageCallsStarted    Int                   @default(0)
+  imageCallsCompleted  Int                   @default(0)
+  manualImageCalls     Int                   @default(0)
+  automaticRedraws     Int                   @default(0)
   pdfStoredName        String?
   pptStoredName        String?
   coverStoredName      String?
@@ -542,7 +552,9 @@ model DeckGenerationRun {
   slides               DeckGenerationSlide[]
   sources              DeckGenerationSource[]
   evidence             DeckGenerationEvidence[]
+  visualEvidence       DeckGenerationVisualEvidence[]
   pagePlans            DeckGenerationPagePlan[]
+  imageCalls           DeckGenerationImageCall[]
 
   @@index([employeeId, createdAt])
   @@index([serviceId, status, createdAt])
@@ -564,6 +576,7 @@ model DeckGenerationSource {
   runId         String
   run           DeckGenerationRun        @relation(fields: [runId], references: [id], onDelete: Cascade)
   evidence      DeckGenerationEvidence[]
+  visualEvidence DeckGenerationVisualEvidence[]
 
   @@index([runId, kind, createdAt])
 }
@@ -584,6 +597,31 @@ model DeckGenerationEvidence {
   @@index([runId, sourceId])
 }
 
+model DeckGenerationVisualEvidence {
+  id                  String                @id @default(cuid())
+  kind                String                @default("context")
+  locator             String                @default("")
+  originalName        String                @default("")
+  storedName          String                @unique
+  thumbnailStoredName String                @unique
+  mimeType            String                @default("image/png")
+  width               Int                   @default(0)
+  height              Int                   @default(0)
+  size                Int                   @default(0)
+  contentHash         String
+  description         String                @default("")
+  tagsJson            String                @default("[]")
+  usefulness          Int                   @default(0)
+  createdAt           DateTime              @default(now())
+  runId               String
+  run                 DeckGenerationRun     @relation(fields: [runId], references: [id], onDelete: Cascade)
+  sourceId            String
+  source               DeckGenerationSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, contentHash])
+  @@index([runId, sourceId, usefulness])
+}
+
 model DeckGenerationPagePlan {
   id              String             @id @default(cuid())
   pageIndex       Int
@@ -597,6 +635,8 @@ model DeckGenerationPagePlan {
   layoutType      String             @default("auto")
   constraintMode  String             @default("polish")
   evidenceJson    String             @default("[]")
+  visualEvidenceJson String          @default("[]")
+  directorContractJson String        @default("{}")
   warningsJson    String             @default("[]")
   locked          Boolean            @default(false)
   createdAt       DateTime           @default(now())
@@ -615,18 +655,46 @@ model DeckGenerationSlide {
   role              String            @default("")
   prompt            String            @default("")
   specJson          String            @default("{}")
+  renderContractJson String            @default("{}")
   storedName        String?
   status            String            @default("queued")
+  qualityStatus     String            @default("pending")
+  qualityReportJson String            @default("{}")
+  qualityAttempts   Int               @default(0)
+  qualityCheckedAt  DateTime?
   error             String?
   regenerationCount Int               @default(0)
   lastInstruction   String            @default("")
+  pendingImageCallKey String           @default("")
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
   runId             String
   run               DeckGenerationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  imageCalls        DeckGenerationImageCall[]
 
   @@unique([runId, slideIndex])
   @@index([runId, slideIndex])
+}
+
+model DeckGenerationImageCall {
+  id             String                @id @default(cuid())
+  requestKey     String                @unique
+  kind           String                @default("initial")
+  status         String                @default("reserved")
+  endpoint       String                @default("")
+  referenceCount Int                   @default(0)
+  transport      String                @default("none")
+  error          String?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime              @default(now())
+  runId          String
+  run            DeckGenerationRun     @relation(fields: [runId], references: [id], onDelete: Cascade)
+  slideId        String
+  slide          DeckGenerationSlide   @relation(fields: [slideId], references: [id], onDelete: Cascade)
+
+  @@index([runId, status, createdAt])
+  @@index([slideId, createdAt])
 }
 
 model ImageExplodePart {

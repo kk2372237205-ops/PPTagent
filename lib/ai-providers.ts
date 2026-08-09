@@ -146,10 +146,10 @@ export function openAiDiagnosticsConfig() {
 export function aiTextConfig() {
   return {
     kind: "text" as const,
-    serviceName: trimEnv(process.env.AI_TEXT_SERVICE_NAME) || "YZStudio GPT-5.6",
+    serviceName: trimEnv(process.env.AI_TEXT_SERVICE_NAME) || "YZStudio GPT-5.6 Sol",
     baseUrl: normalizeAiApiBaseUrl(process.env.AI_TEXT_BASE_URL),
     apiKey: trimEnv(process.env.AI_TEXT_API_KEY),
-    model: trimEnv(process.env.AI_TEXT_MODEL) || "gpt-5.6",
+    model: trimEnv(process.env.AI_TEXT_MODEL) || "gpt-5.6-sol",
     apiMode: trimEnv(process.env.AI_TEXT_API_MODE) === "responses" ? "responses" as const : "chat-completions" as const,
     proxyUrl: trimEnv(process.env.AI_TEXT_PROXY_URL),
     configured: Boolean(trimEnv(process.env.AI_TEXT_API_KEY))

@@ -11,6 +11,7 @@ uploads/
 .npm-cache/
 .runtime/
 .artifacts/
+.codex-tmp/
 .venv-image-gpu/
 .venv-sam3/
 .venv-grounded-sam2/

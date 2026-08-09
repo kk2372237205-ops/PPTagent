@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   Activity, ArrowRight, Bot, BriefcaseBusiness, Check, ChevronLeft,
-  ChevronRight, Clipboard, Download, FileText, ImagePlus, LayoutDashboard, LoaderCircle,
+  ChevronRight, ChevronUp, ChevronDown, Clipboard, Copy, Download, FileText, ImagePlus, LayoutDashboard, LoaderCircle,
   LogOut, MessageCircle, Monitor, Paperclip, Save, Scissors, Send,
   Maximize2, QrCode, RefreshCw, School, Settings, ShieldCheck, Sparkles, Trash2, Upload,
   UserCheck, UserCog, Users, UserX, WandSparkles, X
@@ -44,10 +44,10 @@ type GeneratedImage = {
 };
 type DeckGenerationSlide = {
   id: string; slideIndex: number; title: string; role: string; storedName?: string | null; status: string; error?: string | null;
-  regenerationCount: number; updatedAt: string; specJson?: string;
+  regenerationCount: number; updatedAt: string; specJson?: string; qualityStatus?: string; qualityReportJson?: string; qualityAttempts?: number;
 };
 type DeckGenerationSource = {
-  id: string; kind: string; originalName: string; size: number; status: string; extractedText?: string; error?: string | null;
+  id: string; kind: string; originalName: string; storedName?: string | null; size: number; status: string; extractedText?: string; error?: string | null;
 };
 type DeckPageBlock = {
   id: string; subtitle: string; instruction: string; constraintMode: "exact" | "polish" | "direction"; content?: string; evidenceIds?: string[];
@@ -55,17 +55,23 @@ type DeckPageBlock = {
 type DeckGenerationPagePlan = {
   id: string; pageIndex: number; title: string; role: string; purpose: string; blocksJson: string; mustIncludeJson: string;
   conclusion: string; density: "sparse" | "standard" | "compact"; layoutType: string; constraintMode: string;
-  evidenceJson: string; warningsJson: string; locked: boolean;
+  evidenceJson: string; visualEvidenceJson: string; directorContractJson: string; warningsJson: string; locked: boolean;
+};
+type DeckVisualEvidence = {
+  id: string; kind: string; file?: string; source?: string; locator?: string; description?: string; usefulness?: number;
 };
 type DeckPageDraft = {
   pageIndex: number; title: string; role: string; purpose: string; blocks: DeckPageBlock[]; mustInclude: string[];
   conclusion: string; density: "sparse" | "standard" | "compact"; layoutType: string; constraintMode: string;
-  evidence: { id?: string; file?: string; source?: string; locator?: string; content?: string }[]; warnings: string[]; locked: boolean;
+  evidence: { id?: string; file?: string; source?: string; locator?: string; content?: string }[];
+  visualEvidence: DeckVisualEvidence[]; directorContract: Record<string, unknown>; warnings: string[]; locked: boolean;
 };
 
 type DeckGenerationRun = {
   id: string; kind?: string; status: string; generationMode?: "quick" | "advanced"; projectName: string; projectType: string; brief: string; pageCount: number; stylePack: string;
-  unityOptionsJson: string; outlineJson: string; visualIdentityJson: string; visualStoryboardJson: string; slideImageSpecsJson: string;
+  unityOptionsJson: string; outlineInputJson?: string; outlineJson: string; visualIdentityJson: string; visualStoryboardJson: string; slideImageSpecsJson: string;
+  styleFingerprintJson?: string; deckQualityStatus?: string; deckQualityReportJson?: string; deckQualityAttempts?: number;
+  initialImageBudget?: number; imageCallsStarted?: number; imageCallsCompleted?: number; manualImageCalls?: number; automaticRedraws?: number;
   referenceText?: string; paletteMode?: "preset" | "reference"; paletteContractJson?: string; analysisSummaryJson?: string; sourceCount?: number;
   pdfStoredName?: string | null; pptStoredName?: string | null; coverStoredName?: string | null; error?: string | null; createdAt: string; updatedAt: string;
   slides: DeckGenerationSlide[]; sources?: DeckGenerationSource[]; pagePlans?: DeckGenerationPagePlan[];
@@ -172,6 +178,15 @@ const deckStylePacks = [
   { id: "red-white-government", label: "红白政企" },
   { id: "minimal-academic", label: "极简学术" },
   { id: "vivid-roadshow", label: "活力路演" }
+];
+const deckAdvancedLayoutPacks = [
+  { id: "blue-gold-tech", label: "科技汇报版式" },
+  { id: "white-green-tech", label: "清爽技术版式" },
+  { id: "black-gold-business", label: "高端商务版式" },
+  { id: "blue-purple-ai", label: "未来智能版式" },
+  { id: "red-white-government", label: "庄重政企版式" },
+  { id: "minimal-academic", label: "极简学术版式" },
+  { id: "vivid-roadshow", label: "活力路演版式" }
 ];
 const defaultDeckUnityOptions = {
   mainColor: true,
@@ -1103,6 +1118,7 @@ function DesignStudio({ service, employee, refresh, notify, back, openEditor }: 
   const [initialHistorySelected, setInitialHistorySelected] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const historyRef = useRef<HTMLDivElement>(null);
+  const deckLoadSequence = useRef(0);
 
   const mineMaterials = useMemo(() => service.materialItems.filter(item => item.employee.id === employee.id), [employee.id, service.materialItems]);
   const selectedCount = selectedMaterials.length + localReferences.length;
@@ -1124,8 +1140,10 @@ function DesignStudio({ service, employee, refresh, notify, back, openEditor }: 
     setHistoryLoaded(current => ({ ...current, image: true }));
   }, [notify, service.id]);
   const loadDeckRuns = useCallback(async () => {
+    const sequence = ++deckLoadSequence.current;
     const response = await fetch(`/api/employee/services/${service.id}/deck-generation/runs`, { cache: "no-store" });
     const result = await response.json();
+    if (sequence !== deckLoadSequence.current) return;
     if (!response.ok) return notify(result.error || "生成 PPT 记录读取失败");
     const nextRuns = result.runs || [];
     setDeckRuns(nextRuns);
@@ -1148,6 +1166,7 @@ function DesignStudio({ service, employee, refresh, notify, back, openEditor }: 
     window.setTimeout(() => historyRef.current?.scrollTo({ top: 0, behavior: "smooth" }), 0);
   }, []);
   function setDeckRun(run: DeckGenerationRun) {
+    deckLoadSequence.current += 1;
     setActiveRun(null);
     setActivePolishRun(null);
     setActiveDeckRun(run);
@@ -1327,7 +1346,7 @@ function DesignStudio({ service, employee, refresh, notify, back, openEditor }: 
       notify(result.run.status === "ppt_ready" ? "PPT 已生成" : "已进入 PDF 转 PPT 队列");
     } finally { setBusy(false); }
   }
-  async function regenerateDeckSlide(slideId: string, action: "reroll" | "closer_previous") {
+  async function regenerateDeckSlide(slideId: string, action: DeckRegenerateAction) {
     if (!activeDeckRun) return;
     setBusy(true);
     try {
@@ -1336,7 +1355,7 @@ function DesignStudio({ service, employee, refresh, notify, back, openEditor }: 
       if (!response.ok) return notify(result.error || "页面重生失败");
       if (result.run) setDeckRun(result.run);
       else await loadDeckRuns();
-      notify(action === "closer_previous" ? "已按上一页风格重生本页" : "已重新生成本页");
+      notify(action === "closer_previous" ? "已把上一页真实成图交给 Image2 作为风格参考" : "已重新生成本页");
     } finally { setBusy(false); }
   }
   async function confirmPolishRun() {
@@ -1551,9 +1570,19 @@ type DeckRunActions = {
   onConfirm: () => void;
   onReplan: (stylePack?: string) => void;
   onCreatePpt: () => void;
-  onRegenerate: (slideId: string, action: "reroll" | "closer_previous") => void;
+  onRegenerate: (slideId: string, action: DeckRegenerateAction) => void;
   onPreview: (image: { url: string; title: string }) => void;
 };
+
+type DeckRegenerateAction = "reroll" | "closer_previous";
+
+function deckRunStyleLabel(run: Pick<DeckGenerationRun, "generationMode" | "paletteMode" | "stylePack">) {
+  if (run.generationMode === "advanced" && run.paletteMode === "reference") {
+    const layout = deckAdvancedLayoutPacks.find(item => item.id === run.stylePack)?.label || "专业汇报版式";
+    return `参考图配色 · ${layout}`;
+  }
+  return deckStylePacks.find(item => item.id === run.stylePack)?.label || run.stylePack;
+}
 
 function parseDeckArray<T>(value?: string): T[] {
   if (!value) return [];
@@ -1595,6 +1624,8 @@ function deckPageDraft(page: DeckGenerationPagePlan): DeckPageDraft {
     layoutType: page.layoutType,
     constraintMode: page.constraintMode,
     evidence: parseDeckArray<DeckPageDraft["evidence"][number]>(page.evidenceJson),
+    visualEvidence: parseDeckArray<DeckVisualEvidence>(page.visualEvidenceJson),
+    directorContract: parseDeckObject(page.directorContractJson),
     warnings: parseDeckArray<string>(page.warningsJson),
     locked: page.locked
   };
@@ -1609,15 +1640,207 @@ function DeckSourceSummary({ run }: { run: DeckGenerationRun }) {
   if (!sources.length) return <section className="deck-source-summary empty"><FileText/><div><b>没有上传参考资料</b><span>本次会依据项目简介组织内容，不会虚构具体数字和事实。</span></div></section>;
   const completed = sources.filter(source => source.status === "completed").length;
   const failed = sources.filter(source => source.status === "failed").length;
+  const groups = [
+    { kind: "reference", label: "内容资料", note: "用于提取事实、数字和正文" },
+    { kind: "outline", label: "PPT 结构", note: "只用于确定页序和每页主题" },
+    { kind: "theme", label: "视觉参考", note: "只用于配色和视觉气质" }
+  ].map(group => ({ ...group, sources: sources.filter(source => source.kind === group.kind) })).filter(group => group.sources.length > 0);
   return <section className="deck-source-summary">
     <header><div><b>资料读取报告</b><span>{completed}/{sources.length} 份已读取{failed ? ` · ${failed} 份失败` : ""}</span></div></header>
-    <div>{sources.map(source => {
-      const pending = ["queued", "processing"].includes(source.status);
-      return <article key={source.id} className={source.status}>{pending ? <LoaderCircle className="spin"/> : source.status === "completed" ? <Check/> : <X/>}<span><b>{source.originalName}</b><small>{deckSourceStatusText(source.status)}{source.error ? ` · ${source.error}` : ""}</small></span></article>;
-    })}</div>
+    <div className="deck-source-groups">{groups.map(group => <section className={`deck-source-group ${group.kind}`} key={group.kind}>
+      <header><div><b>{group.label}</b><span>{group.note}</span></div><i>{group.sources.length} 份</i></header>
+      <div>{group.sources.map(source => {
+        const pending = ["queued", "processing"].includes(source.status);
+        return <article key={source.id} className={source.status}>{pending ? <LoaderCircle className="spin"/> : source.status === "completed" ? <Check/> : <X/>}<span><b>{source.originalName}</b><small>{deckSourceStatusText(source.status)}{source.error ? ` · ${source.error}` : ""}</small></span></article>;
+      })}</div>
+    </section>)}</div>
   </section>;
 }
 
+
+function DeckAdvancedSettingsEditor({ service, run, onRunUpdate, onCancel }: {
+  service: Service;
+  run: DeckGenerationRun;
+  onRunUpdate: (run: DeckGenerationRun) => void;
+  onCancel: () => void;
+}) {
+  const initialOutline = parseDeckObject(run.outlineInputJson);
+  const initialUnity = parseDeckObject(run.unityOptionsJson);
+  const [projectName, setProjectName] = useState(run.projectName);
+  const [projectType, setProjectType] = useState(run.projectType || "");
+  const [brief, setBrief] = useState(run.brief);
+  const [referenceText, setReferenceText] = useState(run.referenceText || "");
+  const [outlineText, setOutlineText] = useState(String(initialOutline.text || ""));
+  const [stylePack, setStylePack] = useState(run.stylePack);
+  const [paletteMode, setPaletteMode] = useState<"preset" | "reference">(run.paletteMode === "reference" ? "reference" : "preset");
+  const [unityOptions, setUnityOptions] = useState({
+    mainColor: Boolean(initialUnity.mainColor ?? true),
+    headerFooter: Boolean(initialUnity.headerFooter ?? true),
+    backgroundTexture: Boolean(initialUnity.backgroundTexture ?? true),
+    cardStyle: Boolean(initialUnity.cardStyle ?? false),
+    decorativeElements: Boolean(initialUnity.decorativeElements ?? false)
+  });
+  const [removedSourceIds, setRemovedSourceIds] = useState<Set<string>>(() => new Set());
+  const [sourceFiles, setSourceFiles] = useState<File[]>([]);
+  const [outlineFile, setOutlineFile] = useState<File | null>(null);
+  const [themeFile, setThemeFile] = useState<File | null>(null);
+  const [themePreview, setThemePreview] = useState("");
+  const [saving, setSaving] = useState(false);
+  const sourceInputRef = useRef<HTMLInputElement>(null);
+  const outlineInputRef = useRef<HTMLInputElement>(null);
+  const themeInputRef = useRef<HTMLInputElement>(null);
+  const sources = run.sources || [];
+  const contentSources = sources.filter(source => source.kind === "reference");
+  const outlineSources = sources.filter(source => source.kind === "outline");
+  const themeSources = sources.filter(source => source.kind === "theme");
+
+  useEffect(() => () => { if (themePreview) URL.revokeObjectURL(themePreview); }, [themePreview]);
+
+  function toggleRemoveSource(sourceId: string) {
+    setRemovedSourceIds(current => {
+      const next = new Set(current);
+      if (next.has(sourceId)) next.delete(sourceId);
+      else next.add(sourceId);
+      return next;
+    });
+  }
+
+  function addSourceFiles(files: File[]) {
+    const accepted = files.filter(file => /\.(pdf|docx|xlsx|pptx|txt|md|csv|json|png|jpe?g|webp)$/i.test(file.name) && file.size <= 200 * 1024 * 1024);
+    if (!accepted.length) return;
+    setSourceFiles(current => Array.from(new Map([...current, ...accepted].map(file => [file.name + ":" + file.size + ":" + file.lastModified, file])).values()).slice(0, 30));
+  }
+
+  function chooseTheme(file?: File) {
+    if (!file) return;
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type) || file.size > 20 * 1024 * 1024) return;
+    if (themePreview) URL.revokeObjectURL(themePreview);
+    setThemeFile(file);
+    setThemePreview(URL.createObjectURL(file));
+    setPaletteMode("reference");
+  }
+
+  async function submit() {
+    const retainedReferences = sources.filter(source => source.kind === "reference" && !removedSourceIds.has(source.id)).length;
+    if (retainedReferences + sourceFiles.length < 1) return window.alert("高级版至少保留或新增一份内容资料");
+    if (!outlineText.trim() && !outlineFile && !sources.some(source => source.kind === "outline" && !removedSourceIds.has(source.id))) {
+      return window.alert("请保留或补充 PPT 结构");
+    }
+    const form = new FormData();
+    form.set("projectName", projectName.trim());
+    form.set("projectType", projectType.trim());
+    form.set("brief", brief.trim());
+    form.set("referenceText", referenceText.trim());
+    form.set("outlineText", outlineText.trim());
+    form.set("stylePack", stylePack);
+    form.set("paletteMode", paletteMode);
+    form.set("unityOptions", JSON.stringify(unityOptions));
+    form.set("removedSourceIds", JSON.stringify(Array.from(removedSourceIds)));
+    sourceFiles.forEach(file => form.append("references", file));
+    if (outlineFile) form.set("outlineFile", outlineFile);
+    if (themeFile) form.set("themeReference", themeFile);
+    setSaving(true);
+    try {
+      const response = await fetch("/api/employee/services/" + service.id + "/deck-generation/runs/" + run.id + "/settings", { method: "PATCH", body: form });
+      const result = await responseJson(response);
+      if (!response.ok) return window.alert(result.error || "任务资料保存失败");
+      onRunUpdate(result.run as DeckGenerationRun);
+      onCancel();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <section className="design-run design-deck-run deck-advanced-settings">
+    <div className="design-run-head">
+      <div><span className="design-status outline_ready">高级版任务资料</span><h2>返回修改初始任务</h2><small>已上传资料会保留；保存后重新读取资料、匹配内容并重建视觉方案。</small></div>
+      <button className="design-secondary" type="button" onClick={onCancel}><ChevronLeft/>返回整套方案</button>
+    </div>
+    <div className="deck-settings-grid">
+      <label>项目名称<input value={projectName} onChange={event => setProjectName(event.target.value)}/></label>
+      <label>汇报类型 / 用途<input value={projectType} onChange={event => setProjectType(event.target.value)}/></label>
+      <label className="wide">项目简介<textarea value={brief} onChange={event => setBrief(event.target.value)}/></label>
+      <label className="wide">整套补充要求<textarea value={referenceText} onChange={event => setReferenceText(event.target.value)} placeholder="可补充受众、禁用表达、必须强调的结论"/></label>
+      <label className="wide">逐页结构文字<textarea value={outlineText} onChange={event => setOutlineText(event.target.value)} placeholder="保留或重新写每页大标题、小标题和想讲的内容"/></label>
+    </div>
+    <section className="deck-settings-section">
+      <header><div><b>内容资料</b><span>这里只放用于提取正文、事实和数字的资料</span></div><button type="button" onClick={() => sourceInputRef.current?.click()}><Upload/>新增内容资料</button></header>
+      <div className="deck-source-list">{contentSources.map(source => <article key={source.id} className={removedSourceIds.has(source.id) ? "removed" : ""}><FileText/><span><b>{source.originalName}</b><small>内容资料 · {formatDeckFileSize(source.size)}</small></span><button type="button" onClick={() => toggleRemoveSource(source.id)} aria-label={removedSourceIds.has(source.id) ? "保留资料" : "移除资料"}>{removedSourceIds.has(source.id) ? <Check/> : <X/>}</button></article>)}</div>
+      {sourceFiles.length > 0 && <div className="deck-source-list new">{sourceFiles.map((file, index) => <article key={file.name + ":" + file.lastModified}><FileText/><span><b>{file.name}</b><small>新增内容资料 · {formatDeckFileSize(file.size)}</small></span><button type="button" onClick={() => setSourceFiles(current => current.filter((_, itemIndex) => itemIndex !== index))}><X/></button></article>)}</div>}
+      <input ref={sourceInputRef} type="file" hidden multiple accept=".pdf,.docx,.xlsx,.pptx,.txt,.md,.csv,.json,.png,.jpg,.jpeg,.webp" onChange={event => addSourceFiles(Array.from(event.target.files || []))}/>
+    </section>
+    <section className="deck-settings-section">
+      <header><div><b>PPT 结构</b><span>文字结构在上方编辑；这里单独管理大纲文件</span></div></header>
+      {outlineSources.length > 0 && <div className="deck-source-list deck-structure-files">{outlineSources.map(source => <article key={source.id} className={removedSourceIds.has(source.id) ? "removed" : ""}><FileText/><span><b>{source.originalName}</b><small>大纲文件 · {formatDeckFileSize(source.size)}</small></span><button type="button" onClick={() => toggleRemoveSource(source.id)} aria-label={removedSourceIds.has(source.id) ? "保留大纲" : "移除大纲"}>{removedSourceIds.has(source.id) ? <Check/> : <X/>}</button></article>)}</div>}
+      <div className="deck-settings-file-actions">
+        <button type="button" onClick={() => outlineInputRef.current?.click()}><Upload/>替换大纲文件</button>
+        {outlineFile && <span><FileText/>{outlineFile.name}<button type="button" onClick={() => setOutlineFile(null)}><X/></button></span>}
+        <input ref={outlineInputRef} type="file" hidden accept=".pdf,.docx,.xlsx,.pptx,.txt,.md" onChange={event => setOutlineFile(event.target.files?.[0] || null)}/>
+      </div>
+    </section>
+    <section className="deck-settings-section deck-visual-settings">
+      <header><div><b>配色与版式</b><span>配色参考和内容资料互不混放；参考图只决定颜色关系</span></div></header>
+      <div className="deck-palette-grid">
+        <button type="button" className={paletteMode === "preset" ? "active" : ""} onClick={() => setPaletteMode("preset")}><Check/><span><b>内置配色</b><small>不使用旧配色参考图</small></span></button>
+        <button type="button" className={paletteMode === "reference" ? "active" : ""} onClick={() => setPaletteMode("reference")}><ImagePlus/><span><b>参考图配色</b><small>{sources.some(source => source.kind === "theme" && !removedSourceIds.has(source.id)) ? "沿用现有参考图" : "需要上传一张新参考图"}</small></span></button>
+      </div>
+      <label className="deck-layout-language">{paletteMode === "reference" ? "版式语言（不含配色）" : "内置配色风格"}<select value={stylePack} onChange={event => setStylePack(event.target.value)}>{(paletteMode === "reference" ? deckAdvancedLayoutPacks : deckStylePacks).map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select><small>{paletteMode === "reference" ? "Image2 的颜色只服从参考图；这里仅规定信息组织和节奏。" : "内置风格同时规定配色与版式。"}</small></label>
+      {paletteMode === "reference" && <>
+        {themeSources.length > 0 && <div className="deck-source-list deck-theme-files">{themeSources.map(source => <article key={source.id} className={removedSourceIds.has(source.id) ? "removed" : ""}><ImagePlus/><span><b>{source.originalName}</b><small>配色参考图 · {formatDeckFileSize(source.size)}</small></span><button type="button" onClick={() => toggleRemoveSource(source.id)} aria-label={removedSourceIds.has(source.id) ? "保留参考图" : "移除参考图"}>{removedSourceIds.has(source.id) ? <Check/> : <X/>}</button></article>)}</div>}
+        <div className="deck-theme-reference compact" onClick={() => themeInputRef.current?.click()}>{themePreview ? <><img src={themePreview} alt="新配色参考"/><b>{themeFile?.name}</b></> : <><ImagePlus/><span>上传新的配色参考图（可留空以沿用现有图）</span></>}<input ref={themeInputRef} type="file" hidden accept=".png,.jpg,.jpeg,.webp" onChange={event => chooseTheme(event.target.files?.[0])}/></div>
+      </>}
+    </section>
+    <div className="deck-unity-options">
+      <label><input type="checkbox" checked={unityOptions.mainColor} onChange={event => setUnityOptions(current => ({ ...current, mainColor: event.target.checked }))}/>主色统一</label>
+      <label><input type="checkbox" checked={unityOptions.headerFooter} onChange={event => setUnityOptions(current => ({ ...current, headerFooter: event.target.checked }))}/>页眉页脚统一</label>
+      <label><input type="checkbox" checked={unityOptions.backgroundTexture} onChange={event => setUnityOptions(current => ({ ...current, backgroundTexture: event.target.checked }))}/>背景质感统一</label>
+      <label><input type="checkbox" checked={unityOptions.cardStyle} onChange={event => setUnityOptions(current => ({ ...current, cardStyle: event.target.checked }))}/>卡片样式统一</label>
+      <label><input type="checkbox" checked={unityOptions.decorativeElements} onChange={event => setUnityOptions(current => ({ ...current, decorativeElements: event.target.checked }))}/>装饰元素统一</label>
+    </div>
+    <footer className="deck-editor-actions"><button className="design-secondary" type="button" onClick={onCancel}>取消</button><button className="design-apply" type="button" onClick={() => void submit()} disabled={saving}>{saving ? <LoaderCircle className="spin"/> : <Save/>}保存并重新分析资料</button></footer>
+  </section>;
+}
+
+function DeckAdvancedContentReview({ drafts, updatePage, updateBlock }: {
+  drafts: DeckPageDraft[];
+  updatePage: (pageIndex: number, values: Partial<DeckPageDraft>) => void;
+  updateBlock: (pageIndex: number, blockId: string, values: Partial<DeckPageBlock>) => void;
+}) {
+  return <div className="deck-content-review-list">{drafts.map(page => {
+    const visualStrategy = String(page.directorContract.visual_strategy || "").trim();
+    const visualStrategyLabel = ({
+      "conceptual-illustration": "主题概念视觉",
+      "editorial-composition": "编辑式图文构图",
+      "fact-based-chart": "事实数据图表",
+      timeline: "时间轴",
+      process: "流程图",
+      comparison: "对比构图",
+      typography: "文字主导构图"
+    } as Record<string, string>)[visualStrategy] || visualStrategy;
+    const mainVisualBrief = String(page.directorContract.main_visual_brief || "").trim();
+    return <details key={page.pageIndex} className="deck-content-review-card">
+    <summary><span>第 {page.pageIndex} 页</span><b>{page.title || "未命名页面"}</b><i>{page.evidence.length ? `${page.evidence.length} 条来源` : "待补来源"}</i><ChevronDown/></summary>
+    <div className="deck-content-review-body">
+      <label className="deck-content-conclusion">本页表达任务<textarea value={page.purpose} onChange={event => updatePage(page.pageIndex, { purpose: event.target.value })} placeholder="这一页要让观众理解什么"/></label>
+      {(visualStrategy || mainVisualBrief) && <section className="deck-content-must-include deck-visual-brief"><b>画面执行方向</b><div>{visualStrategy && <span>{visualStrategyLabel}</span>}</div>{mainVisualBrief && <p>{mainVisualBrief}</p>}</section>}
+      <section className="deck-content-review-blocks">
+        <header><b>GPT-5.6 整理后的页面正文</b><span>已按大纲从资料中逐页匹配，可直接修改</span></header>
+        {page.blocks.length ? page.blocks.map((block, index) => <article key={block.id}>
+          <header><span>{String(index + 1).padStart(2, "0")}</span><b>{block.subtitle || `内容块 ${index + 1}`}</b><i>{block.constraintMode === "exact" ? "原文保留" : block.constraintMode === "direction" ? "方向约束" : "可压缩表达"}</i></header>
+          <textarea value={block.content || ""} onChange={event => updateBlock(page.pageIndex, block.id, { content: event.target.value })} placeholder="从资料中匹配出的正文，可在这里修改"/>
+        </article>) : <p>本页没有匹配到可靠正文。请返回修改任务资料，补充对应资料或调整大纲。</p>}
+      </section>
+      {page.mustInclude.length > 0 && <section className="deck-content-must-include"><b>必须保留</b><div>{page.mustInclude.map((item, index) => <span key={index}>{item}</span>)}</div></section>}
+      <label className="deck-content-conclusion">页末结论<textarea value={page.conclusion} onChange={event => updatePage(page.pageIndex, { conclusion: event.target.value })} placeholder="这一页希望观众记住的结论"/></label>
+      <section className="deck-evidence-list">
+        <b>本页资料依据</b>
+        {page.evidence.length ? <div>{page.evidence.map((evidence, index) => <span key={evidence.id || index}><FileText/><b>{evidence.file || evidence.source || "参考资料"}</b><small>{evidence.locator || "未标注位置"}</small></span>)}</div> : <p>没有找到可靠依据。涉及数字、日期、人物和荣誉时请补充资料后重新匹配。</p>}
+        {page.warnings.length > 0 && <ul>{page.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
+      </section>
+      <footer><label><input type="checkbox" checked={page.locked} onChange={event => updatePage(page.pageIndex, { locked: event.target.checked })}/>锁定已核对内容</label></footer>
+    </div>
+  </details>})}</div>;
+}
 
 function DeckAdvancedPlanRun(props: DeckRunActions) {
   const { service, run, busy, onRunUpdate, onConfirm, onReplan } = props;
@@ -1625,58 +1848,156 @@ function DeckAdvancedPlanRun(props: DeckRunActions) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [nextStylePack, setNextStylePack] = useState(run.stylePack);
+  const [editingSettings, setEditingSettings] = useState(false);
+  const dirtyDrafts = useRef(false);
+  const autoSaveTimer = useRef<number | null>(null);
+  const [dragPageIndex, setDragPageIndex] = useState<number | null>(null);
   const isOutlineStep = run.status === "outline_ready";
   const isContentStep = run.status === "plan_ready";
+  const canEditStructure = isOutlineStep;
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
+      dirtyDrafts.current = false;
       setDrafts((run.pagePlans || []).map(deckPageDraft));
       setNextStylePack(run.stylePack);
     }, 0);
     return () => window.clearTimeout(timer);
   }, [run.id, run.status, run.updatedAt, run.stylePack, run.pagePlans]);
 
+  useEffect(() => {
+    if (!dirtyDrafts.current || (!isOutlineStep && !isContentStep)) return;
+    const snapshot = drafts;
+    const timer = window.setTimeout(async () => {
+      autoSaveTimer.current = null;
+      dirtyDrafts.current = false;
+      setSaving(true);
+      try {
+        const response = await fetch("/api/employee/services/" + service.id + "/deck-generation/runs/" + run.id + "/pages", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pages: snapshot, action: "save" })
+        });
+        const result = await responseJson(response);
+        if (!response.ok) {
+          setMessage(result.error || "自动保存失败，请手动保存");
+          dirtyDrafts.current = true;
+          return;
+        }
+        onRunUpdate(result.run as DeckGenerationRun);
+        setMessage("已自动保存");
+      } catch (error) {
+        dirtyDrafts.current = true;
+        setMessage(error instanceof Error ? error.message : "自动保存失败，请手动保存");
+      } finally {
+        setSaving(false);
+      }
+    }, 1000);
+    autoSaveTimer.current = timer;
+    return () => { window.clearTimeout(timer); if (autoSaveTimer.current === timer) autoSaveTimer.current = null; };
+  }, [drafts, isContentStep, isOutlineStep, onRunUpdate, run.id, service.id]);
+
+  function normalizePageOrder(pages: DeckPageDraft[]) {
+    return pages.map((page, index) => {
+      const last = index === pages.length - 1;
+      const role = index === 0 ? "cover" : last ? "ending" : ["cover", "ending"].includes(page.role) ? "insight" : page.role;
+      return {
+        ...page,
+        pageIndex: index + 1,
+        role,
+        density: index === 0 ? "sparse" as const : page.density
+      };
+    });
+  }
+
+  function changeDrafts(updater: (pages: DeckPageDraft[]) => DeckPageDraft[]) {
+    dirtyDrafts.current = true;
+    setDrafts(current => normalizePageOrder(updater(current)));
+  }
   function updatePage(pageIndex: number, values: Partial<DeckPageDraft>) {
-    setDrafts(current => current.map(page => page.pageIndex === pageIndex ? { ...page, ...values } : page));
+    changeDrafts(current => current.map(page => page.pageIndex === pageIndex ? { ...page, ...values } : page));
   }
 
   function updateBlock(pageIndex: number, blockId: string, values: Partial<DeckPageBlock>) {
-    setDrafts(current => current.map(page => page.pageIndex === pageIndex ? {
+    changeDrafts(current => current.map(page => page.pageIndex === pageIndex ? {
       ...page,
       blocks: page.blocks.map(block => block.id === blockId ? { ...block, ...values } : block)
     } : page));
   }
 
   function addBlock(pageIndex: number) {
-    setDrafts(current => current.map(page => page.pageIndex === pageIndex ? {
+    changeDrafts(current => current.map(page => page.pageIndex === pageIndex ? {
       ...page,
-      blocks: [...page.blocks, { id: `block-${Date.now()}`, subtitle: "", instruction: "", content: "", constraintMode: "polish", evidenceIds: [] }]
+      blocks: [...page.blocks, { id: "block-" + Date.now(), subtitle: "", instruction: "", content: "", constraintMode: "polish", evidenceIds: [] }]
     } : page));
   }
 
   function removeBlock(pageIndex: number, blockId: string) {
-    setDrafts(current => current.map(page => page.pageIndex === pageIndex ? { ...page, blocks: page.blocks.filter(block => block.id !== blockId) } : page));
+    changeDrafts(current => current.map(page => page.pageIndex === pageIndex ? { ...page, blocks: page.blocks.filter(block => block.id !== blockId) } : page));
   }
 
   function addPage() {
     if (drafts.length >= 30) return setMessage("最多 30 页");
-    const pageIndex = drafts.length + 1;
-    setDrafts(current => [...current, {
-      pageIndex, title: `第 ${pageIndex} 页`, role: pageIndex === 1 ? "cover" : "insight", purpose: "", blocks: [],
-      mustInclude: [], conclusion: "", density: "standard", layoutType: "auto", constraintMode: "polish", evidence: [], warnings: [], locked: false
-    }]);
+    changeDrafts(current => {
+      const insertAt = Math.max(1, current.length - 1);
+      const nextPage: DeckPageDraft = {
+        pageIndex: insertAt + 1, title: "新增内容页", role: "insight", purpose: "", blocks: [],
+        mustInclude: [], conclusion: "", density: "standard", layoutType: "auto", constraintMode: "polish", evidence: [], visualEvidence: [], directorContract: {}, warnings: [], locked: false
+      };
+      return [...current.slice(0, insertAt), nextPage, ...current.slice(insertAt)];
+    });
+    setMessage("已插入到结尾页之前");
   }
 
   function removePage(pageIndex: number) {
     if (drafts.length <= 2) return setMessage("至少保留 2 页");
-    setDrafts(current => current.filter(page => page.pageIndex !== pageIndex).map((page, index, all) => ({
-      ...page,
-      pageIndex: index + 1,
-      role: index === 0 ? "cover" : index === all.length - 1 ? "ending" : page.role
-    })));
+    if (pageIndex === 1 || pageIndex === drafts.length) return setMessage("封面和结尾页必须保留");
+    changeDrafts(current => current.filter(page => page.pageIndex !== pageIndex));
   }
 
+  function movePage(pageIndex: number, direction: -1 | 1) {
+    const sourceIndex = pageIndex - 1;
+    const targetIndex = sourceIndex + direction;
+    if (sourceIndex <= 0 || sourceIndex >= drafts.length - 1 || targetIndex <= 0 || targetIndex >= drafts.length - 1) return;
+    changeDrafts(current => {
+      const next = [...current];
+      [next[sourceIndex], next[targetIndex]] = [next[targetIndex], next[sourceIndex]];
+      return next;
+    });
+  }
+
+  function dropPage(targetPageIndex: number) {
+    if (!dragPageIndex || dragPageIndex === targetPageIndex) return setDragPageIndex(null);
+    if ([1, drafts.length].includes(dragPageIndex) || [1, drafts.length].includes(targetPageIndex)) return setDragPageIndex(null);
+    changeDrafts(current => {
+      const next = [...current];
+      const [moved] = next.splice(dragPageIndex - 1, 1);
+      const targetIndex = next.findIndex(page => page.pageIndex === targetPageIndex);
+      next.splice(targetIndex < 0 ? next.length - 1 : targetIndex, 0, moved);
+      return next;
+    });
+    setDragPageIndex(null);
+  }
+  function copyPage(pageIndex: number) {
+    if (drafts.length >= 30) return setMessage("最多 30 页");
+    if (pageIndex === 1 || pageIndex === drafts.length) return setMessage("封面和结尾页不能复制");
+    changeDrafts(current => {
+      const sourceIndex = pageIndex - 1;
+      const source = current[sourceIndex];
+      const copy: DeckPageDraft = {
+        ...source,
+        title: source.title + "（副本）",
+        blocks: source.blocks.map((block, index) => ({ ...block, id: "block-copy-" + Date.now() + "-" + index })),
+        evidence: [...source.evidence],
+        warnings: [...source.warnings],
+        locked: false
+      };
+      return [...current.slice(0, sourceIndex + 1), copy, ...current.slice(sourceIndex + 1)];
+    });
+  }
   async function savePages(action: "save" | "match" | "outline") {
+    if (autoSaveTimer.current !== null) { window.clearTimeout(autoSaveTimer.current); autoSaveTimer.current = null; }
+    dirtyDrafts.current = false;
     setSaving(true);
     setMessage("");
     try {
@@ -1691,7 +2012,7 @@ function DeckAdvancedPlanRun(props: DeckRunActions) {
         return false;
       }
       onRunUpdate(result.run as DeckGenerationRun);
-      setMessage(action === "match" ? "结构已确认，正在按页查找资料" : action === "outline" ? "已返回结构调整" : "逐页内容已保存");
+      setMessage(action === "match" ? "正在把旧任务整理为一份完整方案" : action === "outline" ? "已返回结构调整" : "整套方案已保存");
       return true;
     } finally {
       setSaving(false);
@@ -1708,6 +2029,8 @@ function DeckAdvancedPlanRun(props: DeckRunActions) {
     onReplan(nextStylePack);
   }
 
+  if (editingSettings) return <DeckAdvancedSettingsEditor service={service} run={run} onRunUpdate={onRunUpdate} onCancel={() => setEditingSettings(false)}/>;
+
   const waitingForSources = ["sources_queued", "source_processing"].includes(run.status);
   const waitingForMatch = ["matching_queued", "matching"].includes(run.status);
   return <section className="design-run design-deck-run deck-advanced-run">
@@ -1717,20 +2040,25 @@ function DeckAdvancedPlanRun(props: DeckRunActions) {
         <h2>{run.projectName}</h2>
         <small>高级版 · {run.pageCount} 页 · {new Date(run.createdAt).toLocaleString("zh-CN")}</small>
       </div>
-      {isContentStep && <div><button className="design-apply" onClick={() => void confirmFinal()} disabled={busy || saving}>确认内容并生成预览</button></div>}
+      <div>{run.status === "failed" && <button className="design-apply" type="button" onClick={() => onReplan()} disabled={busy || saving}>重新分析资料</button>}<button className="design-secondary" type="button" onClick={() => setEditingSettings(true)} disabled={busy || saving}>返回修改任务资料</button>{isContentStep && <button className="design-apply" onClick={() => void confirmFinal()} disabled={busy || saving}>确认整套方案并生成预览</button>}</div>
     </div>
     {run.error && <div className="design-error">{run.error}</div>}
     <DeckSourceSummary run={run}/>
-    {waitingForSources && <section className="deck-waiting inline"><LoaderCircle className="spin"/><h3>正在逐份读取资料</h3><p>系统保留文件名、页码、幻灯片号和工作表位置。完成后先给你确认逐页结构，不会直接生成图片。</p></section>}
-    {waitingForMatch && <section className="deck-waiting inline"><LoaderCircle className="spin"/><h3>正在按页匹配资料</h3><p>每一页只检索与你确认的标题和内容意图有关的证据，并记录原文件与位置；资料不足会明确标记。</p></section>}
+    {isContentStep && <div className="deck-image-budget-note"><ImagePlus/><span>确认后最多并发生成 6 页，初次预计使用 {run.pageCount} 次 Image2；每页一次成图，不会自动重绘。</span></div>}
+    {waitingForSources && <section className="deck-waiting inline"><LoaderCircle className="spin"/><h3>GPT-5.6 正在读取并整理资料</h3><p>系统按大纲逐页匹配文字、事实和数字，保留文件名与来源位置；完成后只确认一次整套方案。</p></section>}
+    {waitingForMatch && <section className="deck-waiting inline"><LoaderCircle className="spin"/><h3>正在生成完整逐页方案</h3><p>GPT-5.6 正在把资料内容、页面正文、结论与画面执行方向合并到同一份方案中。</p></section>}
     {(isOutlineStep || isContentStep) && <section className="deck-advanced-editor">
       <header>
-        <div><span>{isOutlineStep ? "第一步" : "第二步"}</span><h3>{isOutlineStep ? "确认每一页讲什么" : "核对每一页用了哪些资料"}</h3><p>{isOutlineStep ? "标题、小标题、内容意图和页序都由你决定；确认后系统才开始按页取材。" : "可以修改系统整理的正文，证据标签会显示来源文件和位置。确认后才生成页面图片。"}</p></div>
+        <div><span>{isOutlineStep ? "旧任务兼容" : "一次确认"}</span><h3>{isOutlineStep ? "继续整理这份旧任务" : "确认整套逐页方案"}</h3><p>{isOutlineStep ? "这份任务停留在旧版结构阶段。确认后 GPT-5.6 会继续匹配资料，并生成新版完整方案。" : "这里已经合并页面任务、资料正文、来源、结论和画面方向；确认后 Image2 才开始逐页成图。"}</p></div>
         {isOutlineStep && <button type="button" onClick={addPage}><FileText/>增加一页</button>}
       </header>
-      <div className="deck-page-editor-list">{drafts.map(page => <details key={page.pageIndex} className="deck-page-editor" open={page.pageIndex <= 2}>
+      {isOutlineStep ? <div className="deck-page-editor-list">{drafts.map(page => <details key={page.pageIndex} className={"deck-page-editor" + (dragPageIndex === page.pageIndex ? " dragging" : "")} open={page.pageIndex <= 2} draggable={canEditStructure && page.pageIndex > 1 && page.pageIndex < drafts.length} onDragStart={() => canEditStructure && setDragPageIndex(page.pageIndex)} onDragOver={event => { if (canEditStructure && page.pageIndex > 1 && page.pageIndex < drafts.length) event.preventDefault(); }} onDrop={event => { event.preventDefault(); if (canEditStructure) dropPage(page.pageIndex); }} onDragEnd={() => setDragPageIndex(null)}>
         <summary><span>第 {page.pageIndex} 页</span><b>{page.title || "未命名页面"}</b><i>{page.density === "compact" ? "紧凑" : page.density === "sparse" ? "少文字" : "标准"}</i></summary>
         <div className="deck-page-editor-body">
+          <div className="deck-page-tools">
+            <span>{page.pageIndex === 1 ? "固定封面" : page.pageIndex === drafts.length ? "固定末页，可做内容收束" : "正文页，可拖动排序"}</span>
+            <div>{canEditStructure && page.pageIndex > 1 && page.pageIndex < drafts.length && <><button type="button" onClick={() => movePage(page.pageIndex, -1)} disabled={page.pageIndex <= 2} title="上移"><ChevronUp/></button><button type="button" onClick={() => movePage(page.pageIndex, 1)} disabled={page.pageIndex >= drafts.length - 1} title="下移"><ChevronDown/></button><button type="button" onClick={() => copyPage(page.pageIndex)} title="复制本页"><Copy/></button><button type="button" onClick={() => removePage(page.pageIndex)} title="删除本页"><Trash2/></button></>}</div>
+          </div>
           <div className="deck-page-fields">
             <label>页面大标题<input value={page.title} onChange={event => updatePage(page.pageIndex, { title: event.target.value })}/></label>
             <label>信息密度<select value={page.density} onChange={event => updatePage(page.pageIndex, { density: event.target.value as DeckPageDraft["density"] })}><option value="sparse">少文字 / 强视觉</option><option value="standard">标准汇报页</option><option value="compact">紧凑信息页</option></select></label>
@@ -1750,19 +2078,22 @@ function DeckAdvancedPlanRun(props: DeckRunActions) {
             {page.evidence.length ? <div>{page.evidence.map((evidence, index) => <span key={evidence.id || index}><FileText/><b>{evidence.file || evidence.source || "参考资料"}</b><small>{evidence.locator || "未标注位置"}</small></span>)}</div> : <p>没有找到可靠依据。涉及数字、日期、人物和荣誉时请补充资料后重新匹配。</p>}
             {page.warnings.length > 0 && <ul>{page.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
           </section>}
-          <footer><label><input type="checkbox" checked={page.locked} onChange={event => updatePage(page.pageIndex, { locked: event.target.checked })}/>锁定本页内容</label>{isOutlineStep && drafts.length > 2 && <button type="button" onClick={() => removePage(page.pageIndex)}><Trash2/>删除本页</button>}</footer>
+          <footer><label><input type="checkbox" checked={page.locked} onChange={event => updatePage(page.pageIndex, { locked: event.target.checked })}/>锁定本页内容</label></footer>
         </div>
-      </details>)}</div>
+      </details>)}</div> : <DeckAdvancedContentReview drafts={drafts} updatePage={updatePage} updateBlock={updateBlock}/>}
       {message && <div className="deck-editor-message">{message}</div>}
       <footer className="deck-editor-actions">
-        {isOutlineStep ? <><button className="design-secondary" onClick={() => void savePages("save")} disabled={saving}>保存草稿</button><button className="design-apply" onClick={() => void savePages("match")} disabled={saving}>{saving ? <LoaderCircle className="spin"/> : <Check/>}确认结构并匹配资料</button></> : <><label>生成风格<select value={nextStylePack} onChange={event => setNextStylePack(event.target.value)}>{deckStylePacks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><button className="design-secondary" onClick={() => void savePages("outline")} disabled={saving || busy}>返回调整结构</button><button className="design-secondary" onClick={() => void changeStyle()} disabled={saving || busy}>按新风格重整方案</button><button className="design-secondary" onClick={() => void savePages("match")} disabled={saving || busy}>重新匹配资料</button><button className="design-apply" onClick={() => void confirmFinal()} disabled={saving || busy}>确认内容并生成预览</button></>}
+        {isOutlineStep ? <><button className="design-secondary" onClick={() => void savePages("save")} disabled={saving}>保存旧任务草稿</button><button className="design-apply" onClick={() => void savePages("match")} disabled={saving}>{saving ? <LoaderCircle className="spin"/> : <Check/>}继续整理完整方案</button></> : <><label>{run.paletteMode === "reference" ? "版式语言（不含配色）" : "生成风格"}<select value={nextStylePack} onChange={event => setNextStylePack(event.target.value)}>{(run.paletteMode === "reference" ? deckAdvancedLayoutPacks : deckStylePacks).map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><button className="design-secondary" onClick={() => void changeStyle()} disabled={saving || busy}>按新版式重整方案</button><button className="design-apply" onClick={() => void confirmFinal()} disabled={saving || busy}>确认整套方案并生成预览</button></>}
       </footer>
     </section>}
   </section>;
 }
 
 function DeckGenerationRunPanel(props: DeckRunActions) {
-  const advancedPlanning = props.run.generationMode === "advanced" && ["sources_queued", "source_processing", "outline_ready", "matching_queued", "matching", "plan_ready"].includes(props.run.status);
+  const advancedPlanning = props.run.generationMode === "advanced" && (
+    ["sources_queued", "source_processing", "outline_ready", "matching_queued", "matching", "plan_ready"].includes(props.run.status)
+    || (props.run.status === "failed" && !props.run.slides.some(slide => Boolean(slide.storedName)))
+  );
   return advancedPlanning ? <DeckAdvancedPlanRun {...props}/> : <DeckInlineRun {...props}/>;
 }
 
@@ -1775,7 +2106,7 @@ function DeckInlineRun({ service, run, busy, onRunUpdate, onConfirm, onReplan, o
   onConfirm: () => void;
   onReplan: (stylePack?: string) => void;
   onCreatePpt: () => void;
-  onRegenerate: (slideId: string, action: "reroll" | "closer_previous") => void;
+  onRegenerate: (slideId: string, action: DeckRegenerateAction) => void;
   onPreview: (image: { url: string; title: string }) => void;
 }) {
   const [nextStylePack, setNextStylePack] = useState(run.stylePack);
@@ -1793,6 +2124,10 @@ function DeckInlineRun({ service, run, busy, onRunUpdate, onConfirm, onReplan, o
   const previewsReady = run.slides.length > 0 && run.slides.every(slide => slide.status === "completed" && Boolean(slide.storedName));
   const hasPdf = Boolean(run.pdfStoredName);
   const actionsBusy = busy || exportBusy;
+  const advancedMode = run.generationMode === "advanced";
+  const visibleRunError = advancedMode && /单页质检|整套一致性复核|质检服务/.test(String(run.error || ""))
+    ? ""
+    : run.error;
 
   async function createPdf() {
     setExportBusy(true);
@@ -1816,7 +2151,7 @@ function DeckInlineRun({ service, run, busy, onRunUpdate, onConfirm, onReplan, o
       <div>
         <span className={`design-status ${run.status}`}>{statusText}</span>
         <h2>{run.projectName}</h2>
-        <small>{run.generationMode === "advanced" ? "高级版" : "快速版"} · {deckStylePacks.find(item => item.id === run.stylePack)?.label || run.stylePack} · {run.pageCount} 页 · {new Date(run.createdAt).toLocaleString("zh-CN")}</small>
+        <small>{run.generationMode === "advanced" ? "高级版" : "快速版"} · {deckRunStyleLabel(run)} · {run.pageCount} 页 · {new Date(run.createdAt).toLocaleString("zh-CN")}</small>
       </div>
       <div className="deck-export-actions">
         {run.status === "failed" && !hasPdf && <button className="design-apply" onClick={() => onReplan()} disabled={actionsBusy}>重新分析资料</button>}
@@ -1829,13 +2164,20 @@ function DeckInlineRun({ service, run, busy, onRunUpdate, onConfirm, onReplan, o
         {run.status === "ppt_ready" && <a className="design-apply" href={pptUrl}><Download/>下载 PPT</a>}
       </div>
     </div>
-    {run.error && <div className="design-error">{run.error}</div>}
+    {visibleRunError && <div className="design-error">{visibleRunError}</div>}
     {exportError && <div className="design-error">{exportError}</div>}
+    {advancedMode && <section className="deck-image-call-meter" aria-label="Image2 调用统计">
+      <span><small>初次预计</small><b>{run.initialImageBudget || run.pageCount}</b></span>
+      <span><small>已发起</small><b>{run.imageCallsStarted || 0}</b></span>
+      <span><small>已完成</small><b>{run.imageCallsCompleted || 0}</b></span>
+      <span><small>人工重生</small><b>{run.manualImageCalls || 0}</b></span>
+      <span className={(run.automaticRedraws || 0) > 0 ? "warning" : "safe"}><small>自动重绘</small><b>{run.automaticRedraws || 0}</b></span>
+    </section>}
     {["sources_queued", "source_processing", "queued", "planning", "confirmed"].includes(run.status) && <><DeckSourceSummary run={run}/><section className="deck-waiting inline"><LoaderCircle className="spin"/><h3>{["sources_queued", "source_processing"].includes(run.status) ? "正在读取并整理参考资料" : run.status === "confirmed" ? "方案已确认，正在安排页面生成" : "正在生成完整 PPT 方案"}</h3><p>{["sources_queued", "source_processing"].includes(run.status) ? "系统会保留文件名、页码、幻灯片号和工作表位置，再从可靠内容中组织方案。" : run.status === "confirmed" ? "页面预览将在这里逐张出现；确认之后仍可单页重新生成或要求贴近上一页。" : "快速版会自动组织页面结构、信息密度和视觉节奏；完成后仍由你确认，确认前不会生成图片。"}</p></section></>}
     {run.status === "plan_ready" && <><DeckSourceSummary run={run}/><section className="deck-plan-review inline deck-quick-plan"><article><span>快速版视觉方案</span><h3>{deckStylePacks.find(item => item.id === run.stylePack)?.label || run.stylePack}</h3><p>系统已自动整理内容结构与页面节奏。正文页允许标准或紧凑信息密度，避免只放几个空卡片；数字、日期和专名只采用已读取资料中的内容。</p><label className="deck-plan-style">调整风格<select value={nextStylePack} onChange={event => setNextStylePack(event.target.value)}>{deckStylePacks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label></article><article><span>逐页方案</span><ol>{run.slides.map(slide => { const spec = parseDeckObject(slide.specJson); const density = String(spec.text_density || "medium"); const summary = String(spec.content_summary || ""); return <li key={slide.id}><b>{slide.title || `第 ${slide.slideIndex} 页`}</b><small>{slide.role || "content"} · {density === "high" ? "紧凑信息页" : density === "low" ? "少文字强视觉" : "标准信息页"}</small>{summary && <p>{summary}</p>}</li>; })}</ol></article></section></>}
     {["generating", "review_ready", "pdf_queued", "pdf_ready", "ppt_queued", "ppt_processing", "ppt_ready", "failed"].includes(run.status) && <section className="deck-slide-review inline"><div className="deck-progress"><b>{done}/{run.pageCount}</b><span>{statusText}</span></div><div className="deck-slide-grid">{run.slides.map(slide => {
       const canRegenerate = ["completed", "failed"].includes(slide.status);
-      return <article key={slide.id}><header><b>{slide.title || `第 ${slide.slideIndex} 页`}</b><span>{slide.role || slide.status}</span></header><button className="deck-slide-preview" disabled={!slide.storedName} onClick={() => slide.storedName && onPreview({ url: `/api/employee/services/${service.id}/deck-generation/runs/${run.id}/slides/${slide.id}/image?v=${encodeURIComponent(slide.updatedAt)}`, title: slide.title || `第 ${slide.slideIndex} 页` })}>{slide.storedName ? <img src={`/api/employee/services/${service.id}/deck-generation/runs/${run.id}/slides/${slide.id}/image?v=${encodeURIComponent(slide.updatedAt)}`} alt={slide.title}/> : <><LoaderCircle className="spin"/><span>{slide.status}</span></>}</button>{slide.error && <p>{slide.error}</p>}<footer><button onClick={() => onRegenerate(slide.id, "reroll")} disabled={busy || !canRegenerate}>重新生成本页</button><button onClick={() => onRegenerate(slide.id, "closer_previous")} disabled={busy || !canRegenerate}>更贴近上一页</button></footer></article>;
+      return <article key={slide.id}><header><b>{slide.title || `第 ${slide.slideIndex} 页`}</b><span>{slide.role || slide.status}</span></header><button className="deck-slide-preview" disabled={!slide.storedName} onClick={() => slide.storedName && onPreview({ url: `/api/employee/services/${service.id}/deck-generation/runs/${run.id}/slides/${slide.id}/image?v=${encodeURIComponent(slide.updatedAt)}`, title: slide.title || `第 ${slide.slideIndex} 页` })}>{slide.storedName ? <img src={`/api/employee/services/${service.id}/deck-generation/runs/${run.id}/slides/${slide.id}/image?v=${encodeURIComponent(slide.updatedAt)}`} alt={slide.title}/> : <><LoaderCircle className="spin"/><span>{slide.status}</span></>}</button>{slide.error && <p>{slide.error}</p>}<footer><button onClick={() => onRegenerate(slide.id, "reroll")} disabled={busy || !canRegenerate}>重新生成本页</button><button onClick={() => onRegenerate(slide.id, "closer_previous")} disabled={busy || !canRegenerate || slide.slideIndex === 1}>更贴近上一页</button></footer></article>;
     })}</div></section>}
   </section>;
 }
@@ -3142,7 +3484,7 @@ function SmartStudio({ service, notify }: { service: Service; notify: (text: str
   }
 
 
-  async function regenerateSlide(slideId: string, action: "reroll" | "closer_previous") {
+  async function regenerateSlide(slideId: string, action: DeckRegenerateAction) {
     if (!activeRun) return;
     setBusy(true);
     try {
@@ -3155,7 +3497,7 @@ function SmartStudio({ service, notify }: { service: Service; notify: (text: str
       if (!response.ok) return notify(result.error || "页面重生失败");
       if (result.run) setRun(result.run);
       else await loadRuns();
-      notify(action === "closer_previous" ? "已按上一页风格重生本页" : "已重新生成本页");
+      notify(action === "closer_previous" ? "已把上一页真实成图交给 Image2 作为风格参考" : "已重新生成本页");
     } finally {
       setBusy(false);
     }
@@ -3305,6 +3647,7 @@ function DeckGenerationForm({ service, notify, onCreated }: {
     if (!projectName.trim()) return notify("请填写项目名称");
     if (!brief.trim()) return notify("请填写项目简介");
     if (generationMode === "advanced" && !outlineText.trim() && !outlineFile) return notify("高级版请填写每页结构，或上传一份大纲文件");
+    if (generationMode === "advanced" && sourceFiles.length === 0) return notify("高级版至少需要上传一份内容资料；大纲和配色参考图不算内容资料");
     if (paletteMode === "reference" && !themeReference) return notify("请上传一张配色参考图，或改用内置配色");
     const totalBytes = sourceFiles.reduce((total, file) => total + file.size, 0) + (outlineFile?.size || 0) + (themeReference?.size || 0);
     if (totalBytes > 500 * 1024 * 1024) return notify("本次全部资料合计不能超过 500MB");
@@ -3328,7 +3671,7 @@ function DeckGenerationForm({ service, notify, onCreated }: {
       const result = await responseJson(response);
       if (!response.ok) return notify(result.error || "生成 PPT 任务创建失败");
       onCreated(result.run as DeckGenerationRun);
-      notify(generationMode === "advanced" ? "已开始读取资料，完成后请确认逐页结构" : "已开始读取资料并生成快速方案");
+      notify(generationMode === "advanced" ? "已开始读取资料，完成后只需确认一次整套方案" : "已开始读取资料并生成快速方案");
     } finally {
       setSubmitting(false);
     }
@@ -3364,7 +3707,7 @@ function DeckGenerationForm({ service, notify, onCreated }: {
     <label>补充要求（可选）<textarea value={referenceText} onChange={event => setReferenceText(event.target.value)} placeholder={generationMode === "quick" ? "可粘贴评审要求、重点信息和内容偏好；大量资料直接拖到下方。" : "可补充整套汇报的总要求、禁用表达和必须强调的结论。"}/></label>
 
     <section className="deck-source-section">
-      <header><div><b>参考资料</b><span>{sourceFiles.length ? `已加入 ${sourceFiles.length} 份，系统会按页码和工作表保留来源` : "可一次拖入多份大资料，用户不用预先整理"}</span></div></header>
+      <header><div><b>{generationMode === "advanced" ? "内容资料（高级版必填）" : "参考资料"}</b><span>{sourceFiles.length ? `已加入 ${sourceFiles.length} 份，系统会按页码和工作表保留来源` : "可一次拖入多份大资料，用户不用预先整理"}</span></div></header>
       <div className="deck-reference-drop deck-source-drop" onClick={() => sourceInputRef.current?.click()} onDragOver={event => event.preventDefault()} onDrop={(event: DragEvent<HTMLDivElement>) => { event.preventDefault(); addSourceFiles(Array.from(event.dataTransfer.files || [])); }}>
         <Upload/><b>把全部资料拖到这里</b><span>支持 PDF、Word、Excel、PPT、文本和图片；最多 30 份，合计 500MB</span>
       </div>
@@ -3378,10 +3721,13 @@ function DeckGenerationForm({ service, notify, onCreated }: {
         <button type="button" className={paletteMode === "preset" ? "active" : ""} onClick={() => setPaletteMode("preset")}><Check/><span><b>内置配色</b><small>稳定、快速，适合没有参考图时</small></span></button>
         <button type="button" className={paletteMode === "reference" ? "active" : ""} onClick={() => setPaletteMode("reference")}><ImagePlus/><span><b>参考图配色</b><small>分析颜色，不照抄参考图版式</small></span></button>
       </div>
-      {paletteMode === "preset" ? <label>风格包<select value={stylePack} onChange={event => setStylePack(event.target.value)}>{deckStylePacks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label> : <div className="deck-theme-reference" onClick={() => themeInputRef.current?.click()} onDragOver={event => event.preventDefault()} onDrop={(event: DragEvent<HTMLDivElement>) => { event.preventDefault(); chooseTheme(event.dataTransfer.files?.[0]); }}>
-        {themePreview ? <><img src={themePreview} alt="配色参考"/><div><b>{themeReference?.name}</b><span>将提取背景、文字、强调色及使用比例</span></div></> : <><ImagePlus/><div><b>上传一张配色参考图</b><span>PNG、JPEG 或 WebP，不要求它是 PPT</span></div></>}
-        <input ref={themeInputRef} type="file" hidden accept=".png,.jpg,.jpeg,.webp" onChange={event => chooseTheme(event.target.files?.[0])}/>
-      </div>}
+      {paletteMode === "preset" ? <label>风格包<select value={stylePack} onChange={event => setStylePack(event.target.value)}>{deckStylePacks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label> : <>
+        <div className="deck-theme-reference" onClick={() => themeInputRef.current?.click()} onDragOver={event => event.preventDefault()} onDrop={(event: DragEvent<HTMLDivElement>) => { event.preventDefault(); chooseTheme(event.dataTransfer.files?.[0]); }}>
+          {themePreview ? <><img src={themePreview} alt="配色参考"/><div><b>{themeReference?.name}</b><span>将提取背景、文字、强调色及使用比例，并把原图直接交给 Image2</span></div></> : <><ImagePlus/><div><b>上传一张配色参考图</b><span>PNG、JPEG 或 WebP，不要求它是 PPT</span></div></>}
+          <input ref={themeInputRef} type="file" hidden accept=".png,.jpg,.jpeg,.webp" onChange={event => chooseTheme(event.target.files?.[0])}/>
+        </div>
+        {generationMode === "advanced" && <label className="deck-layout-language">版式语言（不含配色）<select value={stylePack} onChange={event => setStylePack(event.target.value)}>{deckAdvancedLayoutPacks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select><small>参考图决定全部颜色；这里仅选择信息组织、留白和节奏。</small></label>}
+      </>}
     </section>
 
     <div className="deck-unity-options">

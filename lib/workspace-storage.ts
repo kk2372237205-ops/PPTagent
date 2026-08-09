@@ -10,6 +10,7 @@ export const referenceRoot = path.join(workspaceRoot, "references");
 export const deckGenerationRoot = path.join(workspaceRoot, "deck-generation");
 export const deckSourceRoot = path.join(deckGenerationRoot, "sources");
 export const deckThemeRoot = path.join(deckGenerationRoot, "themes");
+export const deckEvidenceRoot = path.join(deckGenerationRoot, "evidence");
 
 export async function ensureWorkspaceDirectories() {
   await Promise.all([
@@ -18,7 +19,8 @@ export async function ensureWorkspaceDirectories() {
     mkdir(imageRoot, { recursive: true }),
     mkdir(referenceRoot, { recursive: true }),
     mkdir(deckSourceRoot, { recursive: true }),
-    mkdir(deckThemeRoot, { recursive: true })
+    mkdir(deckThemeRoot, { recursive: true }),
+    mkdir(deckEvidenceRoot, { recursive: true })
   ]);
 }
 

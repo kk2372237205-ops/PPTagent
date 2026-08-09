@@ -1,9 +1,12 @@
-import { readFile } from "fs/promises";
+import { mkdir, readFile, unlink } from "fs/promises";
+import { spawn } from "child_process";
 import path from "path";
 import JSZip from "jszip";
 
 const MAX_EXTRACTED_CHARACTERS = 2_000_000;
 const MAX_EVIDENCE_CHUNKS = 500;
+const MAX_VISUAL_ASSETS_PER_SOURCE = 80;
+const RASTER_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"]);
 
 function decodeXml(value) {
   return String(value || "")
@@ -36,6 +39,32 @@ function naturalNumber(value) {
   return Number(String(value).match(/(\d+)/)?.[1] || 0);
 }
 
+function rasterMimeType(fileName) {
+  const extension = path.extname(fileName).toLowerCase();
+  if (extension === ".jpg" || extension === ".jpeg") return "image/jpeg";
+  if (extension === ".webp") return "image/webp";
+  if (extension === ".gif") return "image/gif";
+  if (extension === ".bmp") return "image/bmp";
+  if (extension === ".tif" || extension === ".tiff") return "image/tiff";
+  return "image/png";
+}
+
+async function zipVisualAsset(zip, zipPath, locator, index) {
+  const entry = zip.file(zipPath);
+  if (!entry || !RASTER_EXTENSIONS.has(path.extname(zipPath).toLowerCase())) return null;
+  return {
+    locator,
+    originalName: path.posix.basename(zipPath) || `image-${index + 1}.png`,
+    mimeType: rasterMimeType(zipPath),
+    buffer: await entry.async("nodebuffer")
+  };
+}
+
+function resolvedZipTarget(baseFile, target) {
+  const baseDirectory = path.posix.dirname(baseFile);
+  return path.posix.normalize(path.posix.join(baseDirectory, String(target || "").replace(/^\//, "")));
+}
+
 function trimExtracted(text) {
   const normalized = String(text || "").replace(/\u0000/g, "").trim();
   return normalized.length > MAX_EXTRACTED_CHARACTERS
@@ -43,7 +72,7 @@ function trimExtracted(text) {
     : normalized;
 }
 
-async function parseDocx(buffer) {
+async function parseDocx(buffer, extractVisualAssets) {
   const zip = await JSZip.loadAsync(buffer);
   const names = Object.keys(zip.files)
     .filter(name => /^word\/(document|header\d+|footer\d+)\.xml$/i.test(name))
@@ -54,22 +83,40 @@ async function parseDocx(buffer) {
     const text = xmlText(xml || "", ["w:p", "w:tr"]);
     if (text) sections.push({ locator: name.includes("document") ? "正文" : path.basename(name, ".xml"), text });
   }
-  return { kind: "docx", sections, metadata: { sectionCount: sections.length } };
+  const mediaNames = extractVisualAssets ? Object.keys(zip.files)
+    .filter(name => /^word\/media\//i.test(name) && RASTER_EXTENSIONS.has(path.extname(name).toLowerCase()))
+    .sort((a, b) => naturalNumber(a) - naturalNumber(b))
+    .slice(0, MAX_VISUAL_ASSETS_PER_SOURCE) : [];
+  const visualAssets = (await Promise.all(mediaNames.map((name, index) => zipVisualAsset(zip, name, `正文 · 图片 ${index + 1}`, index)))).filter(Boolean);
+  return { kind: "docx", sections, visualAssets, metadata: { sectionCount: sections.length, visualAssetCount: visualAssets.length } };
 }
 
-async function parsePptx(buffer) {
+async function parsePptx(buffer, extractVisualAssets) {
   const zip = await JSZip.loadAsync(buffer);
   const slideNames = Object.keys(zip.files)
     .filter(name => /^ppt\/slides\/slide\d+\.xml$/i.test(name))
     .sort((a, b) => naturalNumber(a) - naturalNumber(b));
   const sections = [];
+  const visualAssets = [];
   for (const name of slideNames) {
     const xml = await zip.file(name)?.async("string");
     const slideIndex = naturalNumber(name);
     const text = xmlText(xml || "", ["a:p"]);
     if (text) sections.push({ locator: `第 ${slideIndex} 页`, text });
+    if (!extractVisualAssets) continue;
+    const relationshipXml = await zip.file(`ppt/slides/_rels/${path.posix.basename(name)}.rels`)?.async("string") || "";
+    const relationships = parseRelationships(relationshipXml);
+    const embeddedIds = Array.from(String(xml || "").matchAll(/\br:embed="([^"]+)"/gi)).map(match => match[1]);
+    for (const relationId of Array.from(new Set(embeddedIds))) {
+      if (visualAssets.length >= MAX_VISUAL_ASSETS_PER_SOURCE) break;
+      const target = relationships.get(relationId);
+      if (!target) continue;
+      const zipPath = resolvedZipTarget(name, target);
+      const asset = await zipVisualAsset(zip, zipPath, `第 ${slideIndex} 页`, visualAssets.length);
+      if (asset) visualAssets.push(asset);
+    }
   }
-  return { kind: "pptx", sections, metadata: { slideCount: slideNames.length } };
+  return { kind: "pptx", sections, visualAssets, metadata: { slideCount: slideNames.length, visualAssetCount: visualAssets.length } };
 }
 
 function parseSharedStrings(xml) {
@@ -107,7 +154,7 @@ function xlsxCellValue(cellXml, sharedStrings) {
   return raw;
 }
 
-async function parseXlsx(buffer) {
+async function parseXlsx(buffer, extractVisualAssets) {
   const zip = await JSZip.loadAsync(buffer);
   const sharedXml = await zip.file("xl/sharedStrings.xml")?.async("string");
   const sharedStrings = parseSharedStrings(sharedXml || "");
@@ -134,10 +181,38 @@ async function parseXlsx(buffer) {
     }
     if (rows.length) sections.push({ locator: `工作表「${sheet.name}」`, text: rows.join("\n") });
   }
-  return { kind: "xlsx", sections, metadata: { sheetCount: sheets.length } };
+  const mediaNames = extractVisualAssets ? Object.keys(zip.files)
+    .filter(name => /^xl\/media\//i.test(name) && RASTER_EXTENSIONS.has(path.extname(name).toLowerCase()))
+    .sort((a, b) => naturalNumber(a) - naturalNumber(b))
+    .slice(0, MAX_VISUAL_ASSETS_PER_SOURCE) : [];
+  const visualAssets = (await Promise.all(mediaNames.map((name, index) => zipVisualAsset(zip, name, `工作簿图片 ${index + 1}`, index)))).filter(Boolean);
+  return { kind: "xlsx", sections, visualAssets, metadata: { sheetCount: sheets.length, visualAssetCount: visualAssets.length } };
 }
 
-async function parsePdf(buffer) {
+async function renderPdfPage(filePath, pageIndex, outputDirectory) {
+  const command = process.env.PDFTOPPM_PATH || "pdftoppm";
+  const resolvedDirectory = path.resolve(outputDirectory || path.dirname(filePath));
+  await mkdir(resolvedDirectory, { recursive: true });
+  const outputRoot = path.join(resolvedDirectory, `pdf-page-${process.pid}-${Date.now()}-${pageIndex}`);
+  const outputPath = `${outputRoot}.png`;
+  const args = ["-f", String(pageIndex), "-l", String(pageIndex), "-singlefile", "-scale-to", "1280", "-png", filePath, outputRoot];
+  await new Promise((resolve, reject) => {
+    const child = spawn(command, args, { shell: process.platform === "win32" && /\.cmd$/i.test(command), windowsHide: true });
+    const errors = [];
+    child.stderr.on("data", chunk => errors.push(Buffer.from(chunk)));
+    child.on("error", reject);
+    child.on("close", code => code === 0
+      ? resolve()
+      : reject(new Error(Buffer.concat(errors).toString("utf8") || `pdftoppm exited with ${code}`)));
+  });
+  try {
+    return await readFile(outputPath);
+  } finally {
+    await unlink(outputPath).catch(() => {});
+  }
+}
+
+async function parsePdf(buffer, filePath, extractVisualAssets, visualOutputDirectory) {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const task = pdfjs.getDocument({
     data: new Uint8Array(buffer),
@@ -147,14 +222,27 @@ async function parsePdf(buffer) {
   });
   const document = await task.promise;
   const sections = [];
+  const visualAssets = [];
   for (let pageIndex = 1; pageIndex <= document.numPages; pageIndex += 1) {
     const page = await document.getPage(pageIndex);
     const content = await page.getTextContent();
     const text = content.items.map(item => typeof item.str === "string" ? item.str : "").filter(Boolean).join(" ");
     if (text.trim()) sections.push({ locator: `第 ${pageIndex} 页`, text: text.trim() });
+    if (extractVisualAssets && visualAssets.length < MAX_VISUAL_ASSETS_PER_SOURCE) {
+      try {
+        visualAssets.push({
+          locator: `第 ${pageIndex} 页`,
+          originalName: `page-${pageIndex}.png`,
+          mimeType: "image/png",
+          buffer: await renderPdfPage(filePath, pageIndex, visualOutputDirectory)
+        });
+      } catch (error) {
+        if (pageIndex === 1) console.warn("[deck-source-parser] PDF visual rendering unavailable:", error instanceof Error ? error.message : String(error));
+      }
+    }
   }
-  await document.destroy();
-  return { kind: "pdf", sections, metadata: { pageCount: document.numPages } };
+  await task.destroy();
+  return { kind: "pdf", sections, visualAssets, metadata: { pageCount: document.numPages, visualAssetCount: visualAssets.length } };
 }
 
 function plainText(buffer, extension) {
@@ -169,18 +257,24 @@ function plainText(buffer, extension) {
   return text;
 }
 
-export async function parseDeckSourceFile(filePath, originalName, mimeType = "") {
+export async function parseDeckSourceFile(filePath, originalName, mimeType = "", options = {}) {
   const extension = path.extname(originalName || filePath).toLowerCase();
   const buffer = await readFile(filePath);
+  const extractVisualAssets = options.extractVisualAssets === true;
   let parsed;
-  if (extension === ".pdf" || mimeType === "application/pdf") parsed = await parsePdf(buffer);
-  else if (extension === ".docx") parsed = await parseDocx(buffer);
-  else if (extension === ".pptx") parsed = await parsePptx(buffer);
-  else if (extension === ".xlsx") parsed = await parseXlsx(buffer);
+  if (extension === ".pdf" || mimeType === "application/pdf") parsed = await parsePdf(buffer, filePath, extractVisualAssets, options.visualOutputDirectory);
+  else if (extension === ".docx") parsed = await parseDocx(buffer, extractVisualAssets);
+  else if (extension === ".pptx") parsed = await parsePptx(buffer, extractVisualAssets);
+  else if (extension === ".xlsx") parsed = await parseXlsx(buffer, extractVisualAssets);
   else if ([".txt", ".md", ".csv", ".json"].includes(extension)) {
     parsed = { kind: extension.slice(1), sections: [{ locator: "全文", text: plainText(buffer, extension) }], metadata: {} };
   } else if ([".png", ".jpg", ".jpeg", ".webp"].includes(extension) || mimeType.startsWith("image/")) {
-    parsed = { kind: "image", sections: [], metadata: { needsVision: true } };
+    parsed = {
+      kind: "image",
+      sections: [],
+      visualAssets: extractVisualAssets ? [{ locator: "整张图片", originalName: originalName || path.basename(filePath), mimeType: mimeType || rasterMimeType(originalName || filePath), buffer }] : [],
+      metadata: { needsVision: true, visualAssetCount: extractVisualAssets ? 1 : 0 }
+    };
   } else {
     throw new Error("暂不支持该文件格式，请使用 PDF、DOCX、XLSX、PPTX、TXT、Markdown、CSV、JSON 或常见图片");
   }
