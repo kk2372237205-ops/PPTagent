@@ -3211,6 +3211,47 @@
   font-weight: 500;
   line-height: 1.65;
 }
+.employee-root .deck-visual-units {
+  display: grid;
+  gap: 0;
+  margin: 2px 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid #354048;
+}
+.employee-root .deck-visual-units li {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.7fr) minmax(220px, 1.3fr) auto;
+  align-items: start;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid #303A42;
+}
+.employee-root .deck-visual-units li > b {
+  color: #DDE2E7;
+  font-size: 9px;
+  line-height: 1.5;
+}
+.employee-root .deck-visual-units li > span {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #AAB4BD;
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.employee-root .deck-visual-units li > small {
+  color: #8FA9A1;
+  font-size: 8px;
+  line-height: 1.5;
+}
+.employee-root .deck-visual-brief .deck-visual-integration {
+  padding-left: 9px;
+  border-left: 2px solid #607C73;
+  color: #C8D4D0;
+}
 .employee-root .deck-visual-evidence-grid figcaption span,
 .employee-root .deck-visual-evidence-grid figcaption small {
   min-width: 0;

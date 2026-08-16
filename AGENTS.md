@@ -1017,7 +1017,17 @@ node scripts/employee-visual-test.mjs
 - 15 分钟最终方案上限和 10 分钟 Image2 上限已经通过代码、Agent 配置、本地延迟响应和构建检查；没有为了测试极限时长故意触发额外的付费长请求。
 - 页面审美仍需项目 owner 对真实 PPT 逐页验收。代码检查通过不能替代“是否达到国家金奖/银奖参考作品水平”的人工判断。
 
-### 十一、新话题接手时的硬性要求
+### 十一、图文融合小改记录（2026-08-16）
+
+- 本次仍只修改“生成 PPT → 高级版”；快速版、美化 PPT、生图、图片转 PPT、公共 AI 配置、API、Prisma、并发、超时和付费调用保护均未改动。
+- 参考案例只用于学习“画面与论点如何共同叙事”，没有把案例里的图片、文字、版式或任何机密内容放入产品、提示词或测试输入。
+- 高级版单页导演合同新增 `visual_weight`、`visual_units` 和 `integration_rule`。GPT-5.6 现在需要说明每个画面服务哪条正文、采用什么形式、与文字是什么关系；Image2 仍在一次请求中生成一张完整 16:9 页面图。
+- 图文关系允许时间线节点、技术机制、流程、对比、结果、全宽或不对称构图；禁止把所有画面固定在底部、右侧或背景图片区，也不默认拼贴等权卡片。
+- 高级版“补充要求”在界面上改为“整套高优先级要求”，会进入资料匹配、完整方案和单页任务包；它是制作约束，不是事实来源，也不能覆盖真实性和配色边界。
+- 参考图配色模式不再借用 `style-packs.md` 的颜色包，改读 `skills/deck-generation/advanced-layout-profiles.md` 的无配色版式档案；旧风格 ID 仅用于兼容历史任务。
+- 在项目 owner 明确授权后，本次做了受控的 2 页高级版试跑：GPT-5.6 完成 1 次整套方案调用，Image2 完成 2 次单页调用，未继续转 PDF/PPT，也未批量重生页面；两页质量检查均通过。`node --check scripts/deck-generation-worker.mjs`、`npx tsc --noEmit`、`npm run lint`、`npm run build -- --webpack` 和高级版 Skill 结构校验均通过；lint 仍只有 `scripts/design-agent-worker.mjs` 原有的 11 条 warning。高级版表单已用本地开发登录和 Playwright 检查，临时试跑任务已完成，未提交 `.env`、数据库或上传产物。
+
+### 十二、新话题接手时的硬性要求
 
 1. 先读 `AGENTS.md` 本节，再读 `docs/project-control-workflows.md` 的“生成 PPT：当前交付流程”，然后检查真实代码和 Git 状态。
 2. 先向项目 owner 复述当前高级版流程、准备修改的文件、明确不修改的其他模式、验证方式和是否会产生付费请求；不要读完就直接大改。

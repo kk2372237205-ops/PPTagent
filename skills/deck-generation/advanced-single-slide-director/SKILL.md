@@ -21,11 +21,14 @@ Turn one confirmed page into a delivery-grade communication task. Improve the pa
 1. State one `unique_takeaway` that the audience should understand after viewing the page.
 2. Select one semantic `page_archetype` from `references/page-archetypes.md`.
 3. State a `proof_goal`: what must be demonstrated, not merely listed.
-4. Choose one `visual_strategy` and write a concrete `main_visual_brief` that tells Image2 the subject, composition, framing, scale, whitespace direction, and emotion.
-5. Choose a layout blueprint that gives the page one dominant focal point and keeps supporting content subordinate.
-6. Preserve every exact fact, number, date, proper noun, source locator, and user-locked phrase.
-7. Return explicit icon, authenticity, and fabrication policies.
-8. When a page needs a chart, timeline, process, comparison, or system diagram, define it only from confirmed text facts and relationships.
+4. Choose one `visual_strategy` and write a concrete `main_visual_brief` that defines the overall subject, composition, framing, scale, whitespace direction, and emotion. It may coordinate several visual units; it is not limited to one isolated hero image.
+5. Choose `visual_weight` from `text-led`, `balanced`, or `visual-led` according to the page's semantic job and density.
+6. Define zero to four `visual_units`. For every unit, state the confirmed claim it supports, its visual form, its semantic relationship, and whether it is primary or supporting.
+7. Write one `integration_rule` that makes text and visual units share a reading path. Never place all visuals in a detached fixed bottom, right, or background slot.
+8. Choose a layout blueprint that gives the page one dominant information hierarchy and keeps supporting content subordinate. Multiple visuals are allowed when they form one semantic composition.
+9. Preserve every exact fact, number, date, proper noun, source locator, and user-locked phrase.
+10. Return explicit icon, authenticity, and fabrication policies.
+11. When a page needs a chart, timeline, process, comparison, or system diagram, define it only from confirmed text facts and relationships.
 
 ## Hard Boundaries
 
@@ -46,6 +49,9 @@ Turn one confirmed page into a delivery-grade communication task. Improve the pa
 - Treat matched blocks, summaries, and evidence as a fact bank, not a requirement to render every sentence. Preserve only explicit exact text verbatim; compress other copy to a professional visible-text budget.
 - Never render production scaffolding such as "evidence from the source", "pending source match", filenames, locators, or internal sequence numbers.
 - When a palette reference is active, use only its extracted palette for the presentation system. Do not borrow unlisted colors for titles, metrics, lines, cards, or decoration.
+- Generated visual units are communication devices inside the same final slide image, not separately generated assets and not documentary proof.
+- Do not force a visual unit when typography or a grounded chart is clearer. For applicable body pages, prefer one to three meaningful units over empty decoration.
+- Do not place a generated scene behind dense text unless contrast and whitespace make both fully readable.
 
 ## Visual Decisions
 
@@ -75,6 +81,16 @@ Return one object containing:
   "proof_goal": "",
   "visual_strategy": "conceptual-illustration|editorial-composition|fact-based-chart|timeline|process|comparison|typography",
   "main_visual_brief": "",
+  "visual_weight": "text-led|balanced|visual-led",
+  "visual_units": [
+    {
+      "supports": "",
+      "form": "",
+      "relationship": "context|sequence|cause|contrast|mechanism|result|evidence",
+      "importance": "primary|supporting"
+    }
+  ],
+  "integration_rule": "",
   "layout_blueprint": {
     "silhouette": "",
     "title_zone": "",

@@ -133,7 +133,7 @@ function readSkill(name) {
 function skillBundle(options = {}) {
   return [
     readSkill("SKILL.md"),
-    ...(options.colorNeutral ? [] : [readSkill("style-packs.md")]),
+    ...(options.colorNeutral ? [readSkill("advanced-layout-profiles.md")] : [readSkill("style-packs.md")]),
     readSkill("visual-identity.md"),
     readSkill("visual-storyboard.md"),
     readSkill("slide-image-specs.md"),
@@ -1172,14 +1172,14 @@ function stylePackName(id) {
 
 function advancedLayoutName(id) {
   return ({
-    "blue-gold-tech": "科技汇报版式",
-    "white-green-tech": "清爽技术版式",
-    "black-gold-business": "高端商务版式",
-    "blue-purple-ai": "未来智能版式",
-    "red-white-government": "庄重政企版式",
-    "minimal-academic": "极简学术版式",
-    "vivid-roadshow": "活力路演版式"
-  })[id] || "专业汇报版式";
+    "blue-gold-tech": "图文叙事版式",
+    "white-green-tech": "清晰技术说明版式",
+    "black-gold-business": "结论先行商务版式",
+    "blue-purple-ai": "系统关系图解版式",
+    "red-white-government": "庄重层级汇报版式",
+    "minimal-academic": "极简学术论证版式",
+    "vivid-roadshow": "活力路演叙事版式"
+  })[id] || "图文叙事版式";
 }
 
 function runStyleDirection(run) {
@@ -2290,7 +2290,7 @@ function matchingPrompt(run, pages, candidates) {
 项目：${run.projectName}
 用途：${run.projectType || "未填写"}
 项目说明：${run.brief}
-用户粘贴的补充资料：${run.referenceText || "无"}
+用户整套高优先级要求：${run.referenceText || "无"}
 
 逐页结构：
 ${JSON.stringify(pages)}
@@ -2316,6 +2316,7 @@ ${JSON.stringify(candidates)}
 
 硬规则：
 - 不允许编造证据候选中没有的数字、日期、荣誉、姓名或结论。
+- 用户整套高优先级要求控制强调重点、受众、禁用表达和视觉偏好，但它本身不是事实证据；涉及事实仍只能使用证据候选。
 - 每个事实块必须填写 evidence_ids；资料不足就在 warnings 写明，不要硬凑。
 - 用户资料中的图片只用于必要的文字识别和语义理解，不作为最终页面素材。不得输出图片候选、裁片计划或证据墙布局。
 - 问题诊断页只能使用现状、现场调研、失效、故障和痛点事实，不得提前混入创新思路、技术路线或完整解决方案。
@@ -2374,6 +2375,26 @@ function normalizeDirectorContract(value, page) {
   const cardPolicy = ["avoid", "limited", "justified-grid"].includes(String(source.card_policy))
     ? String(source.card_policy)
     : "avoid";
+  const visualStrategy = String(source.visual_strategy || (page.role === "cover" ? "conceptual-illustration" : "editorial-composition")).slice(0, 80);
+  const effectiveVisualStrategy = page.role === "ending" ? "conceptual-illustration" : visualStrategy;
+  const visualWeight = page.role === "cover" || page.role === "ending"
+    ? "visual-led"
+    : ["text-led", "balanced", "visual-led"].includes(String(source.visual_weight))
+      ? String(source.visual_weight)
+      : effectiveVisualStrategy === "typography" ? "text-led" : "balanced";
+  const visualUnits = normalizeArray(source.visual_units).slice(0, 4).map((item, index) => {
+    const unit = item && typeof item === "object" && !Array.isArray(item) ? item : {};
+    const relationship = ["context", "sequence", "cause", "contrast", "mechanism", "result", "evidence"].includes(String(unit.relationship))
+      ? String(unit.relationship)
+      : "context";
+    return {
+      id: String(unit.id || `visual-${index + 1}`).slice(0, 80),
+      supports: String(unit.supports || "").slice(0, 500),
+      form: String(unit.form || "").slice(0, 500),
+      relationship,
+      importance: String(unit.importance) === "supporting" ? "supporting" : "primary"
+    };
+  }).filter(item => item.supports && item.form);
   const fallbackArchetype = fallbackPageArchetype(page);
   const ending = page.role === "ending";
   const requestedArchetypeRaw = String(source.page_archetype || "");
@@ -2413,10 +2434,23 @@ function normalizeDirectorContract(value, page) {
     unique_takeaway: String(source.unique_takeaway || page.conclusion || page.purpose || page.title).slice(0, 500),
     page_archetype: pageArchetype.slice(0, 80),
     proof_goal: String(source.proof_goal || page.purpose || page.conclusion || "让本页结论得到资料证据支持").slice(0, 700),
-    visual_strategy: ending ? "conceptual-illustration" : String(source.visual_strategy || (page.role === "cover" ? "conceptual-illustration" : "editorial-composition")).slice(0, 80),
+    visual_strategy: effectiveVisualStrategy,
     main_visual_brief: ending
       ? `封面级情绪收束：以 ${requestedBrief} 为基础，使用一个有力量的象征性主题画面，主体占据大部分画面；为一句收束性结论留出大面积空白。不得制作信息图、路线图、数据图、卡片或纪实证明场景。`.slice(0, 1400)
       : requestedBrief,
+    visual_weight: visualWeight,
+    visual_units: visualUnits.length || effectiveVisualStrategy === "typography"
+      ? visualUnits
+      : [{
+        id: "visual-1",
+        supports: String(page.conclusion || page.purpose || page.title).slice(0, 500),
+        form: effectiveVisualStrategy === "fact-based-chart"
+          ? "只依据本页已确认数字与标签绘制的事实图表"
+          : "与本页主题直接相关、明确非纪实的概念性或编辑式画面",
+        relationship: effectiveVisualStrategy === "comparison" ? "contrast" : effectiveVisualStrategy === "process" || effectiveVisualStrategy === "timeline" ? "sequence" : "context",
+        importance: "primary"
+      }],
+    integration_rule: String(source.integration_rule || "让每个画面单元紧邻或贯穿其所支撑的文字，按本页语义建立一条阅读路径；不得把画面统一塞入固定的底部、右侧或背景图片区。").trim().slice(0, 1200),
     primary_evidence_id: primaryEvidenceId,
     secondary_evidence_ids: secondaryEvidenceIds,
     evidence_priority: cleanStringList(source.evidence_priority, 6),
@@ -2491,6 +2525,7 @@ ${advancedDirectorSkillBundle()}
 项目：${run.projectName}
 用途：${run.projectType || "未填写"}
 版式语言：${runStyleDirection(run)}
+用户整套高优先级要求：${run.referenceText || "无"}
 主题配色合同：${run.paletteContractJson}
 统一元素选项：${run.unityOptionsJson}
 逐页内容包：${JSON.stringify(pagePayload)}
@@ -2500,7 +2535,7 @@ ${advancedDirectorSkillBundle()}
   "outline":{"title":"","slides":[]},
   "visual_identity":{},
   "visual_storyboard":{"slides":[]},
-  "slide_image_specs":{"slides":[{"slide_index":1,"composition":"","main_visual":"","director_contract":{"unique_takeaway":"","page_archetype":"","proof_goal":"","visual_strategy":"conceptual-illustration|editorial-composition|fact-based-chart|timeline|process|comparison|typography","main_visual_brief":"","layout_blueprint":{},"icon_policy":"none|functional-only|limited-semantic","card_policy":"avoid|limited|justified-grid","authenticity_policy":"","forbidden_fabrication":[],"director_notes":""}}]}
+  "slide_image_specs":{"slides":[{"slide_index":1,"composition":"","main_visual":"","director_contract":{"unique_takeaway":"","page_archetype":"","proof_goal":"","visual_strategy":"conceptual-illustration|editorial-composition|fact-based-chart|timeline|process|comparison|typography","main_visual_brief":"","visual_weight":"text-led|balanced|visual-led","visual_units":[{"supports":"","form":"","relationship":"context|sequence|cause|contrast|mechanism|result|evidence","importance":"primary|supporting"}],"integration_rule":"","layout_blueprint":{},"icon_policy":"none|functional-only|limited-semantic","card_policy":"avoid|limited|justified-grid","authenticity_policy":"","forbidden_fabrication":[],"director_notes":""}}]}
 }
 
 要求：
@@ -2508,13 +2543,17 @@ ${advancedDirectorSkillBundle()}
 - exact 内容必须原样进入 must_include；polish 只允许压缩表达，不得改变事实；direction 可以转成合适的版式表达。
 - sparse 用于封面和最后一页；standard 为普通正文；compact 必须做成高密度但有清楚分区的专业汇报页。最后一页无论包含价值、落地、路线、证据、指标或下一步，都必须压缩为有情绪力量的一句收束性结论和最多一条支撑语；只有用户明确锁定的原文例外。
 - 所有数字、日期和专名只能来自逐页内容包的 evidence。
-- 每页 director_contract 必须给出明确的 unique_takeaway、visual_strategy、main_visual_brief 和版式骨架，让 Image2 只负责执行，不再自行理解原始资料。
+- 每页 director_contract 必须给出明确的 unique_takeaway、visual_strategy、main_visual_brief、visual_weight、visual_units、integration_rule 和版式骨架，让 Image2 只负责执行，不再自行理解原始资料。
+- 适合图像表达的正文页优先规划 1-3 个画面单元，高密度页最多 4 个；纯文字论证可以为 0 个。每个 visual_unit 必须明确支撑逐页内容包中的哪条正文、阶段、对比、机制、背景或结果，不能只写“配图”“科技图片”或情绪词。
+- 所有画面单元与文字必须在同一次 Image2 请求的一张完整页面图中共同构图。位置由 sequence、cause、contrast、mechanism、context、result 或 evidence 关系决定，不得固定为左文右图、上文下图或统一底部图片区。
+- 多个画面单元必须形成一个主次清楚的语义构图，不得拼贴互不相关的图片，也不得默认改成等权卡片阵列。
 - 用户上传资料中的图片只用于 GPT-5.6 读取文字和含义，不作为最终页面素材，不得输出 visual_evidence、protected_evidence_layout 或证据裁片计划。
 - problem-diagnosis 问题诊断页不得提前使用创新思路、技术路线或完整解决方案。证明、专利、合同和报告页应把已确认事实整理成克制的文字与数据叙事，不生成仿真的证书、合同或报告截图。
 - 严肃汇报、比赛和技术页面的通用装饰图标默认设为 none；真实证据不足时使用排版和中性几何，不生成假证据场景。
 - 封面必须根据整份 PPT 的主题设计一个强主视觉、少文字的完整封面。可以生成主题化、象征性的场景或概念视觉，但不得生成可读校名、机构招牌、Logo 或冒充真实校园、真实产品和真实客户现场。
 - 纯致谢或口号型结尾必须重情绪、少文字、强收束；包含路线、指标、建议或下一步的内容型结尾仍需保留实质信息。
-- main_visual_brief 必须具体说明主体、构图、景别、留白方向和情绪，不得只写“科技感”“高级感”或重复页面标题。
+- main_visual_brief 必须具体说明整体主体、构图、景别、留白方向和情绪，并统筹 visual_units；不得只写“科技感”“高级感”或重复页面标题。
+- 用户整套高优先级要求必须落实到所有适用页面的内容取舍、visual_weight、visual_units 和 integration_rule；它是制作约束，不得被直接渲染成页面文字，也不能覆盖真实性与配色硬规则。
 - director_contract 只决定本页语义任务和布局骨架，不能覆盖 visual_identity 的配色、字体、页眉页脚、网格和图片处理规则。
 - 使用主题参考图时严格遵守 paletteContractJson 的色彩职责，不照抄参考图版式。
 - 参考图配色模式下，任何风格包自带的颜色名称、颜色建议和配色禁令全部失效；只保留版式结构、信息层级和视觉节奏。`;
@@ -3053,13 +3092,16 @@ function pageRenderContract(run, slide, planSlide, pagePlan, fingerprint, allSli
       : { max_body_characters: 220, max_supporting_blocks: 4 };
   const palette = fingerprint.palette_contract && typeof fingerprint.palette_contract === "object" ? fingerprint.palette_contract : {};
   const allowedPalette = collectHexColors(palette).slice(0, 10);
-  const directorContract = planSlide.director_contract && typeof planSlide.director_contract === "object"
+  const rawDirectorContract = planSlide.director_contract && typeof planSlide.director_contract === "object"
     ? planSlide.director_contract
     : (pagePlan ? safeJson(pagePlan.directorContractJson, {}) : {});
+  const directorContract = run.generationMode === "advanced" && pagePlan
+    ? normalizeDirectorContract(rawDirectorContract, pagePlan)
+    : rawDirectorContract;
   const visualEvidence = [];
   const evidenceRenderPolicy = [];
   return {
-    version: "wzlcf-image2-handoff-v1",
+    version: run.generationMode === "advanced" ? "wzlcf-image2-handoff-v2" : "wzlcf-image2-handoff-v1",
     ownership: {
       content_editor: "gpt-5.6",
       final_slide_renderer: "gpt-image-2",
@@ -3072,6 +3114,12 @@ function pageRenderContract(run, slide, planSlide, pagePlan, fingerprint, allSli
       total_slides: allSlides.length,
       role: slide.role
     },
+    ...(run.generationMode === "advanced" ? {
+      user_priority_requirements: {
+        deck_wide: String(run.referenceText || "").slice(0, 6000),
+        rule: "这是高优先级制作约束，用于控制强调重点、受众、禁用表达和视觉偏好。除非相同文字也出现在 immutable_content 或 editable_content，否则不得把本字段直接渲染到页面。它不能覆盖事实、真实性、配色和安全边界。"
+      }
+    } : {}),
     immutable_content: {
       title: slide.title,
       exact_visible_text: exactText,
@@ -3109,7 +3157,9 @@ function pageRenderContract(run, slide, planSlide, pagePlan, fingerprint, allSli
       palette_reference: run.paletteMode === "reference" ? "实际配色参考图会直接作为 Image2 输入，只学习颜色关系、明暗比例、饱和度和气质，不照抄内容或版式。" : "无上传配色参考图。",
       deck_style_strip: "所有页面使用同一张本地生成的全局风格条带；它只表达配色职责、页眉页脚、网格、线条和几何语言，不含页面内容。",
       page_evidence: "用户资料图片只用于必要的 OCR 和语义理解，不作为 Image2 的页面素材；事实、数字和来源通过文字任务书传递。",
-      generated_visuals: "可以依据 director_contract.main_visual_brief 生成主题化、象征性或概念性视觉，也可以根据已确认数字绘制图表；不得冒充真实机构、真实产品、真实人物、真实客户现场或证明材料。",
+      generated_visuals: run.generationMode === "advanced"
+        ? "可以依据 director_contract.main_visual_brief 和 visual_units，在同一次完整页面生成中创建一至多个主题化、象征性或概念性画面，也可以根据已确认数字绘制图表；每个画面必须服务其 supports 内容并遵守 integration_rule，不得冒充真实机构、真实产品、真实人物、真实客户现场或证明材料。"
+        : "可以依据 director_contract.main_visual_brief 生成主题化、象征性或概念性视觉，也可以根据已确认数字绘制图表；不得冒充真实机构、真实产品、真实人物、真实客户现场或证明材料。",
       unprotected_area: "完整页面由 Image2 根据文字任务书构图。真实机构名称、Logo、校名招牌、产品型号、证书、合同、报告截图和新闻页面不得由模型虚构。",
       previous_slide: "只有用户点击更贴近上一页时才额外输入上一页成图，只对齐视觉语言。"
     },
@@ -3124,6 +3174,12 @@ function pageRenderContract(run, slide, planSlide, pagePlan, fingerprint, allSli
       "不得生成水印、模型签名、随机标志、乱码和资料外文字。",
       "严肃汇报与比赛页面默认不使用通用装饰图标；不得把人物、日期、地点、荣誉、证书、实验、产品或客户证据翻译成卡通图标。",
       "不得默认使用等权卡片阵列；版式必须服从 director_contract 的页面语义任务和主证据层级。",
+      ...(run.generationMode === "advanced" ? [
+        "visual_weight 决定本页文字与画面的相对比重；visual_units 中的全部画面必须和文字在本次请求的一张完整页面图中共同生成，不存在后续插图步骤。",
+        "每个 visual_unit 必须紧邻、贯穿或明确连接它所支撑的文字，并按 relationship 与 integration_rule 形成阅读路径；不得把全部画面集中到固定的底部、右侧或背景图片区。",
+        "允许同页出现多个互相关联的画面，但必须保持一个主次清楚的信息层级；不得拼贴无关场景，也不得用画面数量挤压文字可读性。",
+        "user_priority_requirements 是制作指令而非可见文案；必须落实其视觉偏好，但不得直接把该字段文字画到页面上。"
+      ] : []),
       "不得生成假产品、假人物、假现场、假实验、假合同、假证书、假奖项、假界面、假新闻或假客户证明。",
       "用户资料中的图片不得作为页面裁片或背景复用。概念视觉必须服从 main_visual_brief，并与事实文字明确区分。",
       "不得生成可读的机构招牌、校名、Logo、产品铭牌、证书、合同、报告截图或客户证明；未提供真实图片时只能做象征性表达，不能伪装成纪实照片。",
@@ -3479,6 +3535,13 @@ function advancedSlidePrompt(run, slide, contract, instruction, references = [],
     : slide.role === "cover"
       ? "- This is the cover: keep it minimal and project-identifying, with one strong thematic hero visual and no body-page information grid. The hero may be symbolic or conceptual, but must not impersonate a real campus, product, customer site, institution sign, or logo."
       : "- This is a body slide: honor the contract's density and proof goal; keep enough substantive evidence to support the conclusion instead of forcing a sparse closing-page treatment.";
+  const visualCompositionRules = [
+    "- Follow director_contract.visual_weight when balancing visible copy and imagery.",
+    "- Generate every director_contract.visual_unit as part of this same complete slide image. There is no later image insertion or second visual-generation pass.",
+    "- Bind each visual unit to the copy named in supports, and use relationship plus integration_rule to determine placement. Do not collect all visuals into a fixed bottom, right-side, or background media area.",
+    "- Multiple visual units are allowed only when they form one semantic composition with a clear primary-secondary hierarchy. Never create an unrelated stock-image collage or an equal card grid by default.",
+    "- Treat user_priority_requirements as high-priority production direction, never as audience-facing copy, factual evidence, or permission to violate palette and authenticity rules."
+  ];
   return [
     "Create one complete, premium 16:9 PPT slide image.",
     "",
@@ -3496,7 +3559,7 @@ function advancedSlidePrompt(run, slide, contract, instruction, references = [],
       : "Uploaded content-source images are intentionally not supplied. Build the page from the confirmed text contract and art direction; never pretend a generated scene, document, product, person, campus, or customer site is authentic evidence.",
     options.protectedEvidence
       ? "This request uses a protected evidence mask. The opaque masked areas are immutable object-level original evidence already placed on the page. The temporary guide strip occupies only the top outer safety margin: keep the slide title and every audience-facing element below it. Each evidence rectangle also has a narrow locked low-contrast safety band: keep all text, connectors, panels, and generated decoration outside it. Build the surrounding typography, spacing, geometry, and supporting composition around those fixed pixels; do not add another substitute image of the same evidence. Outside the locked evidence, photographic or photorealistic pixels are forbidden: never generate another product, device, train, ship, port, person, laboratory, factory, customer site, certificate, report, chart, screenshot, or real-world scene. Do not illustrate nouns from the copy. Use only audience-facing typography, flat presentation surfaces, background texture, lines, and neutral geometry. Never draw a second slide frame, title bar, browser window, or large bezel around a locked crop."
-      : "No source-evidence mask is used. Follow director_contract.visual_strategy and director_contract.main_visual_brief as the complete visual brief.",
+      : "No source-evidence mask is used. Follow director_contract.visual_strategy, main_visual_brief, visual_weight, visual_units, and integration_rule as the complete visual brief.",
     "Do not reuse a previous draft as factual input. A manual reroll rebuilds from this confirmed contract; only the explicit closer-previous action may use the previous accepted page for visual-language alignment.",
     "",
     "Hard rendering rules:",
@@ -3504,6 +3567,7 @@ function advancedSlidePrompt(run, slide, contract, instruction, references = [],
     "- Render immutable_content.title and every applicable immutable_content.exact_visible_text item accurately and legibly.",
     "- Never invent numbers, dates, names, awards, claims, logos, watermarks, signatures, or unrelated characters.",
     "- Make director_contract.unique_takeaway and director_contract.proof_goal visually clear. Execute director_contract.main_visual_brief with a deliberate focal point, framing, scale and whitespace direction.",
+    ...visualCompositionRules,
     "- Generated visuals are communication devices, not proof. Never add readable school or institution signage, logos, product labels, certificates, contracts, reports, dashboards, customer photos, awards, or news coverage that were not explicitly supplied as exact visible text.",
     "- Follow director_contract.icon_policy and card_policy. Generic decorative icons are zero by default; equal-weight card grids are not the default composition.",
     "- Only render user-facing text found inside immutable_content or editable_content. Never render JSON keys, evidence filenames, source locators, role names, prompt instructions, or invented navigation labels.",

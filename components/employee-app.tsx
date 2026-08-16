@@ -180,13 +180,13 @@ const deckStylePacks = [
   { id: "vivid-roadshow", label: "活力路演" }
 ];
 const deckAdvancedLayoutPacks = [
-  { id: "blue-gold-tech", label: "科技汇报版式" },
-  { id: "white-green-tech", label: "清爽技术版式" },
-  { id: "black-gold-business", label: "高端商务版式" },
-  { id: "blue-purple-ai", label: "未来智能版式" },
-  { id: "red-white-government", label: "庄重政企版式" },
-  { id: "minimal-academic", label: "极简学术版式" },
-  { id: "vivid-roadshow", label: "活力路演版式" }
+  { id: "blue-gold-tech", label: "图文叙事版式（推荐）" },
+  { id: "white-green-tech", label: "清晰技术说明版式" },
+  { id: "black-gold-business", label: "结论先行商务版式" },
+  { id: "blue-purple-ai", label: "系统关系图解版式" },
+  { id: "red-white-government", label: "庄重层级汇报版式" },
+  { id: "minimal-academic", label: "极简学术论证版式" },
+  { id: "vivid-roadshow", label: "活力路演叙事版式" }
 ];
 const defaultDeckUnityOptions = {
   mainColor: true,
@@ -1578,7 +1578,7 @@ type DeckRegenerateAction = "reroll" | "closer_previous";
 
 function deckRunStyleLabel(run: Pick<DeckGenerationRun, "generationMode" | "paletteMode" | "stylePack">) {
   if (run.generationMode === "advanced" && run.paletteMode === "reference") {
-    const layout = deckAdvancedLayoutPacks.find(item => item.id === run.stylePack)?.label || "专业汇报版式";
+    const layout = deckAdvancedLayoutPacks.find(item => item.id === run.stylePack)?.label || "图文叙事版式";
     return `参考图配色 · ${layout}`;
   }
   return deckStylePacks.find(item => item.id === run.stylePack)?.label || run.stylePack;
@@ -1760,7 +1760,7 @@ function DeckAdvancedSettingsEditor({ service, run, onRunUpdate, onCancel }: {
       <label>项目名称<input value={projectName} onChange={event => setProjectName(event.target.value)}/></label>
       <label>汇报类型 / 用途<input value={projectType} onChange={event => setProjectType(event.target.value)}/></label>
       <label className="wide">项目简介<textarea value={brief} onChange={event => setBrief(event.target.value)}/></label>
-      <label className="wide">整套补充要求<textarea value={referenceText} onChange={event => setReferenceText(event.target.value)} placeholder="可补充受众、禁用表达、必须强调的结论"/></label>
+      <label className="wide">整套高优先级要求<textarea value={referenceText} onChange={event => setReferenceText(event.target.value)} placeholder="可补充受众、禁用表达、必须强调的结论和整套视觉偏好；例如正文页优先图文相辅，不使用固定图片区"/></label>
       <label className="wide">逐页结构文字<textarea value={outlineText} onChange={event => setOutlineText(event.target.value)} placeholder="保留或重新写每页大标题、小标题和想讲的内容"/></label>
     </div>
     <section className="deck-settings-section">
@@ -1784,7 +1784,7 @@ function DeckAdvancedSettingsEditor({ service, run, onRunUpdate, onCancel }: {
         <button type="button" className={paletteMode === "preset" ? "active" : ""} onClick={() => setPaletteMode("preset")}><Check/><span><b>内置配色</b><small>不使用旧配色参考图</small></span></button>
         <button type="button" className={paletteMode === "reference" ? "active" : ""} onClick={() => setPaletteMode("reference")}><ImagePlus/><span><b>参考图配色</b><small>{sources.some(source => source.kind === "theme" && !removedSourceIds.has(source.id)) ? "沿用现有参考图" : "需要上传一张新参考图"}</small></span></button>
       </div>
-      <label className="deck-layout-language">{paletteMode === "reference" ? "版式语言（不含配色）" : "内置配色风格"}<select value={stylePack} onChange={event => setStylePack(event.target.value)}>{(paletteMode === "reference" ? deckAdvancedLayoutPacks : deckStylePacks).map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select><small>{paletteMode === "reference" ? "Image2 的颜色只服从参考图；这里仅规定信息组织和节奏。" : "内置风格同时规定配色与版式。"}</small></label>
+      <label className="deck-layout-language">{paletteMode === "reference" ? "版式语言（不含配色）" : "内置配色风格"}<select value={stylePack} onChange={event => setStylePack(event.target.value)}>{(paletteMode === "reference" ? deckAdvancedLayoutPacks : deckStylePacks).map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select><small>{paletteMode === "reference" ? "Image2 的颜色只服从参考图；这里选择信息组织、图文关系、留白和节奏。" : "内置风格同时规定配色与版式。"}</small></label>
       {paletteMode === "reference" && <>
         {themeSources.length > 0 && <div className="deck-source-list deck-theme-files">{themeSources.map(source => <article key={source.id} className={removedSourceIds.has(source.id) ? "removed" : ""}><ImagePlus/><span><b>{source.originalName}</b><small>配色参考图 · {formatDeckFileSize(source.size)}</small></span><button type="button" onClick={() => toggleRemoveSource(source.id)} aria-label={removedSourceIds.has(source.id) ? "保留参考图" : "移除参考图"}>{removedSourceIds.has(source.id) ? <Check/> : <X/>}</button></article>)}</div>}
         <div className="deck-theme-reference compact" onClick={() => themeInputRef.current?.click()}>{themePreview ? <><img src={themePreview} alt="新配色参考"/><b>{themeFile?.name}</b></> : <><ImagePlus/><span>上传新的配色参考图（可留空以沿用现有图）</span></>}<input ref={themeInputRef} type="file" hidden accept=".png,.jpg,.jpeg,.webp" onChange={event => chooseTheme(event.target.files?.[0])}/></div>
@@ -1818,11 +1818,22 @@ function DeckAdvancedContentReview({ drafts, updatePage, updateBlock }: {
       typography: "文字主导构图"
     } as Record<string, string>)[visualStrategy] || visualStrategy;
     const mainVisualBrief = String(page.directorContract.main_visual_brief || "").trim();
+    const visualWeight = String(page.directorContract.visual_weight || "").trim();
+    const visualWeightLabel = ({ "text-led": "文字主导", balanced: "图文均衡", "visual-led": "视觉主导" } as Record<string, string>)[visualWeight] || visualWeight;
+    const visualUnits = (Array.isArray(page.directorContract.visual_units) ? page.directorContract.visual_units : []).map(item => {
+      const unit = item && typeof item === "object" && !Array.isArray(item) ? item as Record<string, unknown> : {};
+      return {
+        supports: String(unit.supports || "").trim(),
+        form: String(unit.form || "").trim(),
+        relationship: ({ context: "语境", sequence: "顺序", cause: "因果", contrast: "对比", mechanism: "机制", result: "结果", evidence: "事实支撑" } as Record<string, string>)[String(unit.relationship || "").trim()] || String(unit.relationship || "").trim()
+      };
+    }).filter(unit => unit.supports && unit.form);
+    const integrationRule = String(page.directorContract.integration_rule || "").trim();
     return <details key={page.pageIndex} className="deck-content-review-card">
     <summary><span>第 {page.pageIndex} 页</span><b>{page.title || "未命名页面"}</b><i>{page.evidence.length ? `${page.evidence.length} 条来源` : "待补来源"}</i><ChevronDown/></summary>
     <div className="deck-content-review-body">
       <label className="deck-content-conclusion">本页表达任务<textarea value={page.purpose} onChange={event => updatePage(page.pageIndex, { purpose: event.target.value })} placeholder="这一页要让观众理解什么"/></label>
-      {(visualStrategy || mainVisualBrief) && <section className="deck-content-must-include deck-visual-brief"><b>画面执行方向</b><div>{visualStrategy && <span>{visualStrategyLabel}</span>}</div>{mainVisualBrief && <p>{mainVisualBrief}</p>}</section>}
+      {(visualStrategy || mainVisualBrief || visualUnits.length > 0) && <section className="deck-content-must-include deck-visual-brief"><b>画面执行方向</b><div>{visualStrategy && <span>{visualStrategyLabel}</span>}{visualWeight && <span>{visualWeightLabel}</span>}</div>{mainVisualBrief && <p>{mainVisualBrief}</p>}{visualUnits.length > 0 && <ol className="deck-visual-units">{visualUnits.map((unit, index) => <li key={`${unit.supports}:${index}`}><b>{unit.form}</b><span>服务于：{unit.supports}</span>{unit.relationship && <small>{unit.relationship}</small>}</li>)}</ol>}{integrationRule && <p className="deck-visual-integration">图文关系：{integrationRule}</p>}</section>}
       <section className="deck-content-review-blocks">
         <header><b>GPT-5.6 整理后的页面正文</b><span>已按大纲从资料中逐页匹配，可直接修改</span></header>
         {page.blocks.length ? page.blocks.map((block, index) => <article key={block.id}>
@@ -3704,7 +3715,7 @@ function DeckGenerationForm({ service, notify, onCreated }: {
       <input ref={outlineInputRef} type="file" hidden accept=".pdf,.docx,.xlsx,.pptx,.txt,.md" onChange={event => setOutlineFile(event.target.files?.[0] || null)}/>
     </section>}
 
-    <label>补充要求（可选）<textarea value={referenceText} onChange={event => setReferenceText(event.target.value)} placeholder={generationMode === "quick" ? "可粘贴评审要求、重点信息和内容偏好；大量资料直接拖到下方。" : "可补充整套汇报的总要求、禁用表达和必须强调的结论。"}/></label>
+    <label>{generationMode === "advanced" ? "整套高优先级要求（可选）" : "补充要求（可选）"}<textarea value={referenceText} onChange={event => setReferenceText(event.target.value)} placeholder={generationMode === "quick" ? "可粘贴评审要求、重点信息和内容偏好；大量资料直接拖到下方。" : "可补充受众、禁用表达、必须强调的结论和整套视觉偏好；例如正文页优先图文相辅，不使用固定图片区。"}/></label>
 
     <section className="deck-source-section">
       <header><div><b>{generationMode === "advanced" ? "内容资料（高级版必填）" : "参考资料"}</b><span>{sourceFiles.length ? `已加入 ${sourceFiles.length} 份，系统会按页码和工作表保留来源` : "可一次拖入多份大资料，用户不用预先整理"}</span></div></header>
@@ -3726,7 +3737,7 @@ function DeckGenerationForm({ service, notify, onCreated }: {
           {themePreview ? <><img src={themePreview} alt="配色参考"/><div><b>{themeReference?.name}</b><span>将提取背景、文字、强调色及使用比例，并把原图直接交给 Image2</span></div></> : <><ImagePlus/><div><b>上传一张配色参考图</b><span>PNG、JPEG 或 WebP，不要求它是 PPT</span></div></>}
           <input ref={themeInputRef} type="file" hidden accept=".png,.jpg,.jpeg,.webp" onChange={event => chooseTheme(event.target.files?.[0])}/>
         </div>
-        {generationMode === "advanced" && <label className="deck-layout-language">版式语言（不含配色）<select value={stylePack} onChange={event => setStylePack(event.target.value)}>{deckAdvancedLayoutPacks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select><small>参考图决定全部颜色；这里仅选择信息组织、留白和节奏。</small></label>}
+        {generationMode === "advanced" && <label className="deck-layout-language">版式语言（不含配色）<select value={stylePack} onChange={event => setStylePack(event.target.value)}>{deckAdvancedLayoutPacks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select><small>参考图决定全部颜色；这里选择信息组织、图文关系、留白和节奏，不是文字密度。</small></label>}
       </>}
     </section>
 
