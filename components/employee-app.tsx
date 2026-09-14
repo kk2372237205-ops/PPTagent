@@ -12,6 +12,7 @@ import { AiPanel, ImageToolsPanel } from "@/components/employee/tools-ai-panels"
 import { MaterialRail } from "@/components/employee/material-rail";
 import { OnlyOfficeEditor } from "@/components/employee/onlyoffice-editor";
 import { deckStylePacks } from "@/lib/employee-deck-constants";
+import { canAssignOrders, canOpenEmployeeAdmin, compactIdentity, featureLabels, identityProviderLabel, roleLabels, rolePermissionDefaults } from "@/lib/employee-permissions";
 import { deckStatusText, type DeckRegenerateAction } from "@/lib/employee-deck-shared";
 import { safeJson, stageLabel } from "@/lib/employee-format";
 import { generatedImageUrl } from "@/lib/employee-image-urls";
@@ -33,39 +34,7 @@ const navItems: { id: string; label: string; icon: typeof BriefcaseBusiness; fea
   { id: "team", label: "团队协作", icon: Users, feature: "team" },
   { id: "settings", label: "设置", icon: Settings }
 ];
-const featureLabels: Record<EmployeeFeature, string> = {
-  orders: "订单任务",
-  customerMessages: "客户消息",
-  team: "团队协作",
-  officeEditor: "在线编辑",
-  aiAssistant: "AI 助手",
-  smartPpt: "智能 PPT",
-  materials: "素材库",
-  imageTools: "图片工具",
-  exports: "文件导出"
-};
-const roleLabels: Record<string, string> = {
-  platform_admin: "平台管理员",
-  org_admin: "学校管理员",
-  manager: "项目主管",
-  designer: "设计师",
-  reviewer: "审核员",
-  member: "普通成员"
-};
-const rolePermissionDefaults: Record<string, EmployeePermissions> = {
-  platform_admin: Object.fromEntries(Object.keys(featureLabels).map((feature) => [feature, true])) as EmployeePermissions,
-  org_admin: Object.fromEntries(Object.keys(featureLabels).map((feature) => [feature, true])) as EmployeePermissions,
-  manager: Object.fromEntries(Object.keys(featureLabels).map((feature) => [feature, true])) as EmployeePermissions,
-  designer: {
-    orders: true, customerMessages: false, team: true, officeEditor: true, aiAssistant: true,
-    smartPpt: true, materials: true, imageTools: true, exports: true
-  },
-  reviewer: {
-    orders: true, customerMessages: false, team: true, officeEditor: true, aiAssistant: false,
-    smartPpt: false, materials: false, imageTools: false, exports: true
-  },
-  member: Object.fromEntries(Object.keys(featureLabels).map((feature) => [feature, false])) as EmployeePermissions
-};
+
 const statusOptions = ["待开始", "制作中", "待客户确认", "修改中", "已完成"];
 
 function consultationBudgets(consultation: Pick<Consultation, "budget" | "selectedBudgets">) {
@@ -93,26 +62,6 @@ function pendingCustomerMessageCount(messages: Message[]) {
     if (message.role === "customer") count += 1;
   }
   return count;
-}
-
-function canOpenEmployeeAdmin(employee: Employee) {
-  return employee.isAdmin || ["platform_admin", "org_admin"].includes(employee.membership.role);
-}
-
-function canAssignOrders(employee: Employee) {
-  return employee.isAdmin || ["platform_admin", "org_admin", "manager"].includes(employee.membership.role);
-}
-
-function identityProviderLabel(provider: string) {
-  if (provider === "wechat") return "微信";
-  if (provider === "wecom") return "企业微信";
-  if (provider === "local") return "本地管理员";
-  return "外部账号";
-}
-
-function compactIdentity(value: string) {
-  if (value.length <= 20) return value;
-  return `${value.slice(0, 9)}...${value.slice(-7)}`;
 }
 
 export default function EmployeeApp({ initialAuthenticated }: { initialAuthenticated: boolean }) {
