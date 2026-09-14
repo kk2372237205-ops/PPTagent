@@ -21,10 +21,19 @@
 
 ## 当前系统骨架
 
-- `app/`：Next.js 页面和服务端接口。
-- `components/employee-app.tsx`：员工工作台主界面和智能模式交互。
-- `app/employee/employee.css`：员工工作台石墨黑视觉主题。
-- `lib/employee-auth.ts`：员工会话、学校隔离、角色和功能权限。
+> 员工端已于 2026-09-14 完成模块化拆分。**动手前先读 `components/employee/README.md`**，
+> 那里有"哪个文件负责什么、对应哪些接口"的索引表。
+
+- `app/`：Next.js 页面和服务端接口（74 条路由）。
+- `components/employee-app.tsx`：员工工作台**外壳**（原 3753 行，现 400 行出头，只剩骨架与常量）。
+- `components/employee/*.tsx`：31 个业务面板，每块一个文件，可以分别派人改。
+- `app/employee/employee.css`：样式**入口**，只有 `@import` 列表。
+- `app/employee/styles/*.css`：按模块拆开的 9 个样式层，顺序由入口文件固定。
+- `lib/employee-auth.ts`：员工会话、学校隔离、角色和功能权限（**权限只能改这里**）。
+- `lib/employee-api.ts`：员工端接口主干，路径与方法只在这里定义。
+- `lib/employee-api-types.ts`：35 个共享数据类型。
+- `lib/employee-permissions.ts`：角色/功能中文名与默认权限。
+- `lib/use-smart-studio-runs.ts`：智能模式三条链路的状态与请求编排。
 - `lib/ai-providers.ts`：文字模型与图片模型的服务端配置边界。
 - `scripts/deck-generation-worker.mjs`：生成 PPT 的后台执行脚本。
 - `scripts/ppt-polish-worker.mjs`：美化 PPT 的后台执行脚本。
@@ -39,6 +48,9 @@
 - 不要只说“worker”“run”“slide”；同时说明中文业务含义和真实文件路径。
 - 不要修改用户没有授权的模块。
 - 不要在方案确认前自动生图，也不要用前端隐藏代替服务端权限检查。
+- 不要往 `employee-app.tsx` 里加新功能；也不要往 `app/employee/employee.css` 里加规则。
+- 不要在组件里手写 `fetch("/api/...")`；走 `lib/employee-api.ts`。
+- 不要为了取一个类型而 import `employee-app.tsx`（会形成循环依赖）。
 
 ## 新模型接手后的第一条回复
 
@@ -47,10 +59,12 @@
 ## 常用验证
 
 ```powershell
-npx tsc --noEmit
-npm run lint
-npm run build -- --webpack
+npm run verify          # tsc + eslint(--max-warnings 11) + prisma validate + next build
+npm run verify:check    # 只跑静态检查，改代码过程中随时可用
+npm run verify:build    # 只跑生产构建，交付前必跑
 ```
+
+`--max-warnings 11` 是基线（11 条历史警告都在 `scripts/design-agent-worker.mjs`），**任何新增警告都会让这条命令失败**——包括未使用的 import。这是刻意的。
 
 视觉或交互改动还应按模块运行现有视觉测试，并检查桌面与手机布局。外部 AI、Codia、微信和 ONLYOFFICE 的失败要区分代码、配置、网络和额度问题，不能用假成功掩盖。
 
