@@ -3,6 +3,9 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { ImagePreviewModal, type ImagePreview } from "@/components/employee/image-preview-modal";
+import { absoluteGeneratedImageUrl, generatedImageDownloadUrl, generatedImageUrl } from "@/lib/employee-image-urls";
+import { blobToDataUrl, blobToPngBlob, copyPngBlobToClipboard, cropDataUrlToPngDataUrl, dataUrlToBlob } from "@/lib/employee-image-tools";
 import {
   Activity, ArrowRight, Bot, BriefcaseBusiness, Check, ChevronLeft,
   ChevronRight, ChevronUp, ChevronDown, Clipboard, Copy, Download, FileText, ImagePlus, LayoutDashboard, LoaderCircle,
@@ -2369,7 +2372,6 @@ declare global {
 const imageDragMime = "application/x-wzlcf-image";
 
 type ImageDragPayload = { imageId: string; source: "ai" | "material" };
-type ImagePreview = { id: string; prompt: string; owner: string; model?: string };
 type PasteTrayItem = { name: string; previewUrl: string; dataUrl: string; pngBlob: Blob };
 type ImageToolSource = { imageId?: string; file?: File; previewUrl: string; name: string; ownedUrl: boolean };
 type ImageToPptResult = { fileName: string; downloadUrl: string; codiaTaskId?: string; sourceName?: string };
@@ -2384,12 +2386,6 @@ type PptExtractedImage = {
   crop: { left: number; top: number; right: number; bottom: number };
 };
 
-function generatedImageUrl(id: string) { return "/api/employee/generated-images/" + id; }
-function generatedImageDownloadUrl(id: string) { return "/api/employee/generated-images/" + id + "?download=1"; }
-function absoluteGeneratedImageUrl(id: string) {
-  if (typeof window === "undefined") return generatedImageUrl(id);
-  return new URL(generatedImageUrl(id), window.location.origin).toString();
-}
 function nextMaterialOrder(items: MaterialItem[]) { return items.reduce((max, item) => Math.max(max, item.materialOrder || 0), 0) + 1; }
 function chronologicalSort<T extends { id: string; createdAt: string }>(a: T, b: T) {
   return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id.localeCompare(b.id);
@@ -2427,119 +2423,6 @@ function readImageDragId(dataTransfer: DataTransfer) {
 
 function imageFilesFromList(files: FileList | File[]) {
   return Array.from(files).filter(file => file.type.startsWith("image/"));
-}
-
-async function blobToPngBlob(blob: Blob) {
-  const objectUrl = URL.createObjectURL(blob);
-  try {
-    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const element = document.createElement("img");
-      element.onload = () => resolve(element);
-      element.onerror = () => reject(new Error("图片读取失败，请换一张图片再试"));
-      element.src = objectUrl;
-    });
-    const canvas = document.createElement("canvas");
-    canvas.width = image.naturalWidth || image.width;
-    canvas.height = image.naturalHeight || image.height;
-    const context = canvas.getContext("2d");
-    if (!context || !canvas.width || !canvas.height) throw new Error("图片转换失败，请换一张图片再试");
-    context.drawImage(image, 0, 0);
-    return await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob(result => result ? resolve(result) : reject(new Error("图片转换失败，请换一张图片再试")), "image/png");
-    });
-  } finally {
-    URL.revokeObjectURL(objectUrl);
-  }
-}
-
-async function blobToDataUrl(blob: Blob) {
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(new Error("图片读取失败，请使用下载兜底。"));
-    reader.readAsDataURL(blob);
-  });
-}
-
-async function dataUrlToBlob(dataUrl: string) {
-  const response = await fetch(dataUrl);
-  return await response.blob();
-}
-
-async function cropDataUrlToPngDataUrl(dataUrl: string, crop: PptExtractedImage["crop"]) {
-  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const element = document.createElement("img");
-    element.onload = () => resolve(element);
-    element.onerror = () => reject(new Error("PPT 图片预览失败"));
-    element.src = dataUrl;
-  });
-  const sourceWidth = image.naturalWidth || image.width;
-  const sourceHeight = image.naturalHeight || image.height;
-  const x = Math.round(sourceWidth * crop.left);
-  const y = Math.round(sourceHeight * crop.top);
-  const width = Math.max(1, Math.round(sourceWidth * (1 - crop.left - crop.right)));
-  const height = Math.max(1, Math.round(sourceHeight * (1 - crop.top - crop.bottom)));
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("PPT 图片裁剪失败");
-  context.drawImage(image, x, y, width, height, 0, 0, width, height);
-  return canvas.toDataURL("image/png");
-}
-
-function copyImageHtmlFallback(dataUrl: string) {
-  const container = document.createElement("div");
-  container.contentEditable = "true";
-  container.style.position = "fixed";
-  container.style.left = "-10000px";
-  container.style.top = "0";
-  container.style.width = "1px";
-  container.style.height = "1px";
-  container.style.overflow = "hidden";
-  container.innerHTML = `<img src="${dataUrl}" alt="WZLCF material image">`;
-  document.body.appendChild(container);
-  const selection = window.getSelection();
-  const previousRanges = selection ? Array.from({ length: selection.rangeCount }, (_, index) => selection.getRangeAt(index).cloneRange()) : [];
-  try {
-    const range = document.createRange();
-    range.selectNodeContents(container);
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-    if (!document.execCommand("copy")) throw new Error("兼容复制失败，请使用下载兜底。");
-  } finally {
-    selection?.removeAllRanges();
-    previousRanges.forEach(range => selection?.addRange(range));
-    container.remove();
-  }
-}
-
-async function copyPngBlobToClipboard(blob: Blob, dataUrl: string) {
-  const html = `<img src="${dataUrl}" alt="WZLCF material image">`;
-  if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
-    try {
-      await navigator.clipboard.write([new ClipboardItem({
-        "image/png": blob,
-        "text/html": new Blob([html], { type: "text/html" }),
-        "text/plain": new Blob(["WZLCF material image"], { type: "text/plain" })
-      })]);
-      return "native";
-    } catch {
-      // Some browser contexts reject binary image writes; HTML data-URL copy is the fallback.
-    }
-  }
-  copyImageHtmlFallback(dataUrl);
-  return "html";
-}
-
-function ImagePreviewModal({ image, onClose }: { image: ImagePreview; onClose: () => void }) {
-  return <div className="image-preview-modal" onMouseDown={onClose}>
-    <div className="image-preview-card" onMouseDown={event => event.stopPropagation()}>
-      <header><div><b>{image.prompt || "AI 图片预览"}</b><span>{image.owner}{image.model ? " · " + image.model : ""}</span></div><button onClick={onClose}><X/></button></header>
-      <img src={generatedImageUrl(image.id)} alt={image.prompt || "AI 图片"}/>
-      <footer><a href={generatedImageDownloadUrl(image.id)} download><Download/>下载图片</a></footer>
-    </div>
-  </div>;
 }
 
 function OnlyOfficeEditor({ documentId, revision, refresh, notify }: {
