@@ -4,12 +4,12 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ImagePreviewModal, type ImagePreview } from "@/components/employee/image-preview-modal";
-import { PptPasteTray } from "@/components/employee/ppt-paste-tray";
+import { MaterialRail } from "@/components/employee/material-rail";
 import { generatedImageDownloadUrl, generatedImageUrl } from "@/lib/employee-image-urls";
 import { cropDataUrlToPngDataUrl, dataUrlToBlob, finishImageDrag, imageFilesFromList, readImageDragId, writeImageDragData } from "@/lib/employee-image-tools";
 import {
   Activity, ArrowRight, Bot, BriefcaseBusiness, Check, ChevronLeft,
-  ChevronRight, ChevronUp, ChevronDown, Copy, Download, FileText, ImagePlus, LayoutDashboard, LoaderCircle,
+  ChevronUp, ChevronDown, Copy, Download, FileText, ImagePlus, LayoutDashboard, LoaderCircle,
   LogOut, MessageCircle, Monitor, Paperclip, Save, Scissors, Send,
   Maximize2, QrCode, RefreshCw, School, Settings, ShieldCheck, Sparkles, Trash2, Upload,
   UserCheck, UserCog, Users, UserX, WandSparkles, X
@@ -2893,97 +2893,6 @@ function ImageToolsPanel({ service, employee, refresh, notify }: { service: Serv
 }
 
 
-function MaterialRail({ service, employee, refresh, notify }: { service: Service; employee: Employee; refresh: (silent?: boolean) => Promise<void>; notify: (text: string) => void }) {
-  const [page, setPage] = useState(Number.MAX_SAFE_INTEGER);
-  const [allPage, setAllPage] = useState(1);
-  const [filterEmployeeId, setFilterEmployeeId] = useState("all");
-  const [libraryOpen, setLibraryOpen] = useState(false);
-  const [preview, setPreview] = useState<ImagePreview | null>(null);
-  const [importing, setImporting] = useState(false);
-  const [importProgress, setImportProgress] = useState("");
-  const importRef = useRef<HTMLInputElement>(null);
-  const materialCountRef = useRef(0);
-  const pageSize = 6;
-  const allPageSize = 24;
-  const myMaterials = useMemo(() => service.materialItems.filter(item => item.employee.id === employee.id).sort((a, b) => (a.materialOrder - b.materialOrder) || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()), [employee.id, service.materialItems]);
-  const totalPages = Math.max(1, Math.ceil(myMaterials.length / pageSize));
-  const safePage = Math.min(Math.max(1, page), totalPages);
-  const pageItems = myMaterials.slice((safePage - 1) * pageSize, safePage * pageSize);
-  const employees = useMemo(() => Array.from(new Map(service.materialItems.map(item => [item.employee.id, item.employee])).values()), [service.materialItems]);
-  const allMaterials = useMemo(() => (filterEmployeeId === "all" ? service.materialItems : service.materialItems.filter(item => item.employee.id === filterEmployeeId)).slice().sort((a, b) => (a.materialOrder - b.materialOrder) || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()), [filterEmployeeId, service.materialItems]);
-  const allTotalPages = Math.max(1, Math.ceil(allMaterials.length / allPageSize));
-  const safeAllPage = Math.min(allPage, allTotalPages);
-  const allPageItems = allMaterials.slice((safeAllPage - 1) * allPageSize, safeAllPage * allPageSize);
-
-  useEffect(() => {
-    const previous = materialCountRef.current;
-    materialCountRef.current = myMaterials.length;
-    if (myMaterials.length <= previous) return;
-    const timer = window.setTimeout(() => setPage(Number.MAX_SAFE_INTEGER), 0);
-    return () => window.clearTimeout(timer);
-  }, [myMaterials.length]);
-
-  async function setMaterial(id: string, isMaterial: boolean, materialOrder = nextMaterialOrder(myMaterials)) {
-    const response = await fetch("/api/employee/generated-images/" + id, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isMaterial, materialOrder })
-    });
-    const result = await response.json();
-    if (!response.ok) return notify(result.error);
-    notify(isMaterial ? "已复制到我的素材库" : "已从我的素材库移除");
-    if (isMaterial) setPage(Number.MAX_SAFE_INTEGER);
-    await refresh(true);
-  }
-
-  async function importLocalImages(files: File[]) {
-    const images = imageFilesFromList(files);
-    if (!images.length) return notify("请拖入图片文件");
-    setImporting(true);
-    setImportProgress(images.length > 1 ? `正在导入 0 / ${images.length}` : "正在导入素材...");
-    try {
-      let imported = 0;
-      for (const [index, file] of images.entries()) {
-        setImportProgress(images.length > 1 ? `正在导入 ${index + 1} / ${images.length}` : "正在导入素材...");
-        const form = new FormData();
-        form.set("image", file);
-        form.set("addToMaterial", "true");
-        const response = await fetch("/api/employee/services/" + service.id + "/import-image", { method: "POST", body: form });
-        const result = await response.json();
-        if (!response.ok) {
-          notify(result.error || `${file.name} 导入失败`);
-          continue;
-        }
-        imported += 1;
-      }
-      if (imported) notify(`已导入 ${imported} 张图片到我的素材库`);
-      setPage(Number.MAX_SAFE_INTEGER);
-      await refresh(true);
-    } finally {
-      setImporting(false);
-      setImportProgress("");
-    }
-  }
-
-  function handleDrop(event: DragEvent<HTMLElement>) {
-    event.preventDefault();
-    const localImages = imageFilesFromList(event.dataTransfer.files);
-    if (localImages.length) return void importLocalImages(localImages);
-    const imageId = readImageDragId(event.dataTransfer);
-    if (imageId) return void setMaterial(imageId, true);
-    notify("请拖入 AI 图片、素材图片或本地图片文件。");
-  }
-
-  return <footer className={"material-rail " + (importing ? "is-importing" : "")} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDrop={handleDrop}>
-    <div><ImagePlus/><span><b>我的素材库</b><small>最后一页是最新素材，支持多张导入</small></span><input ref={importRef} hidden type="file" accept="image/*" multiple onChange={event => { const files = imageFilesFromList(event.currentTarget.files || []); if (files.length) void importLocalImages(files); event.currentTarget.value = ""; }}/><button className="material-import-button" onClick={() => importRef.current?.click()} disabled={importing}><Upload/>导入图片</button></div>
-    <section className="material-shelf">{pageItems.length ? pageItems.map(item => <article key={item.id} draggable onDragStartCapture={event => writeImageDragData(event, item.image.id, "material")} onDragEnd={finishImageDrag}><button className="material-thumb" onClick={() => setPreview({ id: item.image.id, prompt: item.image.job.prompt, owner: item.image.job.employee.name, model: item.image.job.model })}><img draggable={false} src={generatedImageUrl(item.image.id)} alt="我的素材"/></button><a href={generatedImageDownloadUrl(item.image.id)}><Download/></a><button onClick={() => setMaterial(item.image.id, false)}><X/></button></article>) : <p>把右侧生成结果或本地图片拖到这里，建立你的个人素材库。</p>}</section>
-    <PptPasteTray notify={notify}/>
-    <div className="material-pager"><button title="看更旧的素材" onClick={() => setPage(Math.max(1, safePage - 1))} disabled={safePage <= 1}><ChevronLeft/></button><span>第 {safePage} / {totalPages} 页</span><button title="看更新的素材" onClick={() => setPage(Math.min(totalPages, safePage + 1))} disabled={safePage >= totalPages}><ChevronRight/></button><button className="material-open-all" onClick={() => setLibraryOpen(true)}>素材总库</button></div>
-    {importing && <div className="material-importing"><LoaderCircle className="spin"/>{importProgress || "正在导入素材..."}</div>}
-    {libraryOpen && <div className="material-modal"><div className="material-modal-card"><header><div><b>订单素材总库</b><span>查看所有员工收录的素材，不会混入你的个人库。</span></div><button onClick={() => setLibraryOpen(false)}><X/></button></header><div className="material-filters"><button className={filterEmployeeId === "all" ? "active" : ""} onClick={() => { setFilterEmployeeId("all"); setAllPage(1); }}>全部</button>{employees.map(item => <button key={item.id} className={filterEmployeeId === item.id ? "active" : ""} onClick={() => { setFilterEmployeeId(item.id); setAllPage(1); }}>{item.name}</button>)}</div><section>{allPageItems.length ? allPageItems.map(item => { const owned = myMaterials.some(material => material.image.id === item.image.id); return <article key={item.id} draggable onDragStartCapture={event => writeImageDragData(event, item.image.id, "material")} onDragEnd={finishImageDrag}><em>{item.employee.name}</em><button className="material-thumb" onClick={() => setPreview({ id: item.image.id, prompt: item.image.job.prompt, owner: item.employee.name, model: item.image.job.model })}><img draggable={false} src={generatedImageUrl(item.image.id)} alt={item.employee.name + " 的素材"}/></button><div><a href={generatedImageDownloadUrl(item.image.id)}><Download/></a><button disabled={owned} onClick={() => setMaterial(item.image.id, true)}><ImagePlus/>{owned ? "已在我的库" : "加入我的库"}</button></div></article>; }) : <p>当前筛选下暂无素材。</p>}</section><footer><button onClick={() => setAllPage(value => Math.min(allTotalPages, value + 1))} disabled={safeAllPage >= allTotalPages}><ChevronLeft/>更旧</button><span>第 {safeAllPage} / {allTotalPages} 页</span><button onClick={() => setAllPage(value => Math.max(1, value - 1))} disabled={safeAllPage <= 1}>更新<ChevronRight/></button></footer></div></div>}
-    {preview && <ImagePreviewModal image={preview} onClose={() => setPreview(null)}/>}
-  </footer>;
-}
 
 
 
