@@ -65,3 +65,8 @@ export function formatDateTime(value: string) {
 
 /** 手机号脱敏：只保留前 3 位与后 4 位 */
 export function maskPhone(phone: string) { return `${phone.slice(0, 3)}****${phone.slice(-4)}`; }
+
+/** 订单中文状态 → CSS 类名后缀（用于状态配色） */
+export function statusSlug(status: string) {
+  return ({ "待开始": "waiting", "制作中": "making", "待客户确认": "confirm", "修改中": "revision", "已完成": "done" } as Record<string, string>)[status] || "making";
+}
