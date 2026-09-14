@@ -29,11 +29,23 @@ PPTagent/WZLCF 是一套 PPT 定制交付系统，包含两类界面：
 - `node_modules` 已恢复，Prisma Client 已生成。
 - Python `3.10.11`，当前可以导入 OpenCV `5.0.0`。
 - `prisma/dev.db` 和本地上传目录仍在，不能当作可随意清理的缓存。
-- `npm run lint` 通过，只有 `scripts/design-agent-worker.mjs` 的 11 条未使用函数警告。
-- `npx tsc --noEmit` 通过。
-- `npx prisma validate` 通过。
-- `npm run build -- --webpack` 通过，并生成了当前路由清单。
+- `npm run verify:check` 通过（= `tsc --noEmit` + `eslint . --max-warnings 11` + `prisma validate`），`npm run verify:build` 通过（= `next build --webpack`，74 条接口路由 + `/employee`）。
+- 本机 PowerShell 执行策略禁止直接运行 `npm`/`npx` 脚本；需要时可改用 `node node_modules/<工具>/bin/...` 直调，或先执行 `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`。
+- Git 已初始化（2026-09-14）：基线提交 `8e2f313`，标签 `baseline`，提交 183 个文件，仓库体积约 3.29 MB。`.env`、`prisma/dev.db`、`uploads/`、构建缓存均未纳入版本控制。
 - 当前 `docker info` 不能连接 Docker daemon；因此完整 `npm run dev` 会在 `scripts/ensure-onlyoffice.mjs` 阶段失败，原因是 ONLYOFFICE 前置服务未就绪，不是 Next.js 编译错误。
+
+本机改动后的统一验证门（任何改动都必须先跑这一条）：
+
+```powershell
+npm run verify
+```
+
+拆开使用：
+
+```powershell
+npm run verify:check   # 静态检查，秒级，改代码过程中随时跑
+npm run verify:build   # 生产构建，分钟级，交付前跑
+```
 
 本机恢复依赖后的基础验证命令：
 
@@ -41,9 +53,7 @@ PPTagent/WZLCF 是一套 PPT 定制交付系统，包含两类界面：
 npm ci --cache .npm-cache --registry=https://registry.npmmirror.com
 npm run db:init
 npx prisma generate
-npm run lint
-npx tsc --noEmit
-npm run build -- --webpack
+npm run verify
 ```
 
 只调 Next、设计任务、生成 PPT 和美化 PPT 时使用：
