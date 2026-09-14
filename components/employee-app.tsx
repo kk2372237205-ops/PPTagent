@@ -13,6 +13,7 @@ import { EmployeeLoading, EmployeeLogin, MobileBlock } from "@/components/employ
 import { CustomerMessages, EmployeePending, EmployeeSettings, EmployeeSidebar, Orders, TeamView } from "@/components/employee/workbench-chrome";
 import { MaterialRail } from "@/components/employee/material-rail";
 import { DesignRunPanel } from "@/components/employee/design-run-panel";
+import { useSmartStudioRuns } from "@/lib/use-smart-studio-runs";
 import { PolishInlineRun } from "@/components/employee/polish-inline-run";
 import { OnlyOfficeEditor } from "@/components/employee/onlyoffice-editor";
 import { deckStylePacks } from "@/lib/employee-deck-constants";
@@ -29,7 +30,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { Consultation, DeckGenerationRun, DesignAgentRun, Employee, EmployeeData, EmployeeFeature, Service } from "@/lib/employee-api-types";
+import type { Consultation, DeckGenerationRun, Employee, EmployeeData, EmployeeFeature, Service } from "@/lib/employee-api-types";
 
 const emptyData: EmployeeData = { employee: null, employees: [], services: [], consultations: [] };
 const navItems: { id: string; label: string; icon: typeof BriefcaseBusiness; feature?: EmployeeFeature }[] = [
@@ -208,22 +209,22 @@ function DesignStudio({ service, employee, refresh, notify, back, openEditor }: 
   const [selectedMaterials, setSelectedMaterials] = useState<string[]>([]);
   const [localReferences, setLocalReferences] = useState<LocalDesignReference[]>([]);
   const [primaryKey, setPrimaryKey] = useState("");
-  const [runs, setRuns] = useState<DesignAgentRun[]>([]);
-  const [activeRun, setActiveRun] = useState<DesignAgentRun | null>(null);
-  const [deckRuns, setDeckRuns] = useState<DeckGenerationRun[]>([]);
-  const [activeDeckRun, setActiveDeckRun] = useState<DeckGenerationRun | null>(null);
-  const [polishRuns, setPolishRuns] = useState<PptPolishRun[]>([]);
-  const [activePolishRun, setActivePolishRun] = useState<PptPolishRun | null>(null);
   const [polishDraftRun, setPolishDraftRun] = useState<PptPolishRun | null>(null);
-  const [workerWarning, setWorkerWarning] = useState("");
-  const [polishWorkerWarning, setPolishWorkerWarning] = useState("");
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [historyLoaded, setHistoryLoaded] = useState({ image: false, deck: false, polish: false });
-  const [initialHistorySelected, setInitialHistorySelected] = useState(false);
+  // 三条链路（单页设计 / 生成 PPT / 美化 PPT）的状态与加载都收敛到这个 Hook，
+  // DesignStudio 只负责编排显示与把动作传给各面板。
+  const {
+    runs, setRuns, activeRun, setActiveRun,
+    deckRuns, setDeckRuns, activeDeckRun, setActiveDeckRun,
+    polishRuns, setPolishRuns, activePolishRun, setActivePolishRun,
+    workerWarning,
+    polishWorkerWarning, setPolishWorkerWarning,
+    loadRuns, loadDeckRuns, loadPolishRuns, syncPolishRuns,
+    invalidateDeckLoad
+  } = useSmartStudioRuns(service, notify);
   const fileRef = useRef<HTMLInputElement>(null);
   const historyRef = useRef<HTMLDivElement>(null);
-  const deckLoadSequence = useRef(0);
 
   const mineMaterials = useMemo(() => service.materialItems.filter(item => item.employee.id === employee.id), [employee.id, service.materialItems]);
   const selectedCount = selectedMaterials.length + localReferences.length;
@@ -235,43 +236,11 @@ function DesignStudio({ service, employee, refresh, notify, back, openEditor }: 
     return uploadIndex >= 0 ? selectedMaterials.length + uploadIndex : 0;
   })();
 
-  const loadRuns = useCallback(async () => {
-    const response = await fetch(`/api/employee/services/${service.id}/design-agent/runs`, { cache: "no-store" });
-    const result = await response.json();
-    if (!response.ok) return notify(result.error || "智能美化记录读取失败");
-    setRuns(result.runs || []);
-    setWorkerWarning(result.workerHealth?.ok === false ? (result.workerHealth.message || "后台智能模式 Worker 未运行/已停止") : "");
-    setActiveRun(current => current ? (result.runs || []).find((item: DesignAgentRun) => item.id === current.id) || current : current);
-    setHistoryLoaded(current => ({ ...current, image: true }));
-  }, [notify, service.id]);
-  const loadDeckRuns = useCallback(async () => {
-    const sequence = ++deckLoadSequence.current;
-    const response = await fetch(`/api/employee/services/${service.id}/deck-generation/runs`, { cache: "no-store" });
-    const result = await response.json();
-    if (sequence !== deckLoadSequence.current) return;
-    if (!response.ok) return notify(result.error || "生成 PPT 记录读取失败");
-    const nextRuns = result.runs || [];
-    setDeckRuns(nextRuns);
-    setActiveDeckRun(current => current ? nextRuns.find((item: DeckGenerationRun) => item.id === current.id) || current : current);
-    setHistoryLoaded(current => ({ ...current, deck: true }));
-  }, [notify, service.id]);
-  const syncPolishRuns = useCallback((nextRuns: PptPolishRun[]) => {
-    setPolishRuns(nextRuns);
-    setActivePolishRun(current => current ? nextRuns.find(item => item.id === current.id) || current : current);
-    setHistoryLoaded(current => ({ ...current, polish: true }));
-  }, []);
-  const loadPolishRuns = useCallback(async () => {
-    const response = await fetch(`/api/employee/services/${service.id}/ppt-polish/runs`, { cache: "no-store" });
-    const result = await responseJson(response);
-    if (!response.ok) return notify(result.error || "美化 PPT 记录读取失败");
-    setPolishWorkerWarning(result.workerHealth?.ok === false ? (result.workerHealth.message || "PPT 美化 Worker 未运行/已停止") : "");
-    syncPolishRuns((result.runs || []) as PptPolishRun[]);
-  }, [notify, service.id, syncPolishRuns]);
   const focusHistoryTop = useCallback(() => {
     window.setTimeout(() => historyRef.current?.scrollTo({ top: 0, behavior: "smooth" }), 0);
   }, []);
   function setDeckRun(run: DeckGenerationRun) {
-    deckLoadSequence.current += 1;
+    invalidateDeckLoad();
     setActiveRun(null);
     setActivePolishRun(null);
     setActiveDeckRun(run);
@@ -306,22 +275,6 @@ function DesignStudio({ service, employee, refresh, notify, back, openEditor }: 
     const timer = window.setTimeout(() => void loadPolishRuns(), 0);
     return () => window.clearTimeout(timer);
   }, [loadPolishRuns]);
-  useEffect(() => {
-    if (initialHistorySelected || !historyLoaded.image || !historyLoaded.deck || !historyLoaded.polish) return;
-    const latest = [
-      ...deckRuns.map(run => ({ kind: "deck" as const, run, createdAt: run.createdAt })),
-      ...polishRuns.map(run => ({ kind: "polish" as const, run, createdAt: run.createdAt })),
-      ...runs.map(run => ({ kind: "image" as const, run, createdAt: run.createdAt }))
-    ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-    const timer = window.setTimeout(() => {
-      if (latest?.kind === "deck") { setActiveRun(null); setActivePolishRun(null); setActiveDeckRun(latest.run); }
-      if (latest?.kind === "polish") { setActiveRun(null); setActiveDeckRun(null); setActivePolishRun(latest.run); }
-      if (latest?.kind === "image") { setActiveDeckRun(null); setActivePolishRun(null); setActiveRun(latest.run); }
-      setInitialHistorySelected(true);
-      focusHistoryTop();
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [deckRuns, focusHistoryTop, historyLoaded, initialHistorySelected, polishRuns, runs]);
   useEffect(() => {
     if (!activeRun || !["queued", "running"].includes(activeRun.status)) return;
     const timer = window.setInterval(() => void loadRuns(), 2200);
