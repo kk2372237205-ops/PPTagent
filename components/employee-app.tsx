@@ -3,9 +3,11 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { DeckAdvancedContentReview, DeckSourceSummary } from "@/components/employee/deck-summary";
 import { ExplodeImagePreview } from "@/components/employee/explode-image-preview";
 import { ImagePreviewModal, type ImagePreview } from "@/components/employee/image-preview-modal";
 import { MaterialRail } from "@/components/employee/material-rail";
+import { OnlyOfficeEditor } from "@/components/employee/onlyoffice-editor";
 import { safeJson, stageLabel } from "@/lib/employee-format";
 import { generatedImageDownloadUrl, generatedImageUrl } from "@/lib/employee-image-urls";
 import { cropDataUrlToPngDataUrl, dataUrlToBlob, finishImageDrag, imageFilesFromList, readImageDragId, writeImageDragData } from "@/lib/employee-image-tools";
@@ -1492,31 +1494,7 @@ function deckPageDraft(page: DeckGenerationPagePlan): DeckPageDraft {
   };
 }
 
-function deckSourceStatusText(status: string) {
-  return ({ queued: "等待读取", processing: "正在读取", completed: "读取完成", failed: "读取失败" } as Record<string, string>)[status] || status;
-}
 
-function DeckSourceSummary({ run }: { run: DeckGenerationRun }) {
-  const sources = run.sources || [];
-  if (!sources.length) return <section className="deck-source-summary empty"><FileText/><div><b>没有上传参考资料</b><span>本次会依据项目简介组织内容，不会虚构具体数字和事实。</span></div></section>;
-  const completed = sources.filter(source => source.status === "completed").length;
-  const failed = sources.filter(source => source.status === "failed").length;
-  const groups = [
-    { kind: "reference", label: "内容资料", note: "用于提取事实、数字和正文" },
-    { kind: "outline", label: "PPT 结构", note: "只用于确定页序和每页主题" },
-    { kind: "theme", label: "视觉参考", note: "只用于配色和视觉气质" }
-  ].map(group => ({ ...group, sources: sources.filter(source => source.kind === group.kind) })).filter(group => group.sources.length > 0);
-  return <section className="deck-source-summary">
-    <header><div><b>资料读取报告</b><span>{completed}/{sources.length} 份已读取{failed ? ` · ${failed} 份失败` : ""}</span></div></header>
-    <div className="deck-source-groups">{groups.map(group => <section className={`deck-source-group ${group.kind}`} key={group.kind}>
-      <header><div><b>{group.label}</b><span>{group.note}</span></div><i>{group.sources.length} 份</i></header>
-      <div>{group.sources.map(source => {
-        const pending = ["queued", "processing"].includes(source.status);
-        return <article key={source.id} className={source.status}>{pending ? <LoaderCircle className="spin"/> : source.status === "completed" ? <Check/> : <X/>}<span><b>{source.originalName}</b><small>{deckSourceStatusText(source.status)}{source.error ? ` · ${source.error}` : ""}</small></span></article>;
-      })}</div>
-    </section>)}</div>
-  </section>;
-}
 
 
 function DeckAdvancedSettingsEditor({ service, run, onRunUpdate, onCancel }: {
@@ -1662,57 +1640,6 @@ function DeckAdvancedSettingsEditor({ service, run, onRunUpdate, onCancel }: {
   </section>;
 }
 
-function DeckAdvancedContentReview({ drafts, updatePage, updateBlock }: {
-  drafts: DeckPageDraft[];
-  updatePage: (pageIndex: number, values: Partial<DeckPageDraft>) => void;
-  updateBlock: (pageIndex: number, blockId: string, values: Partial<DeckPageBlock>) => void;
-}) {
-  return <div className="deck-content-review-list">{drafts.map(page => {
-    const visualStrategy = String(page.directorContract.visual_strategy || "").trim();
-    const visualStrategyLabel = ({
-      "conceptual-illustration": "主题概念视觉",
-      "editorial-composition": "编辑式图文构图",
-      "fact-based-chart": "事实数据图表",
-      timeline: "时间轴",
-      process: "流程图",
-      comparison: "对比构图",
-      typography: "文字主导构图"
-    } as Record<string, string>)[visualStrategy] || visualStrategy;
-    const mainVisualBrief = String(page.directorContract.main_visual_brief || "").trim();
-    const visualWeight = String(page.directorContract.visual_weight || "").trim();
-    const visualWeightLabel = ({ "text-led": "文字主导", balanced: "图文均衡", "visual-led": "视觉主导" } as Record<string, string>)[visualWeight] || visualWeight;
-    const visualUnits = (Array.isArray(page.directorContract.visual_units) ? page.directorContract.visual_units : []).map(item => {
-      const unit = item && typeof item === "object" && !Array.isArray(item) ? item as Record<string, unknown> : {};
-      return {
-        supports: String(unit.supports || "").trim(),
-        form: String(unit.form || "").trim(),
-        relationship: ({ context: "语境", sequence: "顺序", cause: "因果", contrast: "对比", mechanism: "机制", result: "结果", evidence: "事实支撑" } as Record<string, string>)[String(unit.relationship || "").trim()] || String(unit.relationship || "").trim()
-      };
-    }).filter(unit => unit.supports && unit.form);
-    const integrationRule = String(page.directorContract.integration_rule || "").trim();
-    return <details key={page.pageIndex} className="deck-content-review-card">
-    <summary><span>第 {page.pageIndex} 页</span><b>{page.title || "未命名页面"}</b><i>{page.evidence.length ? `${page.evidence.length} 条来源` : "待补来源"}</i><ChevronDown/></summary>
-    <div className="deck-content-review-body">
-      <label className="deck-content-conclusion">本页表达任务<textarea value={page.purpose} onChange={event => updatePage(page.pageIndex, { purpose: event.target.value })} placeholder="这一页要让观众理解什么"/></label>
-      {(visualStrategy || mainVisualBrief || visualUnits.length > 0) && <section className="deck-content-must-include deck-visual-brief"><b>画面执行方向</b><div>{visualStrategy && <span>{visualStrategyLabel}</span>}{visualWeight && <span>{visualWeightLabel}</span>}</div>{mainVisualBrief && <p>{mainVisualBrief}</p>}{visualUnits.length > 0 && <ol className="deck-visual-units">{visualUnits.map((unit, index) => <li key={`${unit.supports}:${index}`}><b>{unit.form}</b><span>服务于：{unit.supports}</span>{unit.relationship && <small>{unit.relationship}</small>}</li>)}</ol>}{integrationRule && <p className="deck-visual-integration">图文关系：{integrationRule}</p>}</section>}
-      <section className="deck-content-review-blocks">
-        <header><b>GPT-5.6 整理后的页面正文</b><span>已按大纲从资料中逐页匹配，可直接修改</span></header>
-        {page.blocks.length ? page.blocks.map((block, index) => <article key={block.id}>
-          <header><span>{String(index + 1).padStart(2, "0")}</span><b>{block.subtitle || `内容块 ${index + 1}`}</b><i>{block.constraintMode === "exact" ? "原文保留" : block.constraintMode === "direction" ? "方向约束" : "可压缩表达"}</i></header>
-          <textarea value={block.content || ""} onChange={event => updateBlock(page.pageIndex, block.id, { content: event.target.value })} placeholder="从资料中匹配出的正文，可在这里修改"/>
-        </article>) : <p>本页没有匹配到可靠正文。请返回修改任务资料，补充对应资料或调整大纲。</p>}
-      </section>
-      {page.mustInclude.length > 0 && <section className="deck-content-must-include"><b>必须保留</b><div>{page.mustInclude.map((item, index) => <span key={index}>{item}</span>)}</div></section>}
-      <label className="deck-content-conclusion">页末结论<textarea value={page.conclusion} onChange={event => updatePage(page.pageIndex, { conclusion: event.target.value })} placeholder="这一页希望观众记住的结论"/></label>
-      <section className="deck-evidence-list">
-        <b>本页资料依据</b>
-        {page.evidence.length ? <div>{page.evidence.map((evidence, index) => <span key={evidence.id || index}><FileText/><b>{evidence.file || evidence.source || "参考资料"}</b><small>{evidence.locator || "未标注位置"}</small></span>)}</div> : <p>没有找到可靠依据。涉及数字、日期、人物和荣誉时请补充资料后重新匹配。</p>}
-        {page.warnings.length > 0 && <ul>{page.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
-      </section>
-      <footer><label><input type="checkbox" checked={page.locked} onChange={event => updatePage(page.pageIndex, { locked: event.target.checked })}/>锁定已核对内容</label></footer>
-    </div>
-  </details>})}</div>;
-}
 
 function DeckAdvancedPlanRun(props: DeckRunActions) {
   const { service, run, busy, onRunUpdate, onConfirm, onReplan } = props;
@@ -2213,13 +2140,6 @@ async function responseJson(response: Response): Promise<Record<string, any>> {
   try { return JSON.parse(text); } catch { return { error: `服务返回了无法识别的内容（HTTP ${response.status}）。` }; }
 }
 
-declare global {
-  interface Window {
-    DocsAPI?: { DocEditor: new (id: string, config: Record<string, unknown>) => { destroyEditor?: () => void } };
-  }
-}
-
-
 type ImageToolSource = { imageId?: string; file?: File; previewUrl: string; name: string; ownedUrl: boolean };
 type ImageToPptResult = { fileName: string; downloadUrl: string; codiaTaskId?: string; sourceName?: string };
 type PptExtractedImage = {
@@ -2238,94 +2158,6 @@ function chronologicalSort<T extends { id: string; createdAt: string }>(a: T, b:
   return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id.localeCompare(b.id);
 }
 
-function OnlyOfficeEditor({ documentId, revision, refresh, notify }: {
-  documentId: string;
-  revision: number;
-  refresh: (silent?: boolean) => Promise<void>;
-  notify: (text: string) => void;
-}) {
-  const [error, setError] = useState("");
-  const [dragging, setDragging] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [reloadKey, setReloadKey] = useState(0);
-  const editorRef = useRef<{ destroyEditor?: () => void } | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const hostId = "onlyoffice-" + documentId + "-" + revision;
-
-  async function loadPresentation(file: File) {
-    if (!/\.(ppt|pptx)$/i.test(file.name)) return notify("请拖入 PPT 或 PPTX 文件");
-    if (file.size > workPresentationMaxBytes) return notify(`PPT 文件不能超过 ${workPresentationMaxLabel}`);
-    const form = new FormData();
-    form.set("file", file);
-    setUploading(true);
-    const response = await fetch("/api/employee/work-documents/" + documentId + "/replace", { method: "POST", body: form });
-    const result = await response.json();
-    setUploading(false);
-    if (!response.ok) return notify(result.error);
-    setError("");
-    editorRef.current?.destroyEditor?.();
-    await refresh(true);
-    setReloadKey(value => value + 1);
-    notify("已载入 " + file.name);
-  }
-
-  function presentationFileFrom(dataTransfer: DataTransfer) {
-    return Array.from(dataTransfer.files).find(item => /\.(ppt|pptx)$/i.test(item.name)) || null;
-  }
-
-  useEffect(() => {
-    let cancelled = false;
-    async function start() {
-      try {
-        const response = await fetch("/api/employee/work-documents/" + documentId + "/config");
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error);
-        let script = document.querySelector<HTMLScriptElement>('script[data-onlyoffice="' + result.scriptUrl + '"]');
-        if (!script) {
-          script = document.createElement("script");
-          script.src = result.scriptUrl;
-          script.dataset.onlyoffice = result.scriptUrl;
-          document.body.appendChild(script);
-          await new Promise<void>((resolve, reject) => { script!.onload = () => resolve(); script!.onerror = () => reject(new Error("无法连接 ONLYOFFICE 文档服务器")); });
-        } else if (!window.DocsAPI) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-        if (!cancelled && window.DocsAPI) editorRef.current = new window.DocsAPI.DocEditor(hostId, result.config);
-        else if (!window.DocsAPI) throw new Error("ONLYOFFICE 尚未启动，请先运行文档服务");
-      } catch (reason) {
-        if (!cancelled) setError(reason instanceof Error ? reason.message : "编辑器加载失败");
-      }
-    }
-    void start();
-    return () => { cancelled = true; editorRef.current?.destroyEditor?.(); };
-  }, [documentId, hostId, reloadKey]);
-
-  return <div className={"onlyoffice-host " + (dragging ? "is-dragging" : "")}
-    onDragEnter={event => {
-      if (!presentationFileFrom(event.dataTransfer)) return setDragging(false);
-      event.preventDefault();
-      setDragging(true);
-    }}
-    onDragOver={event => {
-      if (!presentationFileFrom(event.dataTransfer)) return setDragging(false);
-      event.preventDefault();
-      event.dataTransfer.dropEffect = "copy";
-      setDragging(true);
-    }}
-    onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false); }}
-    onDrop={event => {
-      const pptFile = presentationFileFrom(event.dataTransfer);
-      if (pptFile) void loadPresentation(pptFile);
-      if (pptFile) event.preventDefault();
-      setDragging(false);
-    }}>
-    <input ref={fileRef} hidden type="file" accept=".ppt,.pptx" onChange={event => { const file = event.target.files?.[0]; if (file) void loadPresentation(file); event.currentTarget.value = ""; }}/>
-    <div className="office-file-entry"><button onClick={() => fileRef.current?.click()} disabled={uploading}><Upload/>{uploading ? "正在载入..." : "选择 PPT 文件"}</button><span>也可将 PPT / PPTX 直接拖到画布</span></div>
-    {error ? <div className="office-placeholder"><Monitor/><h3>编辑器暂未连接</h3><p>{error}</p><button className="office-placeholder-upload" onClick={() => fileRef.current?.click()}><Upload/>先选择一份 PPT</button><small>启动 ONLYOFFICE Docker 服务后即可在线修改。</small></div> : <div id={hostId}/>}
-    {dragging && <div className="office-drop-overlay"><Upload/><h3>松开即可载入 PPT</h3><p>支持 .ppt 和 .pptx，最大 {workPresentationMaxLabel}</p></div>}
-    {uploading && <div className="office-uploading-overlay"><LoaderCircle className="spin"/><span>正在载入演示文稿...</span></div>}
-  </div>;
-}
 
 
 function AiPanel({ service, employee, refresh, notify }: { service: Service; employee: Employee; refresh: (silent?: boolean) => Promise<void>; notify: (text: string) => void }) {
