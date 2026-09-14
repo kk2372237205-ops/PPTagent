@@ -3,8 +3,10 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { ExplodeImagePreview } from "@/components/employee/explode-image-preview";
 import { ImagePreviewModal, type ImagePreview } from "@/components/employee/image-preview-modal";
 import { MaterialRail } from "@/components/employee/material-rail";
+import { safeJson, stageLabel } from "@/lib/employee-format";
 import { generatedImageDownloadUrl, generatedImageUrl } from "@/lib/employee-image-urls";
 import { cropDataUrlToPngDataUrl, dataUrlToBlob, finishImageDrag, imageFilesFromList, readImageDragId, writeImageDragData } from "@/lib/employee-image-tools";
 import {
@@ -2200,47 +2202,8 @@ function ImageExplodeStudio({ service, refresh, notify, back, openEditor }: {
   </main>;
 }
 
-function ExplodeImagePreview({ image, onClose }: { image: { url: string; title: string }; onClose: () => void }) {
-  return <div className="explode-preview-modal" onClick={onClose}><section onClick={event => event.stopPropagation()}><header><b>{image.title}</b><button onClick={onClose}><X/></button></header><img src={image.url} alt={image.title}/></section></div>;
-}
 
-function stageLabel(stage: string): string {
-  const batchStage = stage.match(/^batch-(\d+)-(master|background|parts|cutout|rebuild)$/);
-  if (batchStage) {
-    const label = ({ master: "完整样片", background: "纯背景", parts: "零件拆解", cutout: "二次抠图", rebuild: "重建预览" } as Record<string, string>)[batchStage[2]] || "流水线";
-    return `第 ${batchStage[1]} 份 · ${label}`;
-  }
-  if (stage.startsWith("retry-")) return `审美修正 · ${stageLabel(stage.slice(6))}`;
-  const fallbackLabels: Record<string, string> = {
-    image_text: "OpenAI 文生图",
-    image_reference: "OpenAI 参考图生图",
-    image_safety_fallback: "安全审核降级",
-    image_summary_retry: "OpenAI 风格摘要生图",
-    image_summary_result: "风格摘要生成完成",
-    "asset-plan": "生产图层规划",
-    background_text: "OpenAI 背景生图",
-    background_reference: "OpenAI 参考图背景",
-    background_safety_fallback: "背景安全降级",
-    background_summary_retry: "背景摘要重试",
-    hero_text: "OpenAI 主视觉生图",
-    "production-ready": "可编辑生产预览",
-    aesthetic: "审美评估",
-    "aesthetic-retry": "审美修正",
-    explode: "自动图片炸开",
-    "background-clean": "背景清图",
-    master_render: "完整样片",
-    clean_background: "干净背景",
-    layer_plan: "图层识别",
-    semantic_cutout: "语义拆图",
-    rebuild_qa: "重建检查",
-    "reconstruction-qa": "重建检查",
-    "apply-sync": "PPT 同步修复"
-  };
-  if (fallbackLabels[stage]) return fallbackLabels[stage];
-  return ({ queued: "已排队", context: "整理上下文", vision: "参考理解", planner: "规划", image: "OpenAI 生图", apply: "写入 PPT", cancelled: "已取消", failed: "任务失败" } as Record<string, string>)[stage] || stage;
-}
 
-function safeJson(value: string, fallback: unknown) { try { return JSON.parse(value); } catch { return fallback; } }
 // API routes should always return JSON, but development hot reload can briefly
 // return an empty 500 response. This keeps the employee UI recoverable.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
