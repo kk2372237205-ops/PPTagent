@@ -2,6 +2,8 @@ node_modules/
 .next/
 .next-dev/
 .next-employee-visual/
+.next-smoke/
+.tmp-smoke/
 .env
 .env.local
 prisma/dev.db

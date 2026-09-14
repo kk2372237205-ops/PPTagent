@@ -32,6 +32,9 @@ PPTagent/WZLCF 是一套 PPT 定制交付系统，包含两类界面：
 - `npm run verify:check` 通过（= `tsc --noEmit` + `eslint . --max-warnings 11` + `prisma validate`），`npm run verify:build` 通过（= `next build --webpack`，74 条接口路由 + `/employee`）。
 - 本机 PowerShell 执行策略禁止直接运行 `npm`/`npx` 脚本；需要时可改用 `node node_modules/<工具>/bin/...` 直调，或先执行 `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`。
 - Git 已初始化（2026-09-14）：基线提交 `8e2f313`，标签 `baseline`，提交 183 个文件，仓库体积约 3.29 MB。`.env`、`prisma/dev.db`、`uploads/`、构建缓存均未纳入版本控制。
+- 模块化改造第 2 轮（2026-09-14）已完成 P1 清死代码：提交 `968ccc5`。`components/employee-app.tsx` 从 3753 行降到 3539 行（净删除 217 行、改写 3 行）。删除内容为不可达的 `SmartStudio` 组件（182 行，`setWorkspaceMode("smart")` 在全仓没有任何调用点，且它没有任何 CSS 规则）、`DesignStudio` 内 `{false && mentorTool === "deck" && …}` 死分支（3408 字符）、该分支专用的 7 个 `deck*` state 与 `createDeckFromMentor()`，以及 `workspaceMode` 联合类型里的 `"smart"`。业务代码路径未改动。
+- 本轮运行验证：临时启动 Next 开发服务（独立 `NEXT_DIST_DIR=.next-smoke`、端口 3211），`/` 与 `/employee` 均返回 200，`brand/wzlcf-mark.png` 与 `agent/ppt-design-mentor.png` 均返回 200；页面中已不再出现「即将接入」等死分支文案。验证后已停止服务、删除 `.next-smoke/`，并还原被开发服务自动改写的 `tsconfig.json` 与 `next-env.d.ts`。
+- 已知格式问题：仓库内有 15 个文件是 CRLF 与 LF 混用（`employee.css` 48 处、`deck-generation-worker.mjs` 110 处等）。用脚本改写这些文件时会触发整文件 diff 噪音；比对差异应使用 `git diff --ignore-cr-at-eol`。`employee-app.tsx` 已在第 2 轮统一为 LF。
 - 当前 `docker info` 不能连接 Docker daemon；因此完整 `npm run dev` 会在 `scripts/ensure-onlyoffice.mjs` 阶段失败，原因是 ONLYOFFICE 前置服务未就绪，不是 Next.js 编译错误。
 
 本机改动后的统一验证门（任何改动都必须先跑这一条）：
