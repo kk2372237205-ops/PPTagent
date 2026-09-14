@@ -4,8 +4,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ImagePreviewModal, type ImagePreview } from "@/components/employee/image-preview-modal";
-import { absoluteGeneratedImageUrl, generatedImageDownloadUrl, generatedImageUrl } from "@/lib/employee-image-urls";
-import { blobToDataUrl, blobToPngBlob, copyPngBlobToClipboard, cropDataUrlToPngDataUrl, dataUrlToBlob } from "@/lib/employee-image-tools";
+import { generatedImageDownloadUrl, generatedImageUrl } from "@/lib/employee-image-urls";
+import { blobToDataUrl, blobToPngBlob, copyPngBlobToClipboard, cropDataUrlToPngDataUrl, dataUrlToBlob, finishImageDrag, imageFilesFromList, readImageDragId, writeImageDragData } from "@/lib/employee-image-tools";
 import {
   Activity, ArrowRight, Bot, BriefcaseBusiness, Check, ChevronLeft,
   ChevronRight, ChevronUp, ChevronDown, Clipboard, Copy, Download, FileText, ImagePlus, LayoutDashboard, LoaderCircle,
@@ -17,120 +17,7 @@ import { CSSProperties, DragEvent, useCallback, useEffect, useMemo, useRef, useS
 import { techszImageToolById, techszImageTools, type TechszImageToolId } from "@/lib/techsz-image-tools";
 import { workPresentationMaxBytes, workPresentationMaxLabel } from "@/lib/upload-limits";
 
-type EmployeeFeature =
-  "orders" | "customerMessages" | "team" | "officeEditor" | "aiAssistant" |
-  "smartPpt" | "materials" | "imageTools" | "exports";
-type EmployeePermissions = Record<EmployeeFeature, boolean>;
-type EmployeeMembership = {
-  id: string; organizationId: string; identityProvider: string; externalUserId: string; unionId: string;
-  role: string; status: string;
-  permissionsJson: string; departmentIdsJson: string; position: string; avatarUrl: string;
-  lastLoginAt: string | null; loginCount: number; createdAt: string; updatedAt: string;
-  organization: { id: string; slug: string; name: string; enabled: boolean };
-};
-type Employee = {
-  id: string; code: string; name: string; phone: string | null; isAdmin: boolean; enabled: boolean; createdAt: string;
-  membership: EmployeeMembership;
-  permissions: EmployeePermissions;
-};
-type Attachment = { id: string; originalName: string; storedName?: string; size: number };
-type Message = {
-  id: string; role: string; content: string; createdAt: string; attachments: Attachment[];
-  employee?: { id: string; name: string } | null;
-};
-type Consultation = {
-  id: string; number: string; budget: string; selectedBudgets?: string; isCustomerGroup?: boolean; status: string; updatedAt: string;
-  user: { phone: string }; services: { id: string; number: string; title: string }[]; messages: Message[];
-};
-type GeneratedImage = {
-  id: string; isMaterial: boolean; materialOrder: number; createdAt: string;
-};
-type DeckGenerationSlide = {
-  id: string; slideIndex: number; title: string; role: string; storedName?: string | null; status: string; error?: string | null;
-  regenerationCount: number; updatedAt: string; specJson?: string; qualityStatus?: string; qualityReportJson?: string; qualityAttempts?: number;
-};
-type DeckGenerationSource = {
-  id: string; kind: string; originalName: string; storedName?: string | null; size: number; status: string; extractedText?: string; error?: string | null;
-};
-type DeckPageBlock = {
-  id: string; subtitle: string; instruction: string; constraintMode: "exact" | "polish" | "direction"; content?: string; evidenceIds?: string[];
-};
-type DeckGenerationPagePlan = {
-  id: string; pageIndex: number; title: string; role: string; purpose: string; blocksJson: string; mustIncludeJson: string;
-  conclusion: string; density: "sparse" | "standard" | "compact"; layoutType: string; constraintMode: string;
-  evidenceJson: string; visualEvidenceJson: string; directorContractJson: string; warningsJson: string; locked: boolean;
-};
-type DeckVisualEvidence = {
-  id: string; kind: string; file?: string; source?: string; locator?: string; description?: string; usefulness?: number;
-};
-type DeckPageDraft = {
-  pageIndex: number; title: string; role: string; purpose: string; blocks: DeckPageBlock[]; mustInclude: string[];
-  conclusion: string; density: "sparse" | "standard" | "compact"; layoutType: string; constraintMode: string;
-  evidence: { id?: string; file?: string; source?: string; locator?: string; content?: string }[];
-  visualEvidence: DeckVisualEvidence[]; directorContract: Record<string, unknown>; warnings: string[]; locked: boolean;
-};
-
-type DeckGenerationRun = {
-  id: string; kind?: string; status: string; generationMode?: "quick" | "advanced"; projectName: string; projectType: string; brief: string; pageCount: number; stylePack: string;
-  unityOptionsJson: string; outlineInputJson?: string; outlineJson: string; visualIdentityJson: string; visualStoryboardJson: string; slideImageSpecsJson: string;
-  styleFingerprintJson?: string; deckQualityStatus?: string; deckQualityReportJson?: string; deckQualityAttempts?: number;
-  initialImageBudget?: number; imageCallsStarted?: number; imageCallsCompleted?: number; manualImageCalls?: number; automaticRedraws?: number;
-  referenceText?: string; paletteMode?: "preset" | "reference"; paletteContractJson?: string; analysisSummaryJson?: string; sourceCount?: number;
-  pdfStoredName?: string | null; pptStoredName?: string | null; coverStoredName?: string | null; error?: string | null; createdAt: string; updatedAt: string;
-  slides: DeckGenerationSlide[]; sources?: DeckGenerationSource[]; pagePlans?: DeckGenerationPagePlan[];
-};
-type GenerationJob = {
-  id: string; prompt: string; status: string; error?: string | null; createdAt: string; provider?: string; model?: string;
-  employee: { id?: string; name: string }; images: GeneratedImage[];
-};
-type MaterialImage = GeneratedImage & {
-  job: GenerationJob;
-};
-type MaterialItem = {
-  id: string; materialOrder: number; createdAt: string;
-  employee: { id: string; name: string };
-  image: MaterialImage;
-};
-type AiMessage = {
-  id: string; role: string; content: string; provider: string; model: string; createdAt: string;
-};
-type AiModelOption = {
-  id: string; provider: string; model: string; label: string; available: boolean; default?: boolean;
-};
-type AiServiceHealth = {
-  ok: boolean; configured: boolean; serviceName: string; baseUrl: string; model: string;
-  proxyConfigured: boolean; error?: string; apiMode?: string; size?: string; supportsEdits?: boolean;
-};
-type OpenAiHealth = { ok: boolean; error?: string; text?: AiServiceHealth; image?: AiServiceHealth };
-type TrackedImageJob = GenerationJob & { requestedAt?: string };
-type DesignAgentReference = { id: string; source: string; label: string; isPrimary: boolean; sortOrder: number; generatedImage?: GeneratedImage | null };
-type DesignAgentEvent = { id: string; stage: string; status: string; detail: string; createdAt: string };
-type DesignAgentEvaluation = { id: string; stage: string; status: string; totalScore: number; scoresJson: string; reasonsJson: string; candidateId?: string | null; createdAt: string };
-type DesignAgentRun = {
-  id: string; generationMode: "text" | "mixed"; status: string; brief: string; visionReport: string; layoutPlan: string; visualPrompt: string;
-  error?: string | null; createdAt: string; appliedAt?: string | null; appliedSlideNumber?: number | null;
-  workflowState?: string; qualityMode?: string; generationAttempts?: number; generationBudget?: number; selectedImageId?: string | null;
-  references?: DesignAgentReference[]; events?: DesignAgentEvent[]; evaluations?: DesignAgentEvaluation[]; generatedJob?: { id: string; images: GeneratedImage[] } | null;
-};
-type ImageExplodePart = { id: string; label: string; kind: string; variant: string; groupKey?: string | null; storedName?: string | null; refinedName?: string | null; textContent?: string | null; selected: boolean; confidence: number; zIndex: number; };
-type ImageExplodeTextLayer = { id: string; content: string; groupKey?: string | null; rotation: number; styleJson: string; complexity: "simple" | "complex" | string; mode: "native" | "artwork" | "skip" | string; selected: boolean; confidence: number; };
-type ImageExplodeEvent = { id: string; stage: string; status: string; detail: string; createdAt: string; };
-type ImageExplodeRun = { id: string; status: string; error?: string | null; createdAt: string; appliedAt?: string | null; appliedSlideNumber?: number | null; reconstructionName?: string | null; qaReportJson?: string; backgroundStrategy?: string; cloudCleanupUsed?: boolean; needsReview?: boolean; parts?: ImageExplodePart[]; textLayers?: ImageExplodeTextLayer[]; events?: ImageExplodeEvent[]; sourceImage?: GeneratedImage | null; };
-type WorkDocument = {
-  id: string; originalName: string; updatedAt: string;
-  versions: { id: string; version: number; label: string; createdAt: string }[];
-};
-type ActivityItem = { id: string; action: string; detail: string; createdAt: string; employee: { name: string } };
-type Service = {
-  id: string; number: string; title: string; category: string; purchasedAt: string;
-  priceCents: number; status: string; progress: number; assigneeId: string | null;
-  assignee: { id: string; name: string; code: string } | null;
-  user: { phone: string }; workDocument: WorkDocument | null; activities: ActivityItem[];
-  consultation: (Consultation & { messages: Message[] }) | null; generationJobs: GenerationJob[]; materialItems: MaterialItem[];
-};
-type EmployeeData = {
-  employee: Employee | null; employees: Employee[]; services: Service[]; consultations: Consultation[];
-};
+import type { AiMessage, AiModelOption, Consultation, DeckGenerationPagePlan, DeckGenerationRun, DeckPageBlock, DeckPageDraft, DeckVisualEvidence, DesignAgentRun, Employee, EmployeeData, EmployeeFeature, EmployeePermissions, ImageExplodePart, ImageExplodeRun, ImageExplodeTextLayer, MaterialItem, Message, OpenAiHealth, Service, TrackedImageJob } from "@/lib/employee-api-types";
 
 const emptyData: EmployeeData = { employee: null, employees: [], services: [], consultations: [] };
 const navItems: { id: string; label: string; icon: typeof BriefcaseBusiness; feature?: EmployeeFeature }[] = [
@@ -2369,9 +2256,6 @@ declare global {
 }
 
 
-const imageDragMime = "application/x-wzlcf-image";
-
-type ImageDragPayload = { imageId: string; source: "ai" | "material" };
 type PasteTrayItem = { name: string; previewUrl: string; dataUrl: string; pngBlob: Blob };
 type ImageToolSource = { imageId?: string; file?: File; previewUrl: string; name: string; ownedUrl: boolean };
 type ImageToPptResult = { fileName: string; downloadUrl: string; codiaTaskId?: string; sourceName?: string };
@@ -2389,40 +2273,6 @@ type PptExtractedImage = {
 function nextMaterialOrder(items: MaterialItem[]) { return items.reduce((max, item) => Math.max(max, item.materialOrder || 0), 0) + 1; }
 function chronologicalSort<T extends { id: string; createdAt: string }>(a: T, b: T) {
   return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id.localeCompare(b.id);
-}
-
-function writeImageDragData(event: DragEvent<HTMLElement>, imageId: string, source: "ai" | "material") {
-  const payload: ImageDragPayload = { imageId, source };
-  const url = absoluteGeneratedImageUrl(imageId);
-  event.dataTransfer.effectAllowed = "copy";
-  event.dataTransfer.setData(imageDragMime, JSON.stringify(payload));
-  event.dataTransfer.setData("text/wzlcf-image", imageId);
-  event.dataTransfer.setData("text/uri-list", url);
-  event.dataTransfer.setData("text/plain", url);
-  event.dataTransfer.setData("text/html", `<img src="${url}" alt="WZLCF material image">`);
-  event.dataTransfer.setData("DownloadURL", `image/png:wzlcf-material-${imageId}.png:${url}`);
-  window.dispatchEvent(new CustomEvent("wzlcf:image-drag-start"));
-}
-
-function finishImageDrag() {
-  window.dispatchEvent(new CustomEvent("wzlcf:image-drag-end"));
-}
-
-function readImageDragId(dataTransfer: DataTransfer) {
-  const payload = dataTransfer.getData(imageDragMime);
-  if (payload) {
-    try {
-      const parsed = JSON.parse(payload) as Partial<ImageDragPayload>;
-      if (parsed.imageId) return parsed.imageId;
-    } catch {
-      return null;
-    }
-  }
-  return dataTransfer.getData("text/wzlcf-image") || null;
-}
-
-function imageFilesFromList(files: FileList | File[]) {
-  return Array.from(files).filter(file => file.type.startsWith("image/"));
 }
 
 function OnlyOfficeEditor({ documentId, revision, refresh, notify }: {

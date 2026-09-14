@@ -4,10 +4,13 @@
  * 职责：blob / dataURL / PNG / canvas 之间的转换，以及把图片写进剪贴板。
  *       全部是无状态纯函数（只依赖浏览器 API），不含任何业务判断。
  * 谁可以改：主干层；改完必须跑 `npm run verify`。
- * 依赖：浏览器 API（canvas、FileReader、Clipboard API）。
+ * 依赖：浏览器 API（canvas、FileReader、Clipboard API）、`@/lib/employee-image-urls`。
  * 被谁用：员工工作台的 PPT 粘贴托盘、图片工具、素材栏，以及后续拆出的模块。
  * 验证方式：`npm run verify`；剪贴板与画布行为需在浏览器里人工确认。
  */
+
+import type { DragEvent } from "react";
+import { absoluteGeneratedImageUrl } from "@/lib/employee-image-urls";
 
 /** 把任意图片 blob 统一转成 PNG blob（必要时经 canvas 重新编码） */
 export async function blobToPngBlob(blob: Blob) {
@@ -118,4 +121,52 @@ export async function copyPngBlobToClipboard(blob: Blob, dataUrl: string) {
   }
   copyImageHtmlFallback(dataUrl);
   return "html";
+}
+
+/* ------------------------------------------------------------------ *
+ * 图片拖拽：与 ONLYOFFICE 编辑器、素材栏、PPT 粘贴托盘之间的拖放协议
+ * ------------------------------------------------------------------ */
+
+const imageDragMime = "application/x-wzlcf-image";
+
+type ImageDragPayload = { imageId: string; source: "ai" | "material" };
+
+/**
+ * 开始拖拽图片时写入多种格式，保证 ONLYOFFICE、浏览器和外部程序都能识别。
+ * 同时广播事件，让工作台可以显示拖拽提示。
+ */
+export function writeImageDragData(event: DragEvent<HTMLElement>, imageId: string, source: "ai" | "material") {
+  const payload: ImageDragPayload = { imageId, source };
+  const url = absoluteGeneratedImageUrl(imageId);
+  event.dataTransfer.effectAllowed = "copy";
+  event.dataTransfer.setData(imageDragMime, JSON.stringify(payload));
+  event.dataTransfer.setData("text/wzlcf-image", imageId);
+  event.dataTransfer.setData("text/uri-list", url);
+  event.dataTransfer.setData("text/plain", url);
+  event.dataTransfer.setData("text/html", `<img src="${url}" alt="WZLCF material image">`);
+  event.dataTransfer.setData("DownloadURL", `image/png:wzlcf-material-${imageId}.png:${url}`);
+  window.dispatchEvent(new CustomEvent("wzlcf:image-drag-start"));
+}
+
+export function finishImageDrag() {
+  window.dispatchEvent(new CustomEvent("wzlcf:image-drag-end"));
+}
+
+/** 从拖放数据里取出 WZLCF 图片编号；不是本应用的拖拽返回 null */
+export function readImageDragId(dataTransfer: DataTransfer) {
+  const payload = dataTransfer.getData(imageDragMime);
+  if (payload) {
+    try {
+      const parsed = JSON.parse(payload) as Partial<ImageDragPayload>;
+      if (parsed.imageId) return parsed.imageId;
+    } catch {
+      return null;
+    }
+  }
+  return dataTransfer.getData("text/wzlcf-image") || null;
+}
+
+/** 从拖入的文件列表里挑出图片文件 */
+export function imageFilesFromList(files: FileList | File[]) {
+  return Array.from(files).filter(file => file.type.startsWith("image/"));
 }
