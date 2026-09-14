@@ -1,0 +1,97 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ${WZLCF_ENV_FILE:-.env.production}
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: file:./dev.db
+      APP_PUBLIC_URL: https://${APP_DOMAIN}
+      APP_INTERNAL_URL: http://app:3000
+      ONLYOFFICE_PUBLIC_URL: https://${ONLYOFFICE_DOMAIN}
+    volumes:
+      - wzlcf_database:/app/prisma
+      - wzlcf_uploads:/app/uploads
+    networks:
+      - internal
+
+  onlyoffice:
+    image: onlyoffice/documentserver:latest
+    restart: unless-stopped
+    environment:
+      JWT_ENABLED: "true"
+      JWT_SECRET: ${ONLYOFFICE_JWT_SECRET}
+      JWT_HEADER: Authorization
+      ALLOW_PRIVATE_IP_ADDRESS: "true"
+      ALLOW_META_IP_ADDRESS: "true"
+    volumes:
+      - onlyoffice_data:/var/www/onlyoffice/Data
+      - onlyoffice_logs:/var/log/onlyoffice
+      - onlyoffice_cache:/var/lib/onlyoffice
+      - ./onlyoffice/local-production-linux.json:/etc/onlyoffice/documentserver/local-production-linux.json:ro
+      - ./public/onlyoffice-plugins/wzlcf-image-bridge:/var/www/onlyoffice/documentserver/sdkjs-plugins/wzlcf-image-bridge:ro
+    networks:
+      - internal
+
+  agent-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["sh", "-c", "node scripts/init-db.mjs && node scripts/agent-workers.mjs"]
+    env_file:
+      - ${WZLCF_ENV_FILE:-.env.production}
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: file:./dev.db
+      COMPONENT_EXTRACTOR_URL: http://component-extractor:8765
+    volumes:
+      - wzlcf_database:/app/prisma
+      - wzlcf_uploads:/app/uploads
+    networks:
+      - internal
+
+  component-extractor:
+    build:
+      context: .
+      dockerfile: Dockerfile.components
+    restart: unless-stopped
+    environment:
+      COMPONENT_EXTRACTOR_HOST: 0.0.0.0
+      COMPONENT_EXTRACTOR_PORT: 8765
+      COMPONENT_EXTRACTOR_DEVICE: ${COMPONENT_EXTRACTOR_DEVICE:-auto}
+    networks:
+      - internal
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+      - onlyoffice
+    env_file:
+      - ${WZLCF_ENV_FILE:-.env.production}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - internal
+
+networks:
+  internal:
+
+volumes:
+  wzlcf_database:
+  wzlcf_uploads:
+  onlyoffice_data:
+  onlyoffice_logs:
+  onlyoffice_cache:
+  caddy_data:
+  caddy_config:

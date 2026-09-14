@@ -1,0 +1,11 @@
+{
+  email {$ACME_EMAIL}
+}
+
+{$APP_DOMAIN} {
+  reverse_proxy app:3000
+}
+
+{$ONLYOFFICE_DOMAIN} {
+  reverse_proxy onlyoffice:80
+}

@@ -1,0 +1,6 @@
+# Optional local OCR for the image-explode service.
+# The service starts without these packages and falls back to the existing
+# visual-model text recognition, but PaddleOCR gives more reliable Chinese
+# content and rotated four-point text geometry when available.
+paddleocr>=2.9,<3.0
+paddlepaddle>=2.6

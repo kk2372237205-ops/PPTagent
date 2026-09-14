@@ -1,0 +1,7 @@
+interface:
+  display_name: "ChatGPT Image Parts"
+  short_description: "把合成图拆成适合二次抠图和PPT使用的独立图片零件素材"
+  default_prompt: "Use $chatgpt-image-parts to turn my uploaded design image into cutout-friendly separate image-part prompts for ChatGPT image generation."
+
+policy:
+  allow_implicit_invocation: true

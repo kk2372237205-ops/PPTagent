@@ -1,0 +1,125 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>WZLCF Image Bridge</title>
+  <style>
+    html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:transparent; }
+  </style>
+</head>
+<body>
+<script>
+(function () {
+  var params = new URLSearchParams(window.location.search);
+  var documentId = params.get("documentId") || "";
+  var token = params.get("token") || "";
+  var officeUrl = (params.get("officeUrl") || "").replace(/\/$/, "");
+  var baseUrl = (params.get("baseUrl") || window.location.origin).replace(/\/$/, "");
+  var pollTimer = null;
+  var busy = false;
+
+  function apiUrl(path) {
+    return baseUrl + path;
+  }
+
+  function bootMark(status, detail) {
+    if (!documentId || !token) return;
+    fetch(apiUrl("/api/employee/onlyoffice/image-bridge"), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ documentId: documentId, token: token, commandId: "__plugin__", error: status + (detail ? ": " + detail : "") })
+    }).catch(function () {});
+  }
+
+  function mark(commandId, error) {
+    return fetch(apiUrl("/api/employee/onlyoffice/image-bridge"), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ documentId: documentId, token: token, commandId: commandId, error: error || "" })
+    }).catch(function () {});
+  }
+
+  function mm(value) {
+    return Math.round(Number(value || 0) * 36000);
+  }
+
+  function insertImage(command) {
+    if (!window.Asc || !window.Asc.plugin || !window.Asc.plugin.callCommand) return;
+    busy = true;
+    window.Asc.scope.imageUrl = command.imageUrl;
+    window.Asc.scope.x = mm(command.xMm);
+    window.Asc.scope.y = mm(command.yMm);
+    window.Asc.scope.w = mm(command.widthMm);
+    window.Asc.scope.h = mm(command.heightMm);
+    window.Asc.scope.commandError = "";
+    window.Asc.plugin.callCommand(function () {
+      try {
+        var presentation = Api.GetPresentation();
+        var slide = presentation.GetCurrentSlide ? presentation.GetCurrentSlide() : null;
+        if (!slide && presentation.GetSlides) {
+          var slides = presentation.GetSlides();
+          slide = slides && slides.length ? slides[0] : null;
+        }
+        if (!slide) throw new Error("No active slide");
+        var image = Api.CreateImage(Asc.scope.imageUrl, Asc.scope.w, Asc.scope.h);
+        if (image.SetPosition) image.SetPosition(Asc.scope.x, Asc.scope.y);
+        slide.AddObject(image);
+      } catch (error) {
+        Asc.scope.commandError = error && error.message ? error.message : "Insert image failed";
+      }
+    }, false, true, function () {
+      busy = false;
+      mark(command.id, window.Asc.scope.commandError || "");
+    });
+  }
+
+  function poll() {
+    if (busy || !documentId || !token) return;
+    fetch(apiUrl("/api/employee/onlyoffice/image-bridge?documentId=" + encodeURIComponent(documentId) + "&token=" + encodeURIComponent(token)), { cache: "no-store" })
+      .then(function (response) { return response.ok ? response.json() : null; })
+      .then(function (result) {
+        if (result && result.command) insertImage(result.command);
+      })
+      .catch(function () {});
+  }
+
+  function start() {
+    bootMark("loaded");
+    window.Asc.plugin.init = function () {
+      bootMark("init");
+      pollTimer = window.setInterval(poll, 900);
+      poll();
+    };
+    window.Asc.plugin.button = function () {};
+    window.addEventListener("beforeunload", function () {
+      if (pollTimer) window.clearInterval(pollTimer);
+    });
+  }
+
+  function loadScript(paths, index) {
+    if (index >= paths.length) {
+      bootMark("runtime-missing", paths.join(","));
+      return;
+    }
+    var script = document.createElement("script");
+    script.src = paths[index];
+    script.onload = function () {
+      start();
+      if (typeof window.onload === "function") window.onload();
+    };
+    script.onerror = function () { loadScript(paths, index + 1); };
+    document.head.appendChild(script);
+  }
+
+  var paths = [];
+  if (officeUrl) {
+    paths.push(officeUrl + "/sdkjs-plugins/v1/plugins.js");
+    paths.push(officeUrl + "/web-apps/apps/plugin/v1/plugins.js");
+    paths.push(officeUrl + "/web-apps/apps/api/documents/../../plugin/v1/plugins.js");
+  }
+  paths.push("../v1/plugins.js");
+  loadScript(paths, 0);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "services": {
+    "CoAuthoring": {
+      "server": {
+        "limits_tempfile_upload": 1073741824
+      }
+    }
+  },
+  "FileConverter": {
+    "converter": {
+      "maxDownloadBytes": 1073741824,
+      "downloadTimeout": {
+        "connectionAndInactivity": "10m",
+        "wholeCycle": "10m"
+      }
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "guid": "asc.{57E9D4B6-03B4-4DDC-9C12-57E9D4B60001}",
+  "version": "1.0.0",
+  "name": "WZLCF Image Bridge",
+  "loader": true,
+  "nameLocale": {
+    "zh-CN": "WZLCF 图片桥接"
+  },
+  "variations": [
+    {
+      "description": "Insert dragged WZLCF images into the current presentation slide.",
+      "descriptionLocale": {
+        "zh-CN": "把 WZLCF 拖拽图片插入当前演示文稿。"
+      },
+      "url": "index.html",
+      "icons": [],
+      "isViewer": false,
+      "EditorsSupport": ["slide"],
+      "isVisual": false,
+      "isModal": false,
+      "isInsideMode": false,
+      "initDataType": "none",
+      "initData": "",
+      "buttons": []
+    }
+  ]
+}

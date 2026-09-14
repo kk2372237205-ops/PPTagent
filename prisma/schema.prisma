@@ -1,0 +1,763 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String         @id @default(cuid())
+  phone            String         @unique
+  createdAt        DateTime       @default(now())
+  animationEnabled Boolean        @default(true)
+  notifications    Boolean        @default(true)
+  sessions         Session[]
+  consultations    Consultation[]
+  services         Service[]
+  assets           Asset[]
+}
+
+model VerificationCode {
+  id        String    @id @default(cuid())
+  phone     String
+  codeHash  String
+  ip        String?
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([phone, createdAt])
+}
+
+model Session {
+  id          String   @id @default(cuid())
+  tokenHash   String   @unique
+  deviceLabel String
+  ip          String?
+  remember    Boolean  @default(true)
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Consultation {
+  id        String            @id @default(cuid())
+  number    String            @unique
+  budget    String
+  selectedBudgets String      @default("[]")
+  isCustomerGroup Boolean     @default(false)
+  status    String            @default("等待人工客服")
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  Message[]
+  services  Service[]
+  revisions RevisionRequest[]
+
+  @@index([userId, isCustomerGroup])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  role           String       @default("customer")
+  content        String
+  createdAt      DateTime     @default(now())
+  consultationId String
+  consultation   Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+  employeeId     String?
+  employee       Employee?    @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  attachments    Attachment[]
+}
+
+model Attachment {
+  id           String           @id @default(cuid())
+  originalName String
+  storedName   String           @unique
+  mimeType     String
+  size         Int
+  createdAt    DateTime         @default(now())
+  messageId    String?
+  message      Message?         @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  versionId    String?
+  version      DeliveryVersion? @relation(fields: [versionId], references: [id], onDelete: Cascade)
+}
+
+model Service {
+  id             String            @id @default(cuid())
+  number         String            @unique
+  title          String
+  category       String
+  purchasedAt    DateTime
+  priceCents     Int
+  status         String
+  progress       Int
+  userId         String
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  consultationId String?
+  consultation   Consultation?     @relation(fields: [consultationId], references: [id], onDelete: SetNull)
+  versions       DeliveryVersion[]
+  revisions      RevisionRequest[]
+  asset          Asset?
+  organizationId String?
+  organization   Organization?      @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  assigneeId     String?
+  assignee       Employee?         @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+  workDocument   WorkDocument?
+  activities     ServiceActivity[]
+  generationJobs GenerationJob[]
+  aiConversations AiConversation[]
+  materialItems   MaterialItem[]
+  designAgentRuns DesignAgentRun[]
+  imageExplodeRuns ImageExplodeRun[]
+  deckGenerationRuns DeckGenerationRun[]
+
+  @@index([organizationId, purchasedAt])
+}
+
+model DeliveryVersion {
+  id          String       @id @default(cuid())
+  version     Int
+  label       String
+  note        String
+  createdAt   DateTime     @default(now())
+  serviceId   String
+  service     Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  attachments Attachment[]
+
+  @@unique([serviceId, version])
+}
+
+model RevisionRequest {
+  id             String       @id @default(cuid())
+  number         String       @unique
+  status         String       @default("待处理")
+  createdAt      DateTime     @default(now())
+  serviceId      String
+  service        Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  consultationId String
+  consultation   Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+}
+
+model Asset {
+  id        String   @id @default(cuid())
+  title     String
+  format    String
+  createdAt DateTime @default(now())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serviceId String   @unique
+  service   Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+}
+
+model Organization {
+  id          String               @id @default(cuid())
+  slug        String               @unique
+  name        String
+  corpId      String               @unique
+  enabled     Boolean              @default(true)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  memberships EmployeeMembership[]
+  loginEvents EmployeeLoginEvent[]
+  services    Service[]
+}
+
+model Employee {
+  id               String            @id @default(cuid())
+  code             String            @unique
+  name             String
+  phone            String?           @unique
+  isAdmin          Boolean           @default(false)
+  enabled          Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  sessions         EmployeeSession[]
+  assignedServices Service[]
+  messages         Message[]
+  activities       ServiceActivity[]
+  workVersions     WorkVersion[]
+  generationJobs   GenerationJob[]
+  aiConversations  AiConversation[]
+  aiMessages        AiMessage[]
+  materialItems     MaterialItem[]
+  designAgentRuns   DesignAgentRun[]
+  imageExplodeRuns  ImageExplodeRun[]
+  deckGenerationRuns DeckGenerationRun[]
+  memberships      EmployeeMembership[]
+  loginEvents      EmployeeLoginEvent[]
+}
+
+model EmployeeSession {
+  id          String   @id @default(cuid())
+  tokenHash   String   @unique
+  deviceLabel String
+  ip          String?
+  remember    Boolean  @default(true)
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  membershipId String?
+  membership  EmployeeMembership? @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, expiresAt])
+  @@index([membershipId, expiresAt])
+}
+
+model EmployeeMembership {
+  id                String        @id @default(cuid())
+  organizationId    String
+  organization      Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employeeId        String
+  employee          Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  identityProvider  String        @default("wecom")
+  externalUserId    String        @default("")
+  unionId           String        @default("")
+  wecomUserId       String
+  role              String        @default("member")
+  status            String        @default("pending")
+  permissionsJson   String        @default("{}")
+  departmentIdsJson String        @default("[]")
+  position          String        @default("")
+  avatarUrl         String        @default("")
+  lastLoginAt       DateTime?
+  loginCount        Int           @default(0)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  sessions          EmployeeSession[]
+
+  @@unique([organizationId, wecomUserId])
+  @@unique([organizationId, identityProvider, externalUserId])
+  @@unique([organizationId, employeeId])
+  @@index([organizationId, status, updatedAt])
+  @@index([identityProvider, unionId])
+  @@index([employeeId, updatedAt])
+}
+
+model EmployeeLoginEvent {
+  id             String       @id @default(cuid())
+  employeeId     String
+  employee       Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ip             String?
+  userAgent      String        @default("")
+  createdAt      DateTime      @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([employeeId, createdAt])
+}
+
+model WorkDocument {
+  id           String        @id @default(cuid())
+  originalName String
+  storedName   String        @unique
+  fileType     String        @default("pptx")
+  documentKey  String        @unique
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  serviceId    String        @unique
+  service      Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  versions     WorkVersion[]
+}
+
+model WorkVersion {
+  id             String       @id @default(cuid())
+  version        Int
+  label          String
+  storedName     String       @unique
+  createdAt      DateTime     @default(now())
+  workDocumentId String
+  workDocument   WorkDocument @relation(fields: [workDocumentId], references: [id], onDelete: Cascade)
+  createdById    String
+  createdBy      Employee     @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([workDocumentId, version])
+}
+
+model ServiceActivity {
+  id         String   @id @default(cuid())
+  action     String
+  detail     String
+  createdAt  DateTime @default(now())
+  serviceId  String
+  service    Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+}
+
+model GenerationJob {
+  id                  String           @id @default(cuid())
+  prompt              String
+  referenceStoredName String?
+  status              String           @default("processing")
+  error               String?
+  createdAt           DateTime         @default(now())
+  serviceId           String
+  service             Service          @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  employeeId          String
+  employee            Employee         @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  provider            String           @default("openai")
+  model               String           @default("")
+  images              GeneratedImage[]
+  designAgentRun      DesignAgentRun?
+}
+
+model GeneratedImage {
+  id            String        @id @default(cuid())
+  storedName    String        @unique
+  originalUrl   String?
+  isMaterial    Boolean       @default(false)
+  materialOrder Int           @default(0)
+  createdAt     DateTime      @default(now())
+  jobId         String
+  job           GenerationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  materialItems MaterialItem[]
+  designAgentReferences DesignAgentReference[]
+  explodeSources ImageExplodeRun[]
+}
+
+model AiConversation {
+  id         String      @id @default(cuid())
+  summary    String      @default("")
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  serviceId  String
+  service    Service     @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee   Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  messages   AiMessage[]
+
+  @@unique([serviceId, employeeId])
+  @@index([employeeId, updatedAt])
+}
+
+model AiMessage {
+  id             String         @id @default(cuid())
+  role           String
+  content        String
+  provider       String
+  model          String
+  mode           String         @default("text")
+  metadata       String         @default("{}")
+  createdAt      DateTime       @default(now())
+  conversationId String
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  employeeId     String
+  employee       Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
+
+model MaterialItem {
+  id            String         @id @default(cuid())
+  materialOrder Int            @default(0)
+  createdAt     DateTime       @default(now())
+  serviceId     String
+  service       Service        @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  employeeId    String
+  employee      Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  imageId       String
+  image         GeneratedImage @relation(fields: [imageId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, imageId])
+  @@index([serviceId, employeeId, materialOrder])
+}
+
+model DesignAgentRun {
+  id                 String                 @id @default(cuid())
+  generationMode     String
+  status             String                 @default("queued")
+  brief              String
+  visionReport       String                 @default("{}")
+  layoutPlan         String                 @default("{}")
+  designIntent       String                 @default("{}")
+  workflowState      String                 @default("queued")
+  qualityMode        String                 @default("standard")
+  generationAttempts Int                    @default(0)
+  generationBudget   Int                    @default(2)
+  evaluationAttempts Int                    @default(0)
+  selectedImageId    String?
+  visualPrompt       String                 @default("")
+  error              String?
+  startedAt          DateTime?
+  finishedAt         DateTime?
+  appliedAt          DateTime?
+  appliedSlideNumber Int?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+  serviceId          String
+  service            Service                @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  employeeId         String
+  employee           Employee               @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  generatedJobId     String?                @unique
+  generatedJob       GenerationJob?         @relation(fields: [generatedJobId], references: [id], onDelete: SetNull)
+  references         DesignAgentReference[]
+  events             DesignAgentEvent[]
+  evaluations        DesignAgentEvaluation[]
+
+  @@index([employeeId, createdAt])
+  @@index([serviceId, status, createdAt])
+}
+
+model DesignAgentEvaluation {
+  id          String         @id @default(cuid())
+  stage       String
+  status      String         @default("completed")
+  totalScore  Float          @default(0)
+  scoresJson  String         @default("{}")
+  reasonsJson String         @default("[]")
+  candidateId String?
+  createdAt   DateTime       @default(now())
+  runId       String
+  run         DesignAgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, createdAt])
+}
+
+model DesignPreferenceMemory {
+  id              String   @id @default(cuid())
+  industry        String   @default("")
+  pageType        String   @default("single-slide")
+  style           String   @default("")
+  paletteJson     String   @default("[]")
+  informationTone String   @default("balanced")
+  outcome         String   @default("accepted")
+  signalsJson     String   @default("{}")
+  createdAt       DateTime @default(now())
+  serviceId       String
+  employeeId      String
+
+  @@index([industry, pageType, createdAt])
+  @@index([serviceId, createdAt])
+}
+
+model DesignAgentReference {
+  id               String          @id @default(cuid())
+  source           String
+  label            String
+  storedName       String?
+  generatedImageId String?
+  generatedImage   GeneratedImage? @relation(fields: [generatedImageId], references: [id], onDelete: SetNull)
+  isPrimary        Boolean         @default(false)
+  sortOrder        Int             @default(0)
+  createdAt        DateTime        @default(now())
+  runId            String
+  run              DesignAgentRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, sortOrder])
+}
+
+model DesignAgentEvent {
+  id        String         @id @default(cuid())
+  stage     String
+  status    String
+  detail    String         @default("")
+  createdAt DateTime       @default(now())
+  runId     String
+  run       DesignAgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, createdAt])
+}
+
+model ImageExplodeRun {
+  id                 String             @id @default(cuid())
+  status             String             @default("queued")
+  sourceStoredName   String?
+  sourceImageId      String?            @unique
+  sourceImage        GeneratedImage?    @relation(fields: [sourceImageId], references: [id], onDelete: SetNull)
+  width              Int                @default(0)
+  height             Int                @default(0)
+  layerPlanJson      String             @default("{}")
+  qaReportJson       String             @default("{}")
+  reconstructionName String?
+  backgroundStrategy String             @default("local-mask-inpaint")
+  cloudCleanupUsed   Boolean            @default(false)
+  recommendedPartIds String             @default("[]")
+  needsReview        Boolean            @default(false)
+  error              String?
+  startedAt          DateTime?
+  finishedAt         DateTime?
+  appliedAt          DateTime?
+  appliedSlideNumber Int?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  serviceId          String
+  service            Service            @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  employeeId         String
+  employee           Employee           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  parts              ImageExplodePart[]
+  textLayers         ImageExplodeTextLayer[]
+  events             ImageExplodeEvent[]
+
+  @@index([employeeId, createdAt])
+  @@index([serviceId, status, createdAt])
+}
+
+model DeckGenerationRun {
+  id                   String                @id @default(cuid())
+  status               String                @default("queued")
+  generationMode       String                @default("quick")
+  projectName          String
+  projectType          String                @default("")
+  brief                String
+  referenceText        String                @default("")
+  pageCount            Int                   @default(12)
+  stylePack            String
+  paletteMode          String                @default("preset")
+  paletteContractJson  String                @default("{}")
+  outlineInputJson     String                @default("{}")
+  analysisSummaryJson  String                @default("{}")
+  themeReferenceStoredName String?
+  sourceCount          Int                   @default(0)
+  unityOptionsJson     String                @default("{}")
+  outlineJson          String                @default("{}")
+  visualIdentityJson   String                @default("{}")
+  visualStoryboardJson String                @default("{}")
+  slideImageSpecsJson  String                @default("{}")
+  styleFingerprintJson String                @default("{}")
+  styleStripStoredName String?
+  deckQualityStatus    String                @default("pending")
+  deckQualityReportJson String               @default("{}")
+  deckQualityAttempts Int                   @default(0)
+  initialImageBudget   Int                   @default(0)
+  imageCallsStarted    Int                   @default(0)
+  imageCallsCompleted  Int                   @default(0)
+  manualImageCalls     Int                   @default(0)
+  automaticRedraws     Int                   @default(0)
+  pdfStoredName        String?
+  pptStoredName        String?
+  coverStoredName      String?
+  codiaTaskId          String?
+  codiaResponseJson    String                @default("{}")
+  error                String?
+  startedAt            DateTime?
+  planReadyAt          DateTime?
+  confirmedAt          DateTime?
+  finishedAt           DateTime?
+  pdfGeneratedAt       DateTime?
+  pptGeneratedAt       DateTime?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  serviceId            String
+  service              Service               @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  employeeId           String
+  employee             Employee              @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  slides               DeckGenerationSlide[]
+  sources              DeckGenerationSource[]
+  evidence             DeckGenerationEvidence[]
+  visualEvidence       DeckGenerationVisualEvidence[]
+  pagePlans            DeckGenerationPagePlan[]
+  imageCalls           DeckGenerationImageCall[]
+
+  @@index([employeeId, createdAt])
+  @@index([serviceId, status, createdAt])
+}
+
+model DeckGenerationSource {
+  id            String                   @id @default(cuid())
+  kind          String                   @default("reference")
+  originalName  String
+  storedName    String                   @unique
+  mimeType      String                   @default("")
+  size          Int
+  status        String                   @default("queued")
+  extractedText String                   @default("")
+  metadataJson  String                   @default("{}")
+  error         String?
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+  runId         String
+  run           DeckGenerationRun        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  evidence      DeckGenerationEvidence[]
+  visualEvidence DeckGenerationVisualEvidence[]
+
+  @@index([runId, kind, createdAt])
+}
+
+model DeckGenerationEvidence {
+  id          String                @id @default(cuid())
+  locator     String                @default("")
+  content     String
+  summary     String                @default("")
+  tagsJson    String                @default("[]")
+  dataJson    String                @default("{}")
+  createdAt   DateTime              @default(now())
+  runId       String
+  run         DeckGenerationRun     @relation(fields: [runId], references: [id], onDelete: Cascade)
+  sourceId    String
+  source      DeckGenerationSource  @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@index([runId, sourceId])
+}
+
+model DeckGenerationVisualEvidence {
+  id                  String                @id @default(cuid())
+  kind                String                @default("context")
+  locator             String                @default("")
+  originalName        String                @default("")
+  storedName          String                @unique
+  thumbnailStoredName String                @unique
+  mimeType            String                @default("image/png")
+  width               Int                   @default(0)
+  height              Int                   @default(0)
+  size                Int                   @default(0)
+  contentHash         String
+  description         String                @default("")
+  tagsJson            String                @default("[]")
+  usefulness          Int                   @default(0)
+  createdAt           DateTime              @default(now())
+  runId               String
+  run                 DeckGenerationRun     @relation(fields: [runId], references: [id], onDelete: Cascade)
+  sourceId            String
+  source               DeckGenerationSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, contentHash])
+  @@index([runId, sourceId, usefulness])
+}
+
+model DeckGenerationPagePlan {
+  id              String             @id @default(cuid())
+  pageIndex       Int
+  title           String             @default("")
+  role            String             @default("content")
+  purpose         String             @default("")
+  blocksJson      String             @default("[]")
+  mustIncludeJson String             @default("[]")
+  conclusion      String             @default("")
+  density         String             @default("standard")
+  layoutType      String             @default("auto")
+  constraintMode  String             @default("polish")
+  evidenceJson    String             @default("[]")
+  visualEvidenceJson String          @default("[]")
+  directorContractJson String        @default("{}")
+  warningsJson    String             @default("[]")
+  locked          Boolean            @default(false)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  runId           String
+  run             DeckGenerationRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, pageIndex])
+  @@index([runId, pageIndex])
+}
+
+model DeckGenerationSlide {
+  id                String            @id @default(cuid())
+  slideIndex        Int
+  title             String            @default("")
+  role              String            @default("")
+  prompt            String            @default("")
+  specJson          String            @default("{}")
+  renderContractJson String            @default("{}")
+  storedName        String?
+  status            String            @default("queued")
+  qualityStatus     String            @default("pending")
+  qualityReportJson String            @default("{}")
+  qualityAttempts   Int               @default(0)
+  qualityCheckedAt  DateTime?
+  error             String?
+  regenerationCount Int               @default(0)
+  lastInstruction   String            @default("")
+  pendingImageCallKey String           @default("")
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  runId             String
+  run               DeckGenerationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  imageCalls        DeckGenerationImageCall[]
+
+  @@unique([runId, slideIndex])
+  @@index([runId, slideIndex])
+}
+
+model DeckGenerationImageCall {
+  id             String                @id @default(cuid())
+  requestKey     String                @unique
+  kind           String                @default("initial")
+  status         String                @default("reserved")
+  endpoint       String                @default("")
+  referenceCount Int                   @default(0)
+  transport      String                @default("none")
+  error          String?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime              @default(now())
+  runId          String
+  run            DeckGenerationRun     @relation(fields: [runId], references: [id], onDelete: Cascade)
+  slideId        String
+  slide          DeckGenerationSlide   @relation(fields: [slideId], references: [id], onDelete: Cascade)
+
+  @@index([runId, status, createdAt])
+  @@index([slideId, createdAt])
+}
+
+model ImageExplodePart {
+  id            String          @id @default(cuid())
+  label         String
+  kind          String
+  variant       String          @default("semantic")
+  semanticId    String          @default("")
+  parentSemanticId String?
+  groupKey      String?
+  storedName    String?
+  refinedName   String?
+  textContent   String?
+  x             Float
+  y             Float
+  width         Float
+  height        Float
+  zIndex        Int             @default(0)
+  confidence    Float           @default(0)
+  maskQuality   Float           @default(0)
+  extractMode   String          @default("local")
+  recommended   Boolean         @default(false)
+  selected      Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  runId         String
+  run           ImageExplodeRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, zIndex])
+  @@index([runId, groupKey])
+}
+
+model ImageExplodeTextLayer {
+  id          String          @id @default(cuid())
+  content     String
+  groupKey    String?
+  x           Float
+  y           Float
+  width       Float
+  height      Float
+  rotation    Float           @default(0)
+  styleJson   String          @default("{}")
+  complexity  String          @default("simple")
+  mode        String          @default("native")
+  confidence  Float           @default(0)
+  ocrConfidence Float         @default(0)
+  visionConfidence Float      @default(0)
+  semanticRole String         @default("unknown")
+  selected    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  runId       String
+  run         ImageExplodeRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, groupKey, createdAt])
+}
+
+model ImageExplodeEvent {
+  id        String          @id @default(cuid())
+  stage     String
+  status    String
+  detail    String          @default("")
+  createdAt DateTime        @default(now())
+  runId     String
+  run       ImageExplodeRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, createdAt])
+}

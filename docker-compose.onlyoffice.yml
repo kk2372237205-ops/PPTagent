@@ -1,0 +1,24 @@
+services:
+  onlyoffice:
+    image: onlyoffice/documentserver:latest
+    container_name: wzlcf-onlyoffice
+    restart: unless-stopped
+    ports:
+      - "18080:80"
+    environment:
+      JWT_ENABLED: "true"
+      JWT_SECRET: "${ONLYOFFICE_JWT_SECRET:-development-onlyoffice-secret}"
+      JWT_HEADER: "Authorization"
+      ALLOW_PRIVATE_IP_ADDRESS: "true"
+      ALLOW_META_IP_ADDRESS: "true"
+    volumes:
+      - onlyoffice_data:/var/www/onlyoffice/Data
+      - onlyoffice_logs:/var/log/onlyoffice
+      - onlyoffice_cache:/var/lib/onlyoffice
+      - ./onlyoffice/local-production-linux.json:/etc/onlyoffice/documentserver/local-production-linux.json:ro
+      - ./public/onlyoffice-plugins/wzlcf-image-bridge:/var/www/onlyoffice/documentserver/sdkjs-plugins/wzlcf-image-bridge:ro
+
+volumes:
+  onlyoffice_data:
+  onlyoffice_logs:
+  onlyoffice_cache:
