@@ -605,3 +605,37 @@ docker compose --env-file .env.production -f docker-compose.production.yml up -d
 2. Docker 未运行，未启动 ONLYOFFICE，未做在线编辑的交互验证。
 3. 未运行视觉测试脚本（会写 `.next-employee-visual/` 与 `.artifacts/`），视觉结论全部来自 CSS/JSX 静态分析。
 4. 未逐页核对"快速版页数上限"与"美化 PPT 逐页计划"的 UI 数字是否与后端约束完全一致。
+
+---
+
+## 十五、后续改造进展（2026-09-14，审计之后）
+
+本报告是**只读审计**，本身不改代码。审计完成后按《主干/树枝重构规划》连续推进了 20 轮，结果如下（详细提交记录见 `git log`）：
+
+| 阶段 | 结果 |
+| --- | --- |
+| 第 1 轮 | 建立 Git（基线 `8e2f313` / 标签 `baseline`）与统一验证门 `npm run verify` |
+| P1 清死代码 | 删除不可达的 `SmartStudio`、两处 `{false && …}` 死分支、7 个孤立 state；顺带修掉"美化 PPT 预填两条伪造逐页要求"（用户没填也会提交）与 7 处"OpenAI 生图"过时文案 |
+| P2 API 客户端 | 新增 `lib/employee-api.ts`（51 个方法），44 条接口路径只在一处定义 |
+| P3 纯 UI 组件 | 抽出图片工具、拖拽协议、共享类型、预览弹窗、粘贴托盘 |
+| P4 业务面板 | 抽出 16 个面板与页面（管理台、登录页、素材栏、图片工具、AI 助手、生成/美化 PPT 各面板等） |
+| P5 拆 DesignStudio | 373 → 194 行；三条链路的状态与请求编排收进 `lib/use-smart-studio-runs.ts` |
+| P6 CSS 收口 | `employee.css` 3426 行单文件 → 11 行入口 + `styles/` 下 9 个按层拆分的文件 |
+| P7 协作机制 | `AGENTS.md` 87965 字节 → 约 19000 字节（历史 766 行移入 `docs/archive/agents-history.md`）；新增 `components/employee/README.md` 模块索引；写入派活模板与分支规则 |
+
+**量化结果**
+
+| 指标 | 改造前 | 改造后 |
+| --- | --- | --- |
+| `components/employee-app.tsx` | 3753 行 | **422 行**（-89%） |
+| 员工端业务模块 | 1 个巨型文件 | **16 个组件 + 11 个主干模块 + 9 个样式层** |
+| 组件内手写 `fetch("/api/…")` | 60 处 | 4 处（其余走 `lib/employee-api.ts`） |
+| `AGENTS.md` | 87965 字节（超指令预算、会被截断） | 约 19000 字节（可完整读入） |
+| Git 回退能力 | 无（`.git` 已被删除） | 29 个提交 + `baseline` 标签 |
+
+**仍未做（需要项目 owner 决策或授权）**
+
+1. 审计第八节的 P0 六条安全项（OnlyOffice 回调 SSRF、默认 JWT 密钥、匿名请求改写订单归属、下载归属、SQLite 多容器、`.env` 密钥轮换）**一条都没改**——本轮只做结构改造，没动安全边界。
+2. 员工端侧栏/订单/消息/团队/设置仍是旧浅色配色（石墨黑只覆盖工作台）。改它是视觉决策，已把对应样式层位置标注清楚。
+3. P5 还剩 4 处 design-agent 族的 `fetch` 与 9 个内部函数在 `employee-app.tsx` 里，迁移模式已跑通，属可选收尾。
+4. 图片炸开的入口仍关闭（后端在线），接回是一次产品决策。
