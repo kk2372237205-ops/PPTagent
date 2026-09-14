@@ -52,3 +52,16 @@ export function stageLabel(stage: string): string {
 
 /** 解析 JSON，失败时返回兜底值（用于接口返回的 JSON 字符串字段） */
 export function safeJson(value: string, fallback: unknown) { try { return JSON.parse(value); } catch { return fallback; } }
+
+/* ------------------------------------------------------------------ *
+ * 日期格式
+ * ------------------------------------------------------------------ */
+
+export function formatDate(value: string) { return new Date(value).toLocaleDateString("zh-CN"); }
+
+export function formatDateTime(value: string) {
+  return new Date(value).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+/** 手机号脱敏：只保留前 3 位与后 4 位 */
+export function maskPhone(phone: string) { return `${phone.slice(0, 3)}****${phone.slice(-4)}`; }
