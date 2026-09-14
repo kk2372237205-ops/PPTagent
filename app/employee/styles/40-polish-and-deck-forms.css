@@ -1,0 +1,36 @@
+/* 40-polish-and-deck-forms.css — 由 employee.css 拆分而来（2026-09-14）。只影响对应模块；顺序由入口文件固定。 */
+/* PPT polish plan controls: contained horizontal chips and a stable back action. */
+.employee-root .polish-inline-run .polish-plan-review > article {
+  min-width:0;
+}
+
+.employee-root .polish-inline-run .polish-plan-tags {
+  display:flex !important;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px;
+  margin:16px 0 0;
+}
+
+.employee-root .polish-inline-run .polish-plan-tags i {
+  display:inline-flex;
+  flex:0 0 auto;
+  width:max-content;
+  max-width:100%;
+  min-height:28px;
+  height:auto;
+  align-items:center;
+  justify-content:center;
+  box-sizing:border-box;
+  padding:5px 10px;
+  border-radius:6px;
+  white-space:nowrap;
+  word-break:keep-all;
+  writing-mode:horizontal-tb;
+  line-height:1.2;
+}
+
+.employee-root .polish-inline-run .polish-plan-back {
+  white-space:nowrap;
+}
+

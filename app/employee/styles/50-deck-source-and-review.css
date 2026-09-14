@@ -1,0 +1,282 @@
+/* 50-deck-source-and-review.css — 由 employee.css 拆分而来（2026-09-14）。只影响对应模块；顺序由入口文件固定。 */
+/* Generate PPT quick/advanced intake. Scoped away from PPT polish and image generation. */
+.employee-root .deck-create-form {
+  display:grid;
+  gap:16px;
+  margin:0 14px 14px;
+  padding:18px;
+  border:1px solid #2E3744;
+  border-radius:8px;
+  background:#161B23;
+}
+.employee-root .deck-create-form > label,
+.employee-root .deck-create-form section > label {
+  min-width:0;
+}
+.employee-root .deck-version-switch {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
+.employee-root .deck-version-switch > button,
+.employee-root .deck-palette-grid > button {
+  min-height:66px;
+  margin:0;
+  border:1px solid #343D4D;
+  border-radius:8px;
+  background:#1A202A;
+  color:#F3F4F6;
+  padding:12px 14px;
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  gap:11px;
+  text-align:left;
+  cursor:pointer;
+}
+.employee-root .deck-version-switch > button:hover,
+.employee-root .deck-palette-grid > button:hover {
+  background:#202733;
+}
+.employee-root .deck-version-switch > button.active,
+.employee-root .deck-palette-grid > button.active {
+  border-color:#6E8F86;
+  background:#1D2828;
+  box-shadow:0 0 0 1px rgba(110,143,134,.18) inset;
+}
+.employee-root .deck-version-switch svg,
+.employee-root .deck-palette-grid svg {
+  flex:0 0 auto;
+  width:20px;
+  height:20px;
+  color:#86A8B5;
+}
+.employee-root .deck-version-switch span,
+.employee-root .deck-palette-grid span,
+.employee-root .deck-theme-reference div {
+  min-width:0;
+  display:grid;
+  gap:3px;
+}
+.employee-root .deck-version-switch b,
+.employee-root .deck-palette-grid b,
+.employee-root .deck-theme-reference b {
+  color:#F3F4F6;
+  font-size:12px;
+}
+.employee-root .deck-version-switch small,
+.employee-root .deck-palette-grid small,
+.employee-root .deck-theme-reference span {
+  color:#8E98A7;
+  font-size:10px;
+  line-height:1.45;
+}
+.employee-root .deck-create-grid {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+.employee-root .deck-outline-input,
+.employee-root .deck-source-section,
+.employee-root .deck-palette-section {
+  min-width:0;
+  display:grid;
+  gap:10px;
+  padding:14px;
+  border:1px solid #2A323E;
+  border-radius:8px;
+  background:#141920;
+}
+.employee-root .deck-outline-input > header,
+.employee-root .deck-source-section > header,
+.employee-root .deck-palette-section > header {
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+.employee-root .deck-outline-input > header > div,
+.employee-root .deck-source-section > header > div,
+.employee-root .deck-palette-section > header {
+  min-width:0;
+}
+.employee-root .deck-outline-input header b,
+.employee-root .deck-source-section header b,
+.employee-root .deck-palette-section header b {
+  display:block;
+  color:#F3F4F6;
+  font-size:12px;
+}
+.employee-root .deck-outline-input header span,
+.employee-root .deck-source-section header span,
+.employee-root .deck-palette-section header span {
+  display:block;
+  margin-top:4px;
+  color:#8E98A7;
+  font-size:10px;
+}
+.employee-root .deck-outline-input header button,
+.employee-root .deck-source-list button {
+  flex:0 0 auto;
+  border:1px solid #3B4656;
+  border-radius:6px;
+  background:#202733;
+  color:#DCE3EA;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:7px 9px;
+  font-size:10px;
+  font-weight:800;
+  cursor:pointer;
+}
+.employee-root .deck-outline-input header button {
+  min-width:88px;
+  justify-content:center;
+  white-space:nowrap;
+  writing-mode:horizontal-tb;
+}
+.employee-root .deck-outline-input header svg,
+.employee-root .deck-source-list button svg {
+  width:14px;
+  height:14px;
+}
+.employee-root .deck-outline-input textarea {
+  min-height:150px;
+}
+.employee-root .deck-outline-file {
+  border:1px solid #343D4D;
+  border-radius:6px;
+  background:#1A202A;
+  padding:8px 10px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  color:#DCE3EA;
+  font-size:10px;
+}
+.employee-root .deck-outline-file > span {
+  flex:1;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.employee-root .deck-outline-file button {
+  border:0;
+  background:transparent;
+  color:#8E98A7;
+  padding:2px;
+  cursor:pointer;
+}
+.employee-root .deck-outline-file svg {
+  width:15px;
+  height:15px;
+}
+.employee-root .deck-source-drop {
+  min-height:105px;
+  margin:0;
+  border-color:#44515F;
+  border-radius:8px;
+  background:#1A202A;
+}
+.employee-root .deck-source-drop:hover {
+  border-color:#6E8F86;
+  background:#202733;
+}
+.employee-root .deck-source-drop b {
+  color:#EEF1F4;
+}
+.employee-root .deck-source-list {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+}
+.employee-root .deck-source-list article {
+  min-width:0;
+  border:1px solid #303A47;
+  border-radius:6px;
+  background:#1A202A;
+  padding:9px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.employee-root .deck-source-list article > svg {
+  flex:0 0 auto;
+  width:16px;
+  height:16px;
+  color:#86A8B5;
+}
+.employee-root .deck-source-list article > span {
+  min-width:0;
+  flex:1;
+  display:grid;
+  gap:2px;
+}
+.employee-root .deck-source-list article b,
+.employee-root .deck-source-list article small {
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.employee-root .deck-source-list article b {
+  color:#E8EBEF;
+  font-size:10px;
+}
+.employee-root .deck-source-list article small {
+  color:#7D8795;
+  font-size:9px;
+}
+.employee-root .deck-palette-grid {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+}
+.employee-root .deck-theme-reference {
+  min-height:92px;
+  border:1px dashed #44515F;
+  border-radius:8px;
+  background:#1A202A;
+  padding:10px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  cursor:pointer;
+}
+.employee-root .deck-theme-reference:hover {
+  border-color:#6E8F86;
+  background:#202733;
+}
+.employee-root .deck-theme-reference > svg {
+  flex:0 0 auto;
+  width:26px;
+  height:26px;
+  color:#86A8B5;
+}
+.employee-root .deck-theme-reference > img {
+  width:116px;
+  aspect-ratio:16/9;
+  border-radius:5px;
+  object-fit:cover;
+}
+.employee-root .deck-create-form .deck-unity-options {
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  margin:0;
+}
+.employee-root .deck-create-form .deck-unity-options label {
+  border-color:#303A47;
+  border-radius:6px;
+  background:#1A202A;
+}
+.employee-root .deck-create-form > .deck-create-submit {
+  width:100%;
+  min-height:44px;
+  margin:0;
+  border-radius:7px;
+  background:#547A87;
+}
+.employee-root .deck-create-form > .deck-create-submit:hover {
+  background:#618B99;
+}
+
+

@@ -1,0 +1,228 @@
+/* 25-color-refinement.css — 由 employee.css 拆分而来（2026-09-14）。只影响对应模块；顺序由入口文件固定。 */
+/* Product-grade color refinement: calmer graphite, softer actions */
+.employee-root .ppt-workspace,
+.employee-root .design-studio,
+.employee-root .explode-studio {
+  background:
+    radial-gradient(circle at 48% 0,rgba(88,121,138,.13),transparent 32%),
+    linear-gradient(180deg,rgba(198,161,91,.035),transparent 24%),
+    var(--bg-app);
+}
+
+.employee-root .workspace-header,
+.employee-root .ai-panel,
+.employee-root .material-rail,
+.employee-root .design-run-history {
+  background:var(--bg-sidebar);
+}
+
+.employee-root .design-run,
+.employee-root .design-deck-run,
+.employee-root .deck-generation-form,
+.employee-root .design-mentor-large-panel,
+.employee-root .deck-plan-review article,
+.employee-root .deck-progress,
+.employee-root .deck-slide-grid article,
+.employee-root .polish-page-notes,
+.employee-root .explode-source,
+.employee-root .explode-run {
+  background:var(--bg-panel);
+  border-color:var(--border-subtle);
+}
+
+.employee-root .design-result-grid,
+.employee-root .deck-plan-review,
+.employee-root .deck-slide-grid,
+.employee-root .polish-planner {
+  color:var(--text-primary);
+}
+
+.employee-root .workspace-actions button:nth-child(2),
+.employee-root .workspace-actions .design-entry,
+.employee-root .workspace-actions .explode-entry,
+.employee-root .workspace-smart-mode,
+.employee-root .office-file-entry button,
+.employee-root .office-placeholder-upload,
+.employee-root .ai-composer button.ai-generate,
+.employee-root .material-pager .material-open-all,
+.employee-root .image-tools-toggle,
+.employee-root .image-tools-card footer button.save,
+.employee-root .image-tools-card footer a.save,
+.employee-root .design-run-head .design-apply,
+.employee-root .design-deck-run .design-run-head .design-apply,
+.employee-root .polish-inline-run .design-run-head .design-apply,
+.employee-root .deck-generation-form > button,
+.employee-root .deck-plan-review footer .design-apply,
+.employee-root .deck-progress button,
+.employee-root .polish-page-note-editor button,
+.employee-root .design-mentor-actions .design-start-inline,
+.employee-root .design-mentor-inline-tools .design-start-inline,
+.employee-root .explode-run > header .design-apply,
+.employee-root .explode-refine-panel footer button {
+  background:linear-gradient(135deg,#344F5B,#58798A);
+  border-color:#506A78;
+  color:#F7F8FA;
+  box-shadow:0 10px 24px rgba(0,0,0,.22);
+}
+
+.employee-root .workspace-actions button:nth-child(2):hover,
+.employee-root .workspace-actions .design-entry:hover,
+.employee-root .workspace-actions .explode-entry:hover,
+.employee-root .workspace-smart-mode:hover,
+.employee-root .material-pager .material-open-all:hover,
+.employee-root .image-tools-toggle:hover,
+.employee-root .deck-generation-form > button:hover,
+.employee-root .deck-progress button:hover {
+  background:linear-gradient(135deg,#3D5D69,#668798);
+  border-color:#6D8EA0;
+}
+
+.employee-root .workspace-actions button.finish,
+.employee-root .explode-refine-panel footer button.refine-accept {
+  background:linear-gradient(135deg,#3F6B59,#5E8C73);
+  border-color:#658C78;
+  color:#F7FAF8;
+}
+
+.employee-root .workspace-actions button,
+.employee-root .workspace-header > button,
+.employee-root .design-run-head .design-secondary,
+.employee-root .design-deck-run .design-run-head .design-secondary,
+.employee-root .polish-inline-run .design-run-head .design-secondary,
+.employee-root .deck-slide-grid footer button,
+.employee-root .material-pager button,
+.employee-root .image-tools-card footer button,
+.employee-root .image-tools-card footer a {
+  background:#18202A;
+  border-color:#303946;
+  color:#CFD5DD;
+}
+
+.employee-root .workspace-actions button:hover,
+.employee-root .workspace-header > button:hover,
+.employee-root .design-run-head .design-secondary:hover,
+.employee-root .deck-slide-grid footer button:hover,
+.employee-root .material-pager button:hover,
+.employee-root .image-tools-card footer button:hover,
+.employee-root .image-tools-card footer a:hover {
+  background:#222B36;
+  border-color:#44515F;
+  color:#F3F4F6;
+}
+
+.employee-root .design-board > header > span,
+.employee-root .deck-generation-overlay > header span,
+.employee-root .deck-plan-review article > span,
+.employee-root .design-layout > span,
+.employee-root .polish-page-note-list b,
+.employee-root .explode-intro > span,
+.employee-root .explode-text-recovery > header span {
+  color:#BFA46D;
+}
+
+.employee-root .design-run-history span,
+.employee-root .deck-slide-grid article header span,
+.employee-root .design-status,
+.employee-root .deck-progress b,
+.employee-root .polish-plan-tags i,
+.employee-root .explode-events b,
+.employee-root .explode-history span,
+.employee-root .explode-text-recovery > header > b {
+  color:#8EA4B0;
+}
+
+.employee-root .design-run-history button.active span,
+.employee-root .design-run-history button:hover span {
+  color:#C6A15B;
+}
+
+.employee-root .deck-progress b {
+  color:#9CBCC7;
+}
+
+.employee-root .deck-slide-grid article header span {
+  color:#8FB2BE;
+}
+
+.employee-root .deck-slide-grid article header span::selection {
+  background:rgba(198,161,91,.25);
+}
+
+.employee-root .polish-plan-tags i {
+  background:rgba(198,161,91,.08);
+  border-color:rgba(198,161,91,.28);
+  color:#D3BC8A;
+}
+
+.employee-root .design-status.completed,
+.employee-root .deck-slide-grid article header span,
+.employee-root .image-tools-card footer p.ok,
+.employee-root .ai-health.ok {
+  color:#A8D2BA;
+}
+
+.employee-root .design-status.failed,
+.employee-root .design-status.cancelled,
+.employee-root .ai-health.error,
+.employee-root .image-tools-card footer p.error {
+  color:#E3A1A1;
+}
+
+.employee-root .ai-panel > header svg,
+.employee-root .material-rail > div > svg,
+.employee-root .image-tools-workbench article > div svg,
+.employee-root .polish-upload-zone svg,
+.employee-root .deck-reference-drop svg,
+.employee-root .deck-waiting svg,
+.employee-root .explode-empty svg {
+  color:#7EA4B0;
+}
+
+.employee-root .ai-tabs button.active,
+.employee-root .design-tool-tabs button.active,
+.employee-root .image-tools-card > aside button.active,
+.employee-root .design-batch-picker button.active,
+.employee-root .design-quality-switch button.active {
+  background:linear-gradient(135deg,rgba(88,121,138,.22),rgba(198,161,91,.08));
+  border-color:#6C7C73;
+  color:#F4F5F6;
+  box-shadow:none;
+}
+
+.employee-root .design-tool-tabs button.active svg,
+.employee-root .design-tool-tabs svg {
+  color:#8CAEB9;
+}
+
+.employee-root .design-material-grid button.selected,
+.employee-root .design-reference-strip button.primary,
+.employee-root .explode-source-grid button.selected,
+.employee-root .explode-source-grid article.selected,
+.employee-root .explode-parts article.selected {
+  border-color:#BFA46D;
+  box-shadow:0 0 0 2px rgba(198,161,91,.18);
+}
+
+.employee-root .design-material-grid button.selected {
+  animation:none;
+}
+
+.employee-root .design-material-grid button.selected::after {
+  display:none;
+}
+
+.employee-root .office-drop-overlay,
+.employee-root .image-tools-card main.is-dragging,
+.employee-root .polish-upload-zone:hover,
+.employee-root .polish-upload-zone.is-dragging,
+.employee-root .deck-reference-drop:hover {
+  background:rgba(26,41,52,.78);
+  border-color:#607988;
+}
+
+.employee-root .design-mentor::before {
+  background:#F0EDE6;
+  border-color:#C9B47F;
+  color:#20242A;
+}
+

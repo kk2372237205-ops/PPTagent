@@ -1,0 +1,345 @@
+/* 20-graphite-workbench.css — 由 employee.css 拆分而来（2026-09-14）。只影响对应模块；顺序由入口文件固定。 */
+/* Graphite workbench theme */
+.employee-root .ppt-workspace,
+.employee-root .design-studio,
+.employee-root .explode-studio {
+  color:var(--text-primary);
+  background:
+    radial-gradient(circle at 46% 10%,rgba(59,130,246,.09),transparent 34%),
+    linear-gradient(180deg,rgba(214,168,79,.04),transparent 26%),
+    var(--bg-app);
+}
+
+.employee-root .workspace-header {
+  background:var(--bg-topbar);
+  border-bottom-color:var(--border-subtle);
+  color:var(--text-primary);
+}
+
+.employee-root .workspace-header > button,
+.employee-root .workspace-actions button,
+.employee-root .material-pager button,
+.employee-root .design-run-head button,
+.employee-root .design-mentor-actions button,
+.employee-root .design-mentor-actions label,
+.employee-root .design-mentor-inline-tools button,
+.employee-root .design-mentor-inline-tools label,
+.employee-root .deck-plan-review footer button,
+.employee-root .deck-progress a,
+.employee-root .deck-slide-grid footer button,
+.employee-root .image-tools-card main > header button,
+.employee-root .image-tools-card footer button,
+.employee-root .image-tools-card footer a,
+.employee-root .explode-source footer button,
+.employee-root .explode-run > header .design-apply,
+.employee-root .explode-refine,
+.employee-root .explode-text-recovery footer button,
+.employee-root .explode-text-actions button {
+  background:var(--bg-card);
+  border-color:var(--border-strong);
+  color:var(--text-secondary);
+  box-shadow:none;
+}
+
+.employee-root .workspace-header > button:hover,
+.employee-root .workspace-actions button:hover,
+.employee-root .material-pager button:hover,
+.employee-root .design-run-head button:hover,
+.employee-root .deck-slide-grid footer button:hover,
+.employee-root .image-tools-card main > header button:hover,
+.employee-root .image-tools-card footer button:hover,
+.employee-root .image-tools-card footer a:hover,
+.employee-root .explode-refine:hover,
+.employee-root .explode-text-actions button:hover {
+  background:var(--bg-card-hover);
+  border-color:rgba(59,130,246,.42);
+  color:var(--text-primary);
+}
+
+.employee-root .workspace-actions button:nth-child(2),
+.employee-root .workspace-actions .design-entry,
+.employee-root .workspace-actions .explode-entry,
+.employee-root .workspace-smart-mode,
+.employee-root .office-file-entry button,
+.employee-root .office-placeholder-upload,
+.employee-root .ai-composer button.ai-generate,
+.employee-root .material-pager .material-open-all,
+.employee-root .image-tools-toggle,
+.employee-root .image-tools-card footer button.save,
+.employee-root .image-tools-card footer a.save,
+.employee-root .design-run-head .design-apply,
+.employee-root .design-deck-run .design-run-head .design-apply,
+.employee-root .polish-inline-run .design-run-head .design-apply,
+.employee-root .deck-generation-form > button,
+.employee-root .deck-plan-review footer .design-apply,
+.employee-root .deck-progress button,
+.employee-root .polish-page-note-editor button,
+.employee-root .design-mentor-actions .design-start-inline,
+.employee-root .design-mentor-inline-tools .design-start-inline {
+  background:linear-gradient(135deg,#2F6F8F,var(--primary));
+  border-color:rgba(59,130,246,.38);
+  color:var(--text-primary);
+  box-shadow:0 12px 28px rgba(5,12,22,.24);
+}
+
+.employee-root .workspace-actions button.finish,
+.employee-root .explode-refine-panel footer button.refine-accept {
+  background:linear-gradient(135deg,#2E6B58,#4C8A72);
+  border-color:rgba(34,197,94,.32);
+  color:var(--text-primary);
+}
+
+.employee-root .workspace-actions .toggle-ai {
+  border-color:var(--border-strong);
+  color:var(--text-secondary);
+}
+
+.employee-root .onlyoffice-stage {
+  background:var(--bg-editor);
+}
+
+.employee-root .office-file-entry,
+.employee-root .ai-panel,
+.employee-root .material-rail,
+.employee-root .image-tools-card,
+.employee-root .design-material-drawer,
+.employee-root .design-run-history,
+.employee-root .design-mentor-panel,
+.employee-root .design-mentor-large-panel,
+.employee-root .deck-generation-overlay,
+.employee-root .explode-refine-panel,
+.employee-root .explode-preview-modal section {
+  background:rgba(21,26,34,.98);
+  border-color:var(--border-subtle);
+  color:var(--text-primary);
+  box-shadow:0 22px 70px rgba(0,0,0,.36);
+}
+
+.employee-root .material-rail,
+.employee-root .ai-tabs,
+.employee-root .ai-model-row,
+.employee-root .ai-composer,
+.employee-root .image-tools-card > aside,
+.employee-root .design-mentor-panel header,
+.employee-root .design-mentor-large-panel header,
+.employee-root .design-material-drawer header,
+.employee-root .design-material-drawer footer,
+.employee-root .deck-slide-grid footer,
+.employee-root .deck-slide-grid article > header,
+.employee-root .polish-page-notes header,
+.employee-root .deck-plan-review footer {
+  background:var(--bg-sidebar);
+  border-color:var(--border-subtle);
+}
+
+.employee-root .ai-feed article,
+.employee-root .ai-chat-feed article,
+.employee-root .ai-job-card,
+.employee-root .material-rail article,
+.employee-root .image-tools-card > aside button,
+.employee-root .image-tools-workbench article,
+.employee-root .design-material-grid button,
+.employee-root .design-material-drawer footer button,
+.employee-root .design-drawer-open,
+.employee-root .design-run,
+.employee-root .design-deck-run,
+.employee-root .design-stage-list article,
+.employee-root .design-preview,
+.employee-root .design-layout,
+.employee-root .design-batch-picker,
+.employee-root .design-quality-switch,
+.employee-root .design-tool-tabs button,
+.employee-root .deck-generation-form,
+.employee-root .deck-waiting,
+.employee-root .deck-plan-review article,
+.employee-root .deck-progress,
+.employee-root .deck-slide-grid article,
+.employee-root .polish-upload-zone,
+.employee-root .polish-option-grid label,
+.employee-root .polish-page-notes,
+.employee-root .polish-page-note-list article,
+.employee-root .polish-plan-tags i,
+.employee-root .deck-reference-drop,
+.employee-root .deck-reference-files span,
+.employee-root .explode-source,
+.employee-root .explode-run,
+.employee-root .explode-events span,
+.employee-root .explode-parts article,
+.employee-root .explode-empty,
+.employee-root .explode-history button,
+.employee-root .explode-text-recovery,
+.employee-root .explode-text-recovery article,
+.employee-root .explode-text-actions {
+  background:var(--bg-card);
+  border-color:var(--border-subtle);
+  color:var(--text-primary);
+  box-shadow:none;
+}
+
+.employee-root .ai-tabs button,
+.employee-root .ai-model-row select,
+.employee-root .ai-composer textarea,
+.employee-root .ai-composer select,
+.employee-root .deck-generation-form input,
+.employee-root .deck-generation-form select,
+.employee-root .deck-generation-form textarea,
+.employee-root .deck-plan-style select,
+.employee-root .design-mentor-panel textarea,
+.employee-root .design-mentor-actions select,
+.employee-root .deck-generation-overlay select,
+.employee-root .deck-generation-overlay > header button,
+.employee-root .polish-page-note-editor input,
+.employee-root .polish-page-note-editor textarea,
+.employee-root .explode-text-recovery textarea {
+  background:var(--bg-input);
+  border-color:var(--border-strong);
+  color:var(--text-primary);
+}
+
+.employee-root .ai-tabs button.active,
+.employee-root .design-tool-tabs button.active,
+.employee-root .image-tools-card > aside button.active,
+.employee-root .design-batch-picker button.active,
+.employee-root .design-quality-switch button.active {
+  background:linear-gradient(135deg,rgba(59,130,246,.18),rgba(214,168,79,.08));
+  border-color:rgba(214,168,79,.55);
+  color:var(--text-primary);
+  box-shadow:0 0 0 1px rgba(214,168,79,.12) inset;
+}
+
+.employee-root .design-board > header > span,
+.employee-root .deck-generation-overlay > header span,
+.employee-root .deck-plan-review article > span,
+.employee-root .design-layout > span,
+.employee-root .design-run-history span,
+.employee-root .design-status,
+.employee-root .deck-progress b,
+.employee-root .deck-slide-grid article header span,
+.employee-root .polish-page-note-list b,
+.employee-root .polish-plan-tags i,
+.employee-root .explode-intro > span,
+.employee-root .explode-events b,
+.employee-root .explode-history span,
+.employee-root .explode-text-recovery > header span,
+.employee-root .explode-text-recovery > header > b {
+  color:var(--accent);
+}
+
+.employee-root .workspace-header > div:nth-child(2) span,
+.employee-root .workspace-responsible,
+.employee-root .ai-panel > header small,
+.employee-root .ai-feed article p,
+.employee-root .ai-chat-feed article small,
+.employee-root .material-rail > div small,
+.employee-root .design-material-drawer small,
+.employee-root .design-board > header p::after,
+.employee-root .design-run-head small,
+.employee-root .design-layout p,
+.employee-root .design-layout small,
+.employee-root .design-run-history small,
+.employee-root .deck-generation-form label,
+.employee-root .deck-waiting,
+.employee-root .deck-plan-review p,
+.employee-root .deck-plan-review small,
+.employee-root .deck-plan-review li small,
+.employee-root .deck-progress span,
+.employee-root .deck-slide-grid article > p,
+.employee-root .polish-upload-zone span,
+.employee-root .polish-page-notes header span,
+.employee-root .polish-page-note-list p,
+.employee-root .deck-reference-drop small,
+.employee-root .explode-intro p,
+.employee-root .explode-source small,
+.employee-root .explode-parts footer small,
+.employee-root .explode-empty p,
+.employee-root .explode-refine-panel p,
+.employee-root .explode-text-recovery p,
+.employee-root .explode-text-actions span {
+  color:var(--text-secondary);
+}
+
+.employee-root .design-board > header h1::after,
+.employee-root .design-run-head h2,
+.employee-root .deck-generation-overlay > header h2,
+.employee-root .deck-plan-review h3,
+.employee-root .deck-plan-review li b,
+.employee-root .deck-slide-grid article b,
+.employee-root .polish-page-notes header b,
+.employee-root .explode-intro h1,
+.employee-root .explode-run h2,
+.employee-root .explode-empty h2,
+.employee-root .explode-refine-panel h2,
+.employee-root .explode-text-recovery h3,
+.employee-root .explode-text-recovery article b {
+  color:var(--text-primary);
+}
+
+.employee-root .ai-panel > header svg,
+.employee-root .material-rail > div > svg,
+.employee-root .image-tools-workbench article > div svg,
+.employee-root .polish-upload-zone svg,
+.employee-root .deck-reference-drop svg,
+.employee-root .deck-waiting svg,
+.employee-root .explode-empty svg {
+  color:var(--info);
+}
+
+.employee-root .design-material-grid button.selected,
+.employee-root .design-reference-strip button.primary,
+.employee-root .explode-source-grid button.selected,
+.employee-root .explode-source-grid article.selected,
+.employee-root .explode-parts article.selected {
+  border-color:var(--accent);
+  box-shadow:0 0 0 2px rgba(214,168,79,.24),0 0 22px rgba(214,168,79,.16);
+}
+
+.employee-root .design-status.completed,
+.employee-root .ai-health.ok,
+.employee-root .image-tools-card footer p.ok,
+.employee-root .auto-explode-status.completed,
+.employee-root .explode-events .completed {
+  color:#BFEAD0;
+  border-color:rgba(34,197,94,.35);
+  background:rgba(34,197,94,.11);
+}
+
+.employee-root .design-status.failed,
+.employee-root .design-status.cancelled,
+.employee-root .ai-health.error,
+.employee-root .ai-job-card.failed,
+.employee-root .design-error,
+.employee-root .auto-explode-status.failed,
+.employee-root .auto-explode-status.cancelled,
+.employee-root .image-tools-card footer p.error,
+.employee-root .explode-events .failed {
+  color:#FFD0D0;
+  border-color:rgba(239,68,68,.34);
+  background:rgba(239,68,68,.11);
+}
+
+.employee-root .auto-explode-status.warning {
+  color:#FFE8B5;
+  border-color:rgba(214,168,79,.42);
+  background:rgba(214,168,79,.12);
+}
+
+.employee-root .office-drop-overlay,
+.employee-root .image-tools-card main.is-dragging,
+.employee-root .polish-upload-zone:hover,
+.employee-root .polish-upload-zone.is-dragging,
+.employee-root .deck-reference-drop:hover {
+  background:rgba(30,58,95,.52);
+  border-color:rgba(59,130,246,.55);
+  box-shadow:inset 0 0 0 1px rgba(59,130,246,.1);
+}
+
+.employee-root .design-mentor::before {
+  background:rgba(243,244,246,.96);
+  color:var(--text-inverse);
+  border-color:rgba(214,168,79,.34);
+}
+
+.employee-root .workspace-smart-mode:hover {
+  box-shadow:0 16px 38px rgba(5,12,22,.35),0 0 0 1px rgba(214,168,79,.2) inset;
+}
+
