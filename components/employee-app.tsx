@@ -4,11 +4,12 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ImagePreviewModal, type ImagePreview } from "@/components/employee/image-preview-modal";
+import { PptPasteTray } from "@/components/employee/ppt-paste-tray";
 import { generatedImageDownloadUrl, generatedImageUrl } from "@/lib/employee-image-urls";
-import { blobToDataUrl, blobToPngBlob, copyPngBlobToClipboard, cropDataUrlToPngDataUrl, dataUrlToBlob, finishImageDrag, imageFilesFromList, readImageDragId, writeImageDragData } from "@/lib/employee-image-tools";
+import { cropDataUrlToPngDataUrl, dataUrlToBlob, finishImageDrag, imageFilesFromList, readImageDragId, writeImageDragData } from "@/lib/employee-image-tools";
 import {
   Activity, ArrowRight, Bot, BriefcaseBusiness, Check, ChevronLeft,
-  ChevronRight, ChevronUp, ChevronDown, Clipboard, Copy, Download, FileText, ImagePlus, LayoutDashboard, LoaderCircle,
+  ChevronRight, ChevronUp, ChevronDown, Copy, Download, FileText, ImagePlus, LayoutDashboard, LoaderCircle,
   LogOut, MessageCircle, Monitor, Paperclip, Save, Scissors, Send,
   Maximize2, QrCode, RefreshCw, School, Settings, ShieldCheck, Sparkles, Trash2, Upload,
   UserCheck, UserCog, Users, UserX, WandSparkles, X
@@ -2256,7 +2257,6 @@ declare global {
 }
 
 
-type PasteTrayItem = { name: string; previewUrl: string; dataUrl: string; pngBlob: Blob };
 type ImageToolSource = { imageId?: string; file?: File; previewUrl: string; name: string; ownedUrl: boolean };
 type ImageToPptResult = { fileName: string; downloadUrl: string; codiaTaskId?: string; sourceName?: string };
 type PptExtractedImage = {
@@ -2892,108 +2892,6 @@ function ImageToolsPanel({ service, employee, refresh, notify }: { service: Serv
   </section>;
 }
 
-function PptPasteTray({ notify }: { notify: (text: string) => void }) {
-  const [item, setItem] = useState<PasteTrayItem | null>(null);
-  const [status, setStatus] = useState<{ kind: "idle" | "ok" | "error" | "busy"; text: string }>({
-    kind: "idle",
-    text: "拖入一张图片，复制后在 PPT 当前页粘贴。"
-  });
-  const [dragging, setDragging] = useState(false);
-  const itemRef = useRef<PasteTrayItem | null>(null);
-
-  const replaceItem = useCallback((next: PasteTrayItem | null) => {
-    setItem(current => {
-      if (current) URL.revokeObjectURL(current.previewUrl);
-      itemRef.current = next;
-      return next;
-    });
-  }, []);
-
-  useEffect(() => () => {
-    if (itemRef.current) URL.revokeObjectURL(itemRef.current.previewUrl);
-  }, []);
-
-  async function trayItemFromBlob(blob: Blob, name: string) {
-    const pngBlob = await blobToPngBlob(blob);
-    const dataUrl = await blobToDataUrl(pngBlob);
-    return {
-      name: name.replace(/\.[a-z0-9]+$/i, "") + ".png",
-      previewUrl: URL.createObjectURL(pngBlob),
-      dataUrl,
-      pngBlob
-    };
-  }
-
-  async function copyItem(next: PasteTrayItem) {
-    const mode = await copyPngBlobToClipboard(next.pngBlob, next.dataUrl);
-    setStatus({ kind: "ok", text: mode === "native" ? "已复制，点击 PPT 当前页后按 Ctrl+V。" : "已用兼容模式复制，点击 PPT 当前页后按 Ctrl+V。" });
-    notify("图片已复制到剪贴板");
-  }
-
-  async function acceptBlob(blob: Blob, name: string) {
-    setStatus({ kind: "busy", text: "正在准备剪贴板图片..." });
-    const next = await trayItemFromBlob(blob, name);
-    replaceItem(next);
-    try {
-      await copyItem(next);
-    } catch (reason) {
-      setStatus({ kind: "error", text: reason instanceof Error ? reason.message : "自动复制失败，请点重新复制。" });
-    }
-  }
-
-  async function acceptGeneratedImage(imageId: string) {
-    const response = await fetch(generatedImageUrl(imageId), { cache: "no-store" });
-    if (!response.ok) throw new Error("素材图片读取失败，请刷新后重试。");
-    await acceptBlob(await response.blob(), "wzlcf-material-" + imageId);
-  }
-
-  async function handleDrop(event: DragEvent<HTMLElement>) {
-    event.preventDefault();
-    event.stopPropagation();
-    setDragging(false);
-    const localImage = imageFilesFromList(event.dataTransfer.files)[0];
-    const imageId = readImageDragId(event.dataTransfer);
-    try {
-      if (localImage) return await acceptBlob(localImage, localImage.name || "wzlcf-local-image.png");
-      if (imageId) return await acceptGeneratedImage(imageId);
-      setStatus({ kind: "error", text: "请拖入 AI 图片、素材图片或本地图片文件。" });
-    } catch (reason) {
-      setStatus({ kind: "error", text: reason instanceof Error ? reason.message : "图片复制失败，请稍后重试。" });
-    }
-  }
-
-  async function recopy() {
-    if (!item) return;
-    setStatus({ kind: "busy", text: "正在重新复制..." });
-    try {
-      await copyItem(item);
-    } catch (reason) {
-      setStatus({ kind: "error", text: reason instanceof Error ? reason.message : "重新复制失败，请使用下载兜底。" });
-    }
-  }
-
-  function clear() {
-    replaceItem(null);
-    setStatus({ kind: "idle", text: "拖入一张图片，复制后在 PPT 当前页粘贴。" });
-  }
-
-  return <aside className={"ppt-paste-tray " + (dragging ? "is-dragging" : "")}
-    onDragEnter={event => { event.preventDefault(); setDragging(true); }}
-    onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; setDragging(true); }}
-    onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false); }}
-    onDrop={event => { void handleDrop(event); }}>
-    <div className="ppt-paste-preview">{item ? <img src={item.previewUrl} alt="PPT 粘贴托盘图片"/> : <Clipboard/>}</div>
-    <div className="ppt-paste-body">
-      <header><b>PPT 粘贴托盘</b><span>无刷新插图</span></header>
-      <p className={status.kind}>{status.text}</p>
-      <div>
-        <button onClick={recopy} disabled={!item || status.kind === "busy"}><Clipboard/>重新复制</button>
-        {item ? <a href={item.previewUrl} download={item.name}><Download/>下载兜底</a> : <button disabled><Download/>下载兜底</button>}
-        <button onClick={clear} disabled={!item}><Trash2/>清空</button>
-      </div>
-    </div>
-  </aside>;
-}
 
 function MaterialRail({ service, employee, refresh, notify }: { service: Service; employee: Employee; refresh: (silent?: boolean) => Promise<void>; notify: (text: string) => void }) {
   const [page, setPage] = useState(Number.MAX_SAFE_INTEGER);
