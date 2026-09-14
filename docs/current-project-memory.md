@@ -39,6 +39,10 @@ PPTagent/WZLCF 是一套 PPT 定制交付系统，包含两类界面：
 - 模块化改造第 4 轮（2026-09-14）已完成 P3 第一批抽取：提交 `1eab9ef`。新建 `lib/employee-image-urls.ts`（图片地址拼装）、`lib/employee-image-tools.ts`（blob/dataURL/PNG/canvas 转换与剪贴板）、`components/employee/image-preview-modal.tsx`（图片放大预览弹窗）。`components/employee-app.tsx` 从 3539 行降到 3422 行，diff 为**新增 3 行（import）+ 删除 113 行**，无逻辑改动。
 - `components/employee/` 目录就此建立，作为后续所有从员工工作台拆出的组件（树枝）的落点。每个新组件文件顶部都写明「职责 / 谁可以改 / 依赖 / 被谁用 / 验证方式」，新增组件若使用 `<img>` 需沿用文件级 `eslint-disable @next/next/no-img-element`。
 - 本轮两次修正值得记住：① 抽取前必须逐个确认工具函数的**真实引用面**，`PptPasteTray` 就是因依赖被别处共用而暂缓；② 新组件引入的 `no-img-element` 警告会被 `--max-warnings 11` 这道门拦住（本轮确实拦到了），这是预期行为。
+- 模块化改造第 5 轮（2026-09-14）已完成 P3 第二、三批抽取：提交 `9e6919e`、`2dfa769`。新增 `lib/employee-api-types.ts`（35 个共享数据类型）、`components/employee/ppt-paste-tray.tsx`（PPT 粘贴托盘），并把图片拖拽协议（`writeImageDragData` / `finishImageDrag` / `readImageDragId` / `imageFilesFromList`）并入 `lib/employee-image-tools.ts`。`components/employee-app.tsx` 从 3422 行降到 3170 行。
+- **抽取顺序上的关键经验**：`MaterialRail` 之类组件需要 `Service` / `Employee` / `MaterialItem` 类型，而这些类型原本定义在主文件里，直接搬组件会造成互相 import。因此必须**先把共享类型抽成 `lib/employee-api-types.ts`**，组件才搬得动。以后新增从工作台拆出的组件都应从该模块取类型，不要反向 import `employee-app.tsx`。
+- 搬组件时顺带还债：`ppt-paste-tray.tsx` 里原来的 `fetch(generatedImageUrl(id))` 已改为 `employeeApi.images.file(id)`，调用点迁移按模块增量进行。
+- 抽取后必须用 `eslint --max-warnings 11` 复查主文件——本轮它抓出了 4 个随组件一起失效的 import（`blobToDataUrl`、`blobToPngBlob`、`copyPngBlobToClipboard`、`Clipboard` 图标）和 14 个未使用的类型 import。**这是该验证门第二次拦到真实问题。**
 - 第 3 轮的验证方式（可复用）：用 `node --experimental-strip-types` 直接加载 `lib/employee-api.ts`，替换 `globalThis.fetch` 后逐个调用全部方法，断言 URL、HTTP 方法与 `cache: "no-store"` 是否符合预期；再把生成的路径与 `app/api/**/route.ts` 的真实路由对账。
 - 本轮运行验证：临时启动 Next 开发服务（独立 `NEXT_DIST_DIR=.next-smoke`、端口 3211），`/` 与 `/employee` 均返回 200，`brand/wzlcf-mark.png` 与 `agent/ppt-design-mentor.png` 均返回 200；页面中已不再出现「即将接入」等死分支文案。验证后已停止服务、删除 `.next-smoke/`，并还原被开发服务自动改写的 `tsconfig.json` 与 `next-env.d.ts`。
 - 已知格式问题：仓库内有 15 个文件是 CRLF 与 LF 混用（`employee.css` 48 处、`deck-generation-worker.mjs` 110 处等）。用脚本改写这些文件时会触发整文件 diff 噪音；比对差异应使用 `git diff --ignore-cr-at-eol`。`employee-app.tsx` 已在第 2 轮统一为 LF。
