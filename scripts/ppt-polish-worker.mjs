@@ -17,6 +17,8 @@ const workspaceRoot = path.join(root, "uploads", "employee-workspace");
 const documentRoot = path.join(workspaceRoot, "documents");
 const imageRoot = path.join(workspaceRoot, "images");
 const polishRunRoot = path.join(workspaceRoot, "ppt-polish-runs");
+// 风格包定义的唯一真源：skills/deck-generation/style-packs.md（与 deck-generation-worker 读取同一份文件）
+const skillRoot = path.join(root, "skills", "deck-generation");
 const workerHeartbeatPath = path.join(root, ".next-dev", "ppt-polish-worker-heartbeat.json");
 const pollMs = Math.max(1500, Number(process.env.PPT_POLISH_POLL_MS || 3000));
 const staleGeneratingMs = Math.max(60_000, Number(process.env.PPT_POLISH_STALE_GENERATING_MS || 60_000));
@@ -180,6 +182,24 @@ function stylePackName(id) {
   })[id] || id || "蓝金科技";
 }
 
+/**
+ * 读取风格包定义全文（skills/deck-generation/style-packs.md）。
+ *
+ * 为什么必须读文件：美化链路过去把"深海军蓝 + 电蓝光轨 + 金色高光"硬编码在提示词里，
+ * 员工选择的其它风格包（白绿科技 / 红白政企 / 极简学术 / 活力路演）只能以四个中文字
+ * 的形式出现在提示词中，被具体英文描述完全覆盖，等于选不了。
+ *
+ * 现在改为与 deck-generation-worker 相同的方式：整篇注入风格包定义，并在提示词里点名
+ * 员工选中的那一个。这样 style-packs.md 是唯一真源，新增风格包不需要改本文件。
+ */
+let stylePackSkillCache;
+function stylePackSkill() {
+  if (typeof stylePackSkillCache === "string") return stylePackSkillCache;
+  const filePath = path.join(skillRoot, "style-packs.md");
+  stylePackSkillCache = existsSync(filePath) ? readFileSync(filePath, "utf8").trim() : "";
+  return stylePackSkillCache;
+}
+
 function xmlText(value) {
   return String(value || "")
     .replace(/&lt;/g, "<")
@@ -263,12 +283,14 @@ function slideRole(run, slide) {
 
 function visualSystemPrompt(run, slide) {
   const role = slideRole(run, slide);
+  const packName = stylePackName(run.stylePack);
   const base = [
     "Global visual system lock:",
-    "- Use one consistent deck identity across every page: deep navy base, electric blue light trails, refined gold highlights, glassy dark cards, clean sans-serif Chinese typography, and the same icon stroke style.",
-    "- Keep background texture, header micro-labels, footer rhythm, page numbers, card radius, glow strength, and spacing language consistent with adjacent pages.",
-    "- Do not suddenly switch to a red/black, orange, purple, beige, cartoon, hand-drawn, or poster-only style. Even crisis/risk pages must stay in the blue-gold tech system; red is only a thin warning accent, not the dominant palette.",
-    "- Prefer fewer larger visual ideas over many small blocks. Avoid scattered decorations, mismatched illustration styles, and overloaded tiny text.",
+    `- The deck visual identity is the selected style pack "${packName}". Take its palette, layout language, motifs, typography direction and forbidden list from the "Style Pack Reference" section below. That reference is authoritative; do not substitute your own default style.`,
+    "- Use one consistent deck identity across every page: same palette roles, same background treatment, same card language, same icon stroke style, and clean sans-serif Chinese typography.",
+    "- Keep background texture, header micro-labels, footer rhythm, page numbers, card radius, and spacing language consistent with adjacent pages.",
+    `- Never switch to a different style pack between pages, and avoid every item in the selected pack's forbidden list. Stay inside "${packName}" on every page, including crisis and risk pages: express warnings with that pack's own accent color instead of importing another palette.`,
+    "- Prefer one larger visual idea over many small blocks. Avoid scattered decorations, mismatched illustration styles, and overloaded tiny text.",
     "- Treat the deck as one premium conference keynote, not independent posters."
   ];
   if (role === "cover") {
@@ -283,7 +305,7 @@ function visualSystemPrompt(run, slide) {
       "Ending page special direction:",
       "- Make the ending page emotional, spacious, and memorable. Use one large closing sentence or slogan as the main focus.",
       "- Keep text minimal. If supporting points are needed, use no more than three short chips or cards.",
-      "- Use a stronger atmosphere than middle pages while still matching the same blue-gold tech identity."
+      `- Use a stronger atmosphere than middle pages while still matching the "${packName}" identity.`
     );
   } else {
     base.push(
@@ -300,7 +322,7 @@ function previousVisualAnchor(slide) {
   const prompt = cleanText(slide.prompt, 1200);
   return [
     "Use this previous generated page prompt as a visual style anchor only.",
-    "Borrow its palette discipline, density, header/footer rhythm, glass card language, glow direction, and icon style.",
+    "Borrow its palette discipline, density, header/footer rhythm, card language, illustration style, and icon stroke style.",
     "Do not copy previous-page text, data, charts, characters, or exact composition.",
     prompt
   ].join("\n");
@@ -314,8 +336,7 @@ This is a PPT polish/redesign task. Rebuild the current slide as a polished pres
 
 Deck source file: ${run.sourceName}
 Target style: ${stylePackName(run.stylePack)}
-Slide: ${slide.slideIndex}/${run.pageCount}
-Detected slide title/text:
+Slide: ${slide.slideIndex}/${run.pageCount}Detected slide title/text:
 ${slide.originalText || slide.title}
 
 Overall polish direction:
@@ -333,6 +354,9 @@ ${optionLines(run.options)}
 Visual consistency requirements:
 ${visualSystemPrompt(run, slide)}
 
+Style Pack Reference (authoritative — apply the section whose title matches "${stylePackName(run.stylePack)}" above):
+${stylePackSkill() || "(风格包定义文件缺失：请仅依据 Target style 名称推导视觉系统，并保持整套一致。)"}
+
 Previous generated page visual anchor:
 ${wantsPreviousAnchor ? previousVisualAnchor(previous) : "Use the previous page only for broad continuity; prioritize the current slide request."}
 
@@ -347,7 +371,7 @@ Hard requirements:
 - Preserve the original meaning. If numbers, dates, names, or important labels exist in the detected text, keep them readable and do not invent conflicting data.
 - Avoid dense paragraphs. Use concise designed text, cards, diagrams, timelines, charts, or structured blocks where appropriate.
 - Keep all important text and visuals inside a 6% safe area. Nothing important may touch or be cut off by the canvas edge.
-- Keep continuity across pages: same palette, header/footer rhythm, typography feeling, card language, icon style, glow color, and decorative language.
+- Keep continuity across pages: same palette roles, header/footer rhythm, typography feeling, card language, illustration style, icon stroke style, and decorative language, all as defined by the selected style pack.
 - For regeneration, obey the requested redesign route. The new page must be visibly different from the previous generated version unless the instruction explicitly asks only for closer continuity.
 - Do not include watermarks, model signatures, browser UI, chat UI, random logos, or unrelated characters.
 - If exact Chinese text is uncertain, use short legible Chinese labels based on the detected text rather than gibberish.`;

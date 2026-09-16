@@ -137,6 +137,7 @@ function skillBundle(options = {}) {
     readSkill("visual-identity.md"),
     readSkill("visual-storyboard.md"),
     readSkill("slide-image-specs.md"),
+    readSkill("illustration-system.md"),
     readSkill("regeneration-controls.md"),
     readSkill("source-grounding.md"),
     readSkill("outline-control.md"),
