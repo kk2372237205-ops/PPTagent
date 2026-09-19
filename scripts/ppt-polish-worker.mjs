@@ -183,21 +183,21 @@ function stylePackName(id) {
 }
 
 /**
- * 读取风格包定义全文（skills/deck-generation/style-packs.md）。
+ * 读取 skills/deck-generation 下的规则文件。
  *
- * 为什么必须读文件：美化链路过去把"深海军蓝 + 电蓝光轨 + 金色高光"硬编码在提示词里，
- * 员工选择的其它风格包（白绿科技 / 红白政企 / 极简学术 / 活力路演）只能以四个中文字
- * 的形式出现在提示词中，被具体英文描述完全覆盖，等于选不了。
+ * 美化链路过去完全不读 skills/，所有提示词都是本文件里的硬编码长字符串。
+ * 现在改为与 deck-generation-worker 相同的方式读取，让 Markdown 成为唯一真源：
+ * 改提示词只需改 skills/，不必改这个脚本。
  *
- * 现在改为与 deck-generation-worker 相同的方式：整篇注入风格包定义，并在提示词里点名
- * 员工选中的那一个。这样 style-packs.md 是唯一真源，新增风格包不需要改本文件。
+ * 读取失败时返回空字符串而不是抛错——规则文件缺失不应该让整条美化链路停摆。
  */
-let stylePackSkillCache;
-function stylePackSkill() {
-  if (typeof stylePackSkillCache === "string") return stylePackSkillCache;
-  const filePath = path.join(skillRoot, "style-packs.md");
-  stylePackSkillCache = existsSync(filePath) ? readFileSync(filePath, "utf8").trim() : "";
-  return stylePackSkillCache;
+const skillCache = new Map();
+function readSkill(name) {
+  if (skillCache.has(name)) return skillCache.get(name);
+  const filePath = path.join(skillRoot, name);
+  const content = existsSync(filePath) ? readFileSync(filePath, "utf8").trim() : "";
+  skillCache.set(name, content);
+  return content;
 }
 
 function xmlText(value) {
@@ -297,6 +297,7 @@ function visualSystemPrompt(run, slide) {
     base.push(
       "Cover page special direction:",
       "- Make the cover emotionally strong and eye-catching: one cinematic hero visual, strong depth, confident lighting, and clear focal point.",
+      "- The hero visual occupies 55% or more of the canvas and bleeds off at least two edges (full bleed preferred).",
       "- Use very little text: main title, optional short subtitle, and at most three tiny metadata chips. Avoid dense timelines, paragraph cards, and explanatory blocks on the cover.",
       "- The title should feel memorable and central; the visual should carry most of the impact."
     );
@@ -304,6 +305,7 @@ function visualSystemPrompt(run, slide) {
     base.push(
       "Ending page special direction:",
       "- Make the ending page emotional, spacious, and memorable. Use one large closing sentence or slogan as the main focus.",
+      "- One symbolic thematic visual occupies 35%-60% of the canvas, built from this deck's own subject matter rather than generic thank-you art.",
       "- Keep text minimal. If supporting points are needed, use no more than three short chips or cards.",
       `- Use a stronger atmosphere than middle pages while still matching the "${packName}" identity.`
     );
@@ -311,7 +313,9 @@ function visualSystemPrompt(run, slide) {
     base.push(
       "Content page direction:",
       "- Make the page readable and structured with clear hierarchy, but keep visual energy aligned with the cover and ending.",
-      "- Use charts, cards, timelines, or diagrams only when they help the detected content; avoid unnecessary text-heavy boxes."
+      "- One dominant illustration occupies 35%-55% of the canvas, is the largest single element on the page, and bleeds off at least one edge.",
+      "- Prefer one larger picture over a row of small icons or thumbnails. If the detected text lists parallel items, draw them as one labeled process chain or a two-column comparison instead of many equal small boxes.",
+      "- Charts, cards, timelines and diagrams are welcome when they explain the detected content; a page made only of text and small icons is not acceptable."
     );
   }
   return base.join("\n");
@@ -336,7 +340,8 @@ This is a PPT polish/redesign task. Rebuild the current slide as a polished pres
 
 Deck source file: ${run.sourceName}
 Target style: ${stylePackName(run.stylePack)}
-Slide: ${slide.slideIndex}/${run.pageCount}Detected slide title/text:
+Slide: ${slide.slideIndex}/${run.pageCount}
+Detected slide title/text:
 ${slide.originalText || slide.title}
 
 Overall polish direction:
@@ -355,7 +360,10 @@ Visual consistency requirements:
 ${visualSystemPrompt(run, slide)}
 
 Style Pack Reference (authoritative — apply the section whose title matches "${stylePackName(run.stylePack)}" above):
-${stylePackSkill() || "(风格包定义文件缺失：请仅依据 Target style 名称推导视觉系统，并保持整套一致。)"}
+${readSkill("style-packs.md") || "(风格包定义文件缺失：请仅依据 Target style 名称推导视觉系统，并保持整套一致。)"}
+
+Illustration rules (authoritative):
+${readSkill("illustration-system.md") || "(插图规则文件缺失：请至少保证每页有一个占画面 35% 以上、且在缩略图下可辨认的具体画面主体。)"}
 
 Previous generated page visual anchor:
 ${wantsPreviousAnchor ? previousVisualAnchor(previous) : "Use the previous page only for broad continuity; prioritize the current slide request."}
@@ -370,6 +378,9 @@ Hard requirements:
 - Output exactly one full 16:9 PPT page with refined layout, title hierarchy, content blocks, background, and safe margins.
 - Preserve the original meaning. If numbers, dates, names, or important labels exist in the detected text, keep them readable and do not invent conflicting data.
 - Avoid dense paragraphs. Use concise designed text, cards, diagrams, timelines, charts, or structured blocks where appropriate.
+- **Every page must carry one dominant illustration occupying at least 25% of the canvas, and it must be the largest single element on the page.** Only two cases may go without: a chart page where the chart itself is the visual, and a pure data-table page. Text-only pages are a failure.
+- **Name the illustration's subject with concrete nouns taken from this page's detected text.** Abstract nouns such as growth, innovation, cooperation or future are not valid subjects — they produce generic decorative shapes instead of a real picture.
+- **Never use a photographic or photorealistic rendering for a generated scene.** Draw it flat and clearly illustrative so it cannot be mistaken for a photograph or documentary evidence. Never fabricate certificates, contracts, reports, official signage, logos or real people.
 - Keep all important text and visuals inside a 6% safe area. Nothing important may touch or be cut off by the canvas edge.
 - Keep continuity across pages: same palette roles, header/footer rhythm, typography feeling, card language, illustration style, icon stroke style, and decorative language, all as defined by the selected style pack.
 - For regeneration, obey the requested redesign route. The new page must be visibly different from the previous generated version unless the instruction explicitly asks only for closer continuity.
