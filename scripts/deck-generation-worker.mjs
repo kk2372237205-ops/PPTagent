@@ -1119,7 +1119,7 @@ async function restoreProtectedEvidence(output, input, regions, postprocess = nu
 async function openAiImageWithReferences(prompt, references, options = {}) {
   requireImageService(imageService);
   if (!advancedImageReferencesEnabled) {
-    throw new Error("高级版参考图输入已被 DECK_ADVANCED_REFERENCE_IMAGES 关闭，不能静默退回文字生图。");
+    throw new Error("参考图输入已被 DECK_ADVANCED_REFERENCE_IMAGES 关闭，不能静默退回纯文字生图。");
   }
   const requestEdit = async (files, mask = null) => {
     const form = new FormData();
@@ -1184,7 +1184,10 @@ function advancedLayoutName(id) {
 }
 
 function runStyleDirection(run) {
-  if (run.generationMode === "advanced" && run.paletteMode === "reference") {
+  // 参考图配色模式下，风格包只能提供版式语言，不得泄漏它的颜色含义。
+  // 这个判断原本只覆盖高级版，导致快速版选了参考图配色时仍然把"蓝金科技"这类
+  // 带颜色的风格名写进风格指纹，与配色合同直接冲突。
+  if (run.paletteMode === "reference") {
     return `${advancedLayoutName(run.stylePack)}；这里只规定信息结构与视觉节奏，颜色完全服从参考图配色合同和实际输入图片`;
   }
   return stylePackName(run.stylePack);
@@ -2667,7 +2670,7 @@ async function matchAdvancedRun(run) {
 }
 
 function planPrompt(run, sourceContext = "") {
-  return `${skillBundle()}
+  return `${skillBundle({ colorNeutral: run.paletteMode === "reference" })}
 
 你是 WZLCF 的 PPT 图组导演。请根据下面输入，先生成方案，不要生成图片。
 
@@ -3312,7 +3315,14 @@ Use case: ${run.projectType || "presentation"}
 Style pack: ${stylePackName(run.stylePack)}
 Slide ${slide.slideIndex}/${run.pageCount}: ${slide.title}
 Role: ${slide.role}
-
+${run.paletteMode === "reference" ? `
+Palette reference input: exactly one reference image is attached, and it is a COLOR-ONLY reference.
+Learn only its color roles, contrast, saturation and overall visual mood, then apply that palette
+to the whole page.
+Do NOT copy its layout, composition, framing, text, logos, people, imagery, subject matter, or any
+part of its content — none of it belongs to this deck.
+The page content comes only from the slide spec below.
+` : ""}
 Visual identity for the whole deck:
 ${JSON.stringify(identity)}
 
@@ -3331,10 +3341,16 @@ ${next ? JSON.stringify(next) : "end"}
 Regeneration instruction:
 ${instruction || slide.lastInstruction || "none"}
 
+Illustration rules (authoritative):
+${readSkill("illustration-system.md") || "(插图规则文件缺失：请至少保证每页有一个占画面 35% 以上、且在缩略图下可辨认的具体画面主体。)"}
+
 Hard requirements:
 - Output a full 16:9 PPT page, not a poster, not an isolated illustration.
+- **Every page must carry one dominant illustration occupying at least 25% of the canvas, and it must be the largest single element on the page.** Only two cases may go without: a chart page where the chart itself is the visual, and a pure data-table page. A page made only of text and small icons is a failure.
+- **Name the illustration's subject with concrete nouns taken from this page's spec.** Abstract nouns such as growth, innovation, cooperation or future are not valid subjects; they produce generic decorative shapes instead of a real picture.
+- **Never render a generated scene as a photograph or a photorealistic image.** Draw it flat and clearly illustrative so it can never be mistaken for documentary evidence. Never fabricate certificates, contracts, reports, official signage, logos or real people.
 - The page must look like a real polished presentation slide with layout, title area, content hierarchy, refined background, and controlled whitespace.
-- Keep style consistent with the visual identity, including palette, card system, motifs, header/footer feel, and typography feel.
+- Keep style consistent with the visual identity, including palette, card system, motifs, header/footer feel, typography feel, and image language.
 - Keep continuity with the previous and next slide while still making this page visually distinct.
 - The visible slide title must not include page numbers or numeric prefixes. Do not render "05", "Page 5", "第5页", "5.", or similar large number badges beside the title.
 - If a page number is needed, make it a tiny consistent footer or corner detail only, never the main title element.
@@ -3342,8 +3358,34 @@ Hard requirements:
 - If the regeneration instruction says closer to the previous slide, only align header/footer, palette, background texture, card chrome, and decorative rhythm; never copy the previous slide's content, main visual, chart data, or full layout.
 ${finalSlideRule}
 - Avoid gibberish blocks, watermarks, model signatures, random logos, copyrighted marks, and unrelated characters.
-- Use concise designed text only when needed. Prefer clean information blocks over long paragraphs.
+- Prefer concise designed text over long paragraphs. If space is tight, cut text — never shrink the illustration to make room for more text.
 - No browser UI, no chat UI, no screenshot frame unless the slide spec explicitly asks for it.`;
+}
+
+/**
+ * 快速版的配色参考图输入。
+ *
+ * 快速版过去只把配色合同里提取出的文字色值写进提示词，参考图原文件从未交给 Image2。
+ * 这违反 skills/deck-generation/palette-reference.md 的两条硬规则：
+ * "生成时还必须把参考图原文件直接作为 Image2 的视觉输入，不能只传文字色值"
+ * 以及 "Image2 参考图接口失败时必须明确报错，不能静默退回纯文字生图"。
+ */
+async function quickPaletteReference(run) {
+  if (run.paletteMode !== "reference") return null;
+  const theme = await db.deckGenerationSource.findFirst({
+    where: { runId: run.id, kind: "theme", status: "completed" },
+    orderBy: { createdAt: "desc" }
+  });
+  if (!theme) {
+    throw new Error("选择了参考图配色，但没有可交给 Image2 的有效配色参考图。请返回修改任务资料并重新上传。");
+  }
+  return {
+    buffer: await readFile(sourceFilePath(theme)),
+    mime: imageMimeType(theme.originalName || theme.storedName),
+    name: theme.originalName || "palette-reference.png",
+    storedName: theme.storedName,
+    role: "palette reference; learn colors, contrast, saturation and visual mood only"
+  };
 }
 
 async function generateSlide(run, slide, instruction = "") {
@@ -3353,7 +3395,10 @@ async function generateSlide(run, slide, instruction = "") {
     data: { status: "generating", error: null, lastInstruction: effectiveInstruction }
   });
   const prompt = slidePrompt(run, slide, effectiveInstruction);
-  const raw = await openAiImage(prompt);
+  const paletteReference = await quickPaletteReference(run);
+  const raw = paletteReference
+    ? (await openAiImageWithReferences(prompt, [paletteReference])).buffer
+    : await openAiImage(prompt);
   const normalized = await sharp(raw)
     .resize(1920, 1080, { fit: "contain", background: "#061525" })
     .png()
