@@ -1119,7 +1119,7 @@ async function restoreProtectedEvidence(output, input, regions, postprocess = nu
 async function openAiImageWithReferences(prompt, references, options = {}) {
   requireImageService(imageService);
   if (!advancedImageReferencesEnabled) {
-    throw new Error("参考图输入已被 DECK_ADVANCED_REFERENCE_IMAGES 关闭，不能静默退回纯文字生图。");
+    throw new Error("高级版参考图输入已被 DECK_ADVANCED_REFERENCE_IMAGES 关闭，不能静默退回纯文字生图。");
   }
   const requestEdit = async (files, mask = null) => {
     const form = new FormData();
@@ -3305,6 +3305,12 @@ function slidePrompt(run, slide, instruction = "") {
   const spec = safeJson(slide.specJson, {});
   const previous = allSpecs.slides?.find(item => item.slide_index === slide.slideIndex - 1) || null;
   const next = allSpecs.slides?.find(item => item.slide_index === slide.slideIndex + 1) || null;
+  // 参考图配色：配色是本地从参考图里算出来的色值，只以文字形式随提示词发给模型，
+  // 参考图原文件不作为页面素材输入。抽取逻辑与高级版 pageRenderContract 的
+  // palette_lock.allowed_presentation_colors 保持一致。
+  const allowedPalette = run.paletteMode === "reference"
+    ? collectHexColors([safeJson(run.paletteContractJson, {}), identity]).slice(0, 8)
+    : [];
   const finalSlideRule = run.generationMode === "advanced" && slide.role === "ending"
     ? "- This is the advanced-mode final slide: make it a cover-level, emotionally conclusive close. Keep it sparse: one memorable closing statement and at most one short support line unless the slide explicitly locks exact text. Use one dominant symbolic thematic visual with generous whitespace. Never turn it into a roadmap, metric, evidence, card, chart, process, or body-content page."
     : "- If this is the final slide or Role is ending, it must be a minimal emotional closing page like a cover: sparse content, strong closure, strong memory point, one headline-level takeaway, optional short subtitle, and no dense cards, charts, feature lists, process diagrams, or new arguments.";
@@ -3315,13 +3321,11 @@ Use case: ${run.projectType || "presentation"}
 Style pack: ${stylePackName(run.stylePack)}
 Slide ${slide.slideIndex}/${run.pageCount}: ${slide.title}
 Role: ${slide.role}
-${run.paletteMode === "reference" ? `
-Palette reference input: exactly one reference image is attached, and it is a COLOR-ONLY reference.
-Learn only its color roles, contrast, saturation and overall visual mood, then apply that palette
-to the whole page.
-Do NOT copy its layout, composition, framing, text, logos, people, imagery, subject matter, or any
-part of its content — none of it belongs to this deck.
-The page content comes only from the slide spec below.
+${allowedPalette.length ? `
+Palette lock is exact. The theme palette was extracted from the user's reference image, and these are the only colors allowed on this page:
+${allowedPalette.join(", ")}
+Use them for backgrounds, surfaces, text, lines, geometry and accents. Never introduce a color outside
+this list — especially no gold, yellow, orange, red, green or purple accent that is not listed.
 ` : ""}
 Visual identity for the whole deck:
 ${JSON.stringify(identity)}
@@ -3362,32 +3366,6 @@ ${finalSlideRule}
 - No browser UI, no chat UI, no screenshot frame unless the slide spec explicitly asks for it.`;
 }
 
-/**
- * 快速版的配色参考图输入。
- *
- * 快速版过去只把配色合同里提取出的文字色值写进提示词，参考图原文件从未交给 Image2。
- * 这违反 skills/deck-generation/palette-reference.md 的两条硬规则：
- * "生成时还必须把参考图原文件直接作为 Image2 的视觉输入，不能只传文字色值"
- * 以及 "Image2 参考图接口失败时必须明确报错，不能静默退回纯文字生图"。
- */
-async function quickPaletteReference(run) {
-  if (run.paletteMode !== "reference") return null;
-  const theme = await db.deckGenerationSource.findFirst({
-    where: { runId: run.id, kind: "theme", status: "completed" },
-    orderBy: { createdAt: "desc" }
-  });
-  if (!theme) {
-    throw new Error("选择了参考图配色，但没有可交给 Image2 的有效配色参考图。请返回修改任务资料并重新上传。");
-  }
-  return {
-    buffer: await readFile(sourceFilePath(theme)),
-    mime: imageMimeType(theme.originalName || theme.storedName),
-    name: theme.originalName || "palette-reference.png",
-    storedName: theme.storedName,
-    role: "palette reference; learn colors, contrast, saturation and visual mood only"
-  };
-}
-
 async function generateSlide(run, slide, instruction = "") {
   const effectiveInstruction = instruction || slide.lastInstruction || "";
   await db.deckGenerationSlide.update({
@@ -3395,10 +3373,9 @@ async function generateSlide(run, slide, instruction = "") {
     data: { status: "generating", error: null, lastInstruction: effectiveInstruction }
   });
   const prompt = slidePrompt(run, slide, effectiveInstruction);
-  const paletteReference = await quickPaletteReference(run);
-  const raw = paletteReference
-    ? (await openAiImageWithReferences(prompt, [paletteReference])).buffer
-    : await openAiImage(prompt);
+  // 参考图配色只以「本地提取出的色值 + 文字提示词」的方式生效（见 slidePrompt 的 Palette lock）。
+  // 参考图原文件不作为 Image2 的页面输入：实测过把资料图塞进成图会让页面与后贴图互相干扰。
+  const raw = await openAiImage(prompt);
   const normalized = await sharp(raw)
     .resize(1920, 1080, { fit: "contain", background: "#061525" })
     .png()
