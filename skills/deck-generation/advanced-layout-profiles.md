@@ -4,6 +4,22 @@ These profiles are used only by advanced deck generation when an uploaded palett
 
 ## Shared Rules
 
+### 渲染路线（所有档位共用，先读这一条）
+
+A layout profile decides **information organization, area and rhythm only** — never the rendering style. The rendering style is fixed for the whole deck and is **realistic by default**:
+
+- 设备、工具、线缆、机械结构、自然环境、作业场地、工艺流程一律走**写实**：真实材质、自然光、诚实纹理、轻微颗粒。
+- **禁止**卡通、扁平矢量吉祥物、Q 版、厚描边插画、纸片剪贴、clip art。
+- 也要避免**假精致**：不要影棚灯光、不要商业摆拍、不要过度磨皮的塑料感。
+- 讲机制、结构、流程、数据的页面改用**精密技术图解**（均匀细线、测量式间距、5–8 处直接标注），**不是**卡通示意图。
+- 正式汇报里母题只保留**制图语言**：细线、网格、刻度、标注、剖切线、尺寸线。
+  **不要**扫描线、光轨、数据粒子、星点、半透明玻璃卡片、发光边缘——它们削弱严谨感。
+- 写实**不等于**放开配色：背景、文字、线条、几何和强调色仍只服从参考图配色合同。
+
+> 详细画面体系（RS-1 ～ RS-5）见 `illustration-system.md` 与 `PPTskills汇总/01-风格库-Style-Library.md` 第 1.5 节。
+
+### 版式规则
+
 - Choose information organization, visual weight, whitespace, reading rhythm, **illustration area, and bleed** only. Never introduce palette names or colors.
 - Compose text and generated visuals as one semantic page. Do not reserve a fixed bottom, right, or background image slot across the deck.
 - **Every profile below carries an illustration area range and a bleed rule. Those numbers are binding.** A body page may use one to four generated visual units when they clarify the content; each unit must support a named claim, stage, comparison, mechanism, context, or result.

@@ -33,10 +33,115 @@
 风格库的正确用法是**两层组合**：
 
 ```
-最终风格 = 插图体系（怎么画图） × 配色风格（什么颜色）
+最终风格 = 画面体系（怎么画） × 配色风格（什么颜色）
 ```
 
-插图体系决定"插图长什么样"，这是决定"假不假"的唯一变量。以下 8 种是最稳定、最容易被生图模型正确执行的插画语言：
+画面体系决定"画出来长什么样"，这是决定"假不假"的唯一变量。
+
+> ### ⚠️ 2026-09-22 方向修正：**默认走写实**
+>
+> 项目 owner 明确要求"**不是卡通风，而是写实的，给人一种很严谨、很实事求是的感觉**"。
+> 因此本文件新增 **第 1.5 节「写实影像体系 RS-1 ～ RS-5」并设为默认**。
+> 下面 **第 1 节的 IS-1 ～ IS-8 是扁平/矢量/手绘类，只在明确需要非写实观感时才用**
+> （内部培训、C 端轻松场合、创意提案），**正式汇报、工程装备、检测、政务、科研一律走 RS**。
+>
+> 写实与真实性规则不冲突：红线只针对**凭证**（证书、合同、检测报告、盖章文件、机构招牌、logo、可辨认真人）；
+> **设备、工具、线缆、机械结构、自然环境、作业现场、工艺流程的写实描绘是允许且要求的**。
+
+### 1.5 写实影像体系（Realistic System）—— ★默认
+
+用于工程、装备、检测、制造、能源、科研、政务这类**要显得严谨、实事求是**的汇报。
+
+#### RS-1 `industrial-field-documentary` 工程现场纪实 ★首选
+
+```
+rendering:   photorealistic documentary photograph, shot on location, not a designed image
+lighting:    natural available daylight, slight unevenness, realistic shadow falloff
+materials:   real metal, concrete, cable, rust, dust, worn paint, visible tooling marks
+camera:      35mm-equivalent field of view, eye-level, restrained framing
+depth:       shallow depth of field on the subject, background readable but not busy
+finish:      true-to-life color, subtle grain, no heavy retouching
+people:      if present, workers in hi-vis or workwear seen from behind or in profile,
+             never a recognizable portrait
+```
+- **适合**：作业现场、巡检、施工、检修、安装、试验。
+- **要点**：写"shot on location"和"available daylight"，**不要**写 studio / commercial / cinematic——那些词会把画面推向摆拍塑料感。
+
+#### RS-2 `product-honest` 产品实物（非影棚）
+
+```
+rendering:   photorealistic product photograph, honest and unglamorous
+lighting:    one soft window light from the left, single shadow, no rim light
+surface:     plain matte neutral surface, no gradient backdrop, no reflection floor
+materials:   visible surface texture, micro-scratches, fingerprints, honest color
+camera:      50mm-equivalent, slight downward angle, product fills 70% of the frame
+finish:      no glossy advertising sheen, no beauty retouch
+```
+- **适合**：产品外观、样机、装置全貌、零部件。
+
+#### RS-3 `technical-macro` 技术特写
+
+```
+rendering:   macro photograph of <the specific part>, technical documentation quality
+lighting:    diffuse even light, no dramatic shadow, no colored gel
+depth:       shallow depth of field, focus on the fault or feature in question
+materials:   material grain, machining marks, cable strands, fracture surface, wear pattern
+finish:      neutral color, no artistic bokeh, no vignette
+```
+- **适合**：断裂面、接头、磨损、腐蚀、装配细节——**"让证据自己说话"的页面**。
+
+#### RS-4 `precision-diagram` 精密技术图解（写实族的图解分支）
+
+```
+rendering:   precision technical illustration, engineering-drawing discipline
+line:        uniform 1.5px line weight, measured spacing, right angles
+view:        isometric 30-degree axonometric OR true orthographic section, no perspective distortion
+labels:      5–8 direct callouts with thin leader lines and small filled dots,
+             every label traceable to a confirmed fact
+fills:       flat neutral fills from the deck palette only, no gradients, no glow
+finish:      drawing-table cleanliness; this is a drawing, not a cartoon
+```
+- **适合**：原理、结构、流程、装配顺序。
+- **要点**：**"技术图解"不等于"卡通示意图"**。区别在：均匀线宽、测量式间距、精确标注、无渐变无描边夸张。
+
+#### RS-5 `instrument-data` 仪表式数据可视化
+
+```
+rendering:   precise instrument-panel data visualisation
+chart:       flat 2D only, one chart family, exact supplied values only
+labels:      direct labels on the marks, no legend box, units written explicitly
+grid:        thin gridlines at 10% opacity, 2px axis strokes
+finish:      no 3D, no bevels, no drop shadows on bars, no gradient fills,
+             no invented data points, no fake precision
+```
+- **适合**：指标、对比、趋势、成果数据。
+
+#### 写实族必带的边界声明（每页重申）
+
+```
+Rendering frame: realistic depiction of what the subject looks like — real materials,
+natural light, honest textures. This is not a documentary record of a specific real
+event, site or person. Never render official documents, seals, institution signage,
+logos, software screenshots, or identifiable portraits.
+```
+
+#### 写实族的负向清单
+
+```
+NEGATIVE — never include: cartoon, flat vector mascot, chibi, cel shading,
+thick-outline illustration, paper-cut collage, clip art, emoji,
+glossy 3D plastic render, studio-staged posing, commercial beauty retouch,
+gradient mesh backdrop, lens flare, colored gel lighting, heavy vignette,
+readable certificates, contracts, reports, patent pages, official seals,
+institution signage, logos, fake software screenshots, identifiable portraits.
+```
+
+---
+
+### 1.6 非写实体系（IS-1 ～ IS-8）—— 仅在明确需要时使用
+
+以下 8 种是最稳定、最容易被生图模型正确执行的**非写实**画面语言。**正式汇报不要用**，它们会带来"卡通/不严肃"的观感：
+
 
 ### IS-1 `flat-vector-editorial` 扁平矢量编辑插画 ★最稳
 
