@@ -146,7 +146,22 @@ function serviceAgent(proxyUrl, serviceName = "AI 服务", timeoutMs = 300000) {
   const key = `${proxyUrl || "direct"}:${timeoutMs}`;
   let agent = agents.get(key);
   if (!agent) {
-    const options = { headersTimeout: timeoutMs, bodyTimeout: timeoutMs };
+    const options = {
+      headersTimeout: timeoutMs,
+      bodyTimeout: timeoutMs,
+      // 必须显式关掉 HTTP/2。
+      //
+      // undici 8 起 allowH2 的默认值变成了 true（undici/lib/core/connect.js:
+      // "allowH2 = allowH2 != null ? allowH2 : true"），于是 ALPN 会协商到 h2。
+      // 本文件以前不传这个选项时默认走 HTTP/1.1，升级 undici 后被静默切换到 HTTP/2。
+      //
+      // 实测（2026-09-16，生成 PPT 高级版 8 页、并发 6）：所有并发请求复用同一条 h2
+      // 连接，中转站拒绝新增流，前 6 页全部失败：
+      //   fetch failed (ERR_HTTP2_STREAM_ERROR · Stream closed with error code
+      //   NGHTTP2_REFUSED_STREAM)
+      // 而洪峰之后的 2 页正常成功。改回 HTTP/1.1 后每个请求各自建连，不再互相挤占。
+      allowH2: false
+    };
     agent = proxyUrl ? new ProxyAgent({ uri: proxyUrl, ...options }) : new Agent(options);
     agents.set(key, agent);
   }

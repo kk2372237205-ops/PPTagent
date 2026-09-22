@@ -233,6 +233,14 @@ async function openAdvancedAiJson(prompt, options = {}) {
 }
 
 async function openAiImage(prompt, timeoutMs = 300000) {
+  // 生图也走瞬态重试。文字调用一直有 withTransientRetry，图片调用没有，
+  // 于是中转站一旦出现连接级抖动（例如 HTTP/2 拒绝流 NGHTTP2_REFUSED_STREAM、
+  // socket 重置、502/503）就直接把整页判失败，只能由用户手动点"重新生成本页"。
+  // transientAiFailure 已排除超时，所以不会因为等太久而重复计费。
+  return withTransientRetry(() => requestImageOnce(prompt, timeoutMs), [1200, 3000, 6000]);
+}
+
+async function requestImageOnce(prompt, timeoutMs = 300000) {
   requireImageService(imageService);
   const response = await imageRequest(`${imageService.baseUrl}/images/generations`, {
     method: "POST",
@@ -1110,6 +1118,11 @@ async function restoreProtectedEvidence(output, input, regions, postprocess = nu
 }
 
 async function openAiImageWithReferences(prompt, references, options = {}) {
+  // 与 openAiImage 同样加瞬态重试：参考图链路（/images/edits）在并发下更容易被中转站拒绝流。
+  return withTransientRetry(() => requestImageWithReferencesOnce(prompt, references, options), [1200, 3000, 6000]);
+}
+
+async function requestImageWithReferencesOnce(prompt, references, options = {}) {
   requireImageService(imageService);
   if (!advancedImageReferencesEnabled) {
     throw new Error("高级版参考图输入已被 DECK_ADVANCED_REFERENCE_IMAGES 关闭，不能静默退回纯文字生图。");
