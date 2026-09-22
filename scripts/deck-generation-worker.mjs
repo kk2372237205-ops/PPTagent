@@ -254,13 +254,6 @@ async function openAiImage(prompt, timeoutMs = 300000) {
   throw new Error("图片中转服务没有返回图片内容");
 }
 
-function imageMimeType(fileName) {
-  const extension = path.extname(fileName).toLowerCase();
-  if (extension === ".jpg" || extension === ".jpeg") return "image/jpeg";
-  if (extension === ".webp") return "image/webp";
-  return "image/png";
-}
-
 async function imageBufferFromResult(result) {
   const image = result?.data?.[0];
   if (!image) throw new Error("图片中转服务没有返回图片内容");
@@ -3043,6 +3036,23 @@ function collectHexColors(value, colors = []) {
   return colors;
 }
 
+/**
+ * 参考图配色模式的色值清单校验。
+ *
+ * 参考图配色只以「本地提取出的色值 + 文字提示词」的方式生效，用户上传的参考图原文件
+ * 不作为 Image2 的输入。所以这里校验的是"本地是否成功提取出颜色"，而不是"有没有图可发"。
+ *
+ * 缺少色值时必须明确报错，不能静默退回内置配色或随机配色（见 palette-reference.md）。
+ */
+function requireReferencePalette(run, identity = {}) {
+  if (run.paletteMode !== "reference") return [];
+  const allowed = collectHexColors([safeJson(run.paletteContractJson, {}), identity]).slice(0, 8);
+  if (!allowed.length) {
+    throw new Error("参考图配色没有可用的色值清单：配色参考图未能解析出颜色。请返回修改任务资料并重新上传配色参考图。");
+  }
+  return allowed;
+}
+
 async function createDeckStyleStrip(fingerprint) {
   const palette = fingerprint.palette_contract && typeof fingerprint.palette_contract === "object" ? fingerprint.palette_contract : {};
   const paletteList = collectHexColors([palette, fingerprint.palette, fingerprint.full_visual_identity]).slice(0, 8);
@@ -3306,11 +3316,9 @@ function slidePrompt(run, slide, instruction = "") {
   const previous = allSpecs.slides?.find(item => item.slide_index === slide.slideIndex - 1) || null;
   const next = allSpecs.slides?.find(item => item.slide_index === slide.slideIndex + 1) || null;
   // 参考图配色：配色是本地从参考图里算出来的色值，只以文字形式随提示词发给模型，
-  // 参考图原文件不作为页面素材输入。抽取逻辑与高级版 pageRenderContract 的
-  // palette_lock.allowed_presentation_colors 保持一致。
-  const allowedPalette = run.paletteMode === "reference"
-    ? collectHexColors([safeJson(run.paletteContractJson, {}), identity]).slice(0, 8)
-    : [];
+  // 参考图原文件不作为 Image2 的页面输入（两条链路一致）。
+  // 抽取逻辑与高级版 pageRenderContract 的 palette_lock.allowed_presentation_colors 保持一致。
+  const allowedPalette = requireReferencePalette(run, identity);
   const finalSlideRule = run.generationMode === "advanced" && slide.role === "ending"
     ? "- This is the advanced-mode final slide: make it a cover-level, emotionally conclusive close. Keep it sparse: one memorable closing statement and at most one short support line unless the slide explicitly locks exact text. Use one dominant symbolic thematic visual with generous whitespace. Never turn it into a roadmap, metric, evidence, card, chart, process, or body-content page."
     : "- If this is the final slide or Role is ending, it must be a minimal emotional closing page like a cover: sparse content, strong closure, strong memory point, one headline-level takeaway, optional short subtitle, and no dense cards, charts, feature lists, process diagrams, or new arguments.";
@@ -3421,20 +3429,9 @@ async function processGeneratingRun(run) {
 
 async function advancedVisualReferences(run, slide, instruction) {
   const references = [];
-  if (run.paletteMode === "reference") {
-    const theme = await db.deckGenerationSource.findFirst({
-      where: { runId: run.id, kind: "theme", status: "completed" },
-      orderBy: { createdAt: "desc" }
-    });
-    if (!theme) throw new Error("高级版选择了参考图配色，但没有可交给 Image2 的有效配色参考图。请返回修改任务资料并重新上传。");
-    references.push({
-      buffer: await readFile(sourceFilePath(theme)),
-      mime: imageMimeType(theme.originalName || theme.storedName),
-      name: theme.originalName || "palette-reference.png",
-      storedName: theme.storedName,
-      role: "palette reference; learn colors, contrast, saturation and visual mood only"
-    });
-  }
+  // 参考图配色不在这里注入参考图原文件：配色只以本地提取出的色值与文字提示词生效。
+  // 这里只校验色值清单确实存在，缺少时明确报错。
+  requireReferencePalette(run);
 
   if (run.styleStripStoredName) {
     references.push({
@@ -3576,7 +3573,7 @@ function advancedSlidePrompt(run, slide, contract, instruction, references = [],
     "",
     "Input image reference roles in upload order:",
     referenceRoles,
-    "Palette references and the deck style strip are visual constraints only; never copy their text, facts, logos, people, or complete composition.",
+    "Input reference images are visual constraints only; never copy their text, facts, logos, people, or complete composition.",
     advancedSourceVisualReuseEnabled
       ? "References marked authentic page evidence are factual source material for this page. Preserve their identity and meaning."
       : "Uploaded content-source images are intentionally not supplied. Build the page from the confirmed text contract and art direction; never pretend a generated scene, document, product, person, campus, or customer site is authentic evidence.",
