@@ -37,16 +37,18 @@ Also: never invent readable institution or school signage, logos, certificates, 
 
 The ban above forbids **fake documentary imagery**. It does **not** forbid illustration. On the contrary:
 
-- Content pages are **required** to carry one dominant illustration.
-- The illustration must be **unmistakably illustrative** — flat, simplified, non-photographic — so that it can never be confused with documentary evidence.
-- This is exactly why the ban is safe to obey: a clearly-drawn diagram or conceptual illustration is not a forgery of anything.
+- Content pages are **required** to carry one dominant visual.
+- The visual must be **realistic** — photorealistic for equipment, sites, materials and processes; a precise technical diagram when the page explains a mechanism. Realism is what makes a deck read as rigorous and factual.
+- **Cartoon, flat-vector, mascot and clip-art treatments are forbidden.**
+- The ban above forbids **fake credentials**, not realistic imagery. A realistic rendering of a device or process is not a forgery of anything, as long as it never pretends to be a document, a seal, a logo, or a record of a specific real event.
 
-State this legal frame in the brief every time:
+State this frame in the brief every time:
 
 ```
-This is a clearly conceptual, non-documentary illustration. It is not a photograph,
-screenshot, certificate, record or real event. Render it so it cannot be mistaken for
-documentary evidence.
+Rendering frame: realistic depiction of what the subject looks like — real materials,
+natural light, honest textures. This is not a documentary record of a specific real event,
+site or person. Never render official documents, seals, institution signage, logos,
+software screenshots, or identifiable portraits.
 ```
 
 ## Direct The Page
@@ -124,12 +126,13 @@ Every prohibition below is paired with the replacement you must use instead. A p
 
 | Symptom | What the brief must say |
 | --- | --- |
-| Illustration too small | Give the percentage, the height span, and the bleed edges. |
-| No illustration at all | Name the concrete subject. If you cannot name one, the page is a chart page — say so explicitly. |
-| Illustration looks fake | Use `image_language` from the fingerprint: flat solid fills, uniform stroke, no gradients, no glow, no 3D. |
-| Illustration is an abstract blob | Replace the abstract noun with 3+ concrete nouns from the page content. |
+| Visual too small | Give the percentage, the height span, and the bleed edges. |
+| No visual at all | Name the concrete subject. If you cannot name one, the page is a chart page — say so explicitly. |
+| Visual looks cartoonish or unserious | Switch `image_language.rendering` to `photorealistic documentary photograph`, and add real materials, natural light and honest textures. |
+| Visual looks fake in a glossy way | Remove studio lighting and beauty-retouch language; ask for available light, unevenness, dust, worn surfaces, no heavy retouching. |
+| Visual is an abstract blob | Replace the abstract noun with 3+ concrete nouns from the page content. |
 | Several tiny icons instead of one visual | Consolidate into one unit at 40%+ and delete the icon row. |
-| Fake-looking photos or screenshots | Delete them. Draw the mechanism instead — flat, clearly illustrative. |
+| Page shows fake documents, seals, logos or faces | Delete them. Depict the device or mechanism realistically instead; a credential-shaped image is never acceptable. |
 | Fake charts | Use only confirmed values; write the exact labels and numbers into the brief. |
 
 ## Visual Decisions

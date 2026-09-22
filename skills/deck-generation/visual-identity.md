@@ -79,10 +79,6 @@
 
 这是**整套图"插图长什么样"的唯一合同**。它为空时，图片模型只能用训练数据里的默认审美填空，产出渐变球、发光网格、半透明玻璃面板这类与内容无关的填充物。
 
-- `style`：具体插画语言，必须点名一种明确画法，例如
-  `flat vector editorial illustration` / `isometric line-art technical illustration` /
-  `annotated technical cutaway diagram` / `editorial collage illustration`。
-  **不要写 `modern`、`clean`、`premium`、`科技感` 这类形容词**——它们不是画法。
 - `rendering`：**画面路线，默认写实**。二选一：
   - `photorealistic documentary photograph`（设备、工具、现场、工艺、产品、自然环境）
   - `technical diagram or annotated sectional view`（只在页面讲机制、结构、流程、数据时用）
