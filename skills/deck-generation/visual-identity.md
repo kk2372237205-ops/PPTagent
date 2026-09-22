@@ -45,17 +45,15 @@
   "typography": "",
   "motifs": ["", ""],
   "image_language": {
-    "style": "",
-    "stroke": "",
-    "fills": "solid flat fills only",
-    "gradients": "forbidden",
-    "shadows": "forbidden",
-    "color_count": 4,
+    "rendering": "photorealistic documentary photograph",
+    "lighting": "",
+    "materials": "",
+    "camera": "",
+    "depth": "",
+    "finish": "",
     "view": "",
-    "complexity": "",
-    "material": "",
     "subject_rule": "concrete nouns from the page content; abstract nouns are not valid subjects",
-    "forbidden_motifs": ["", ""]
+    "forbidden_motifs": ["cartoon", "flat vector mascot", "clip art", ""]
   },
   "header_footer": "",
   "spacing": "",
@@ -85,29 +83,40 @@
   `flat vector editorial illustration` / `isometric line-art technical illustration` /
   `annotated technical cutaway diagram` / `editorial collage illustration`。
   **不要写 `modern`、`clean`、`premium`、`科技感` 这类形容词**——它们不是画法。
-- `stroke`：线宽与是否统一，例如 `uniform 2px stroke, consistent across all elements`。
-- `fills` / `gradients` / `shadows`：固定写 `solid flat fills only` / `forbidden` / `forbidden`。渐变与投影是"假"的主要来源，禁用后模型必须靠形体取胜。
-- `color_count`：插图允许使用的平涂色数（建议 3–5），写死之后模型不会靠调渐变凑层次。
-- `view`：视角，例如 `straight-on orthographic, consistent across all pages` 或
-  `isometric 30-degree axonometric, no perspective distortion`。视角漂移是整套图显得不专业的主要隐形原因。
-- `complexity`：复杂度上限，例如 `no more than 5 distinct objects, no more than 2 levels of depth`。
-- `material`：材质，例如 `matte printed finish, flat ink coverage, no specular highlight`。
-- `subject_rule`：主体规则。**必须要求"具体名词"**。抽象名词（growth / innovation / synergy / future）不是有效的插图主体，模型只能把它们画成通用装饰。
+- `rendering`：**画面路线，默认写实**。二选一：
+  - `photorealistic documentary photograph`（设备、工具、现场、工艺、产品、自然环境）
+  - `technical diagram or annotated sectional view`（只在页面讲机制、结构、流程、数据时用）
+  **不要写 `modern`、`clean`、`premium`、`科技感` 这类形容词**——它们不是画法。
+  **绝对不要写 `flat vector`、`cartoon`、`illustration-style`**——那会得到卡通风，与"严谨、实事求是"相反。
+- `lighting`：写实类必填，例如 `natural available light, slight unevenness, realistic shadow falloff`。
+  不要 `studio lighting`、不要 `commercial beauty light`——那会显得摆拍。
+- `materials`：写实类必填，点名真实材质：`metal, concrete, fabric, cable, worn surfaces, dust`。
+- `camera`：写实类必填，例如 `35mm-equivalent field of view, eye-level, restrained framing`。
+  **整套固定同一机位与焦段**，否则每页像不同人拍的。
+- `depth`：景深与层次，例如 `shallow depth of field on the subject, background readable but not busy`。
+- `finish`：例如 `true-to-life color, subtle grain, no heavy retouching`。
+  **不要"过度磨皮的塑料感"**——那比扁平更容易显得假。
+- `color_count`：整套配色仍受 `palette` 约束（写实不等于放开配色）。
+- `view`：视角。写实类＝固定机位与焦段；图解类＝固定等距角度。
+  视角漂移是整套图显得不专业的主要隐形原因。
+- `subject_rule`：主体规则。**必须要求"具体名词"**。抽象名词（growth / innovation / synergy / future）不是有效的画面主体，模型只能把它们画成一团装饰。
 - `forbidden_motifs`：逐条列出禁止出现的默认填充物，建议直接采用：
+  `cartoon`、`flat vector mascot`、`chibi`、`cel shading`、`clip art`、`paper-cut collage`、
   `glowing spheres`、`gradient mesh backgrounds`、`neural-network node graphs`、
   `circuit board traces`、`binary code`、`holographic UI panels`、
   `floating translucent glass cards`、`particle constellations`、`lens flare`、
-  `light trails`、`abstract swirling ribbons`、`digital brains`、`robot hands`、
-  `faceless business silhouettes`、`generic isometric cities`。
+  `light trails`、`abstract swirling ribbons`、`digital brains`、
+  `faceless business silhouettes`、`generic isometric cities`、`studio-staged posing`。
 
 ### 与真实性强规则的关系
 
-`advanced-single-slide-director/references/evidence-and-authenticity.md` 禁止伪造证书、合同、报告、机构招牌、客户现场和真人照片，**这条绝对规则不受本文件影响**。
+`advanced-single-slide-director/references/evidence-and-authenticity.md` 禁止伪造**公文与身份类证据**（证书、合同、检测报告、专利页、盖章文件、机构招牌、logo、可辨认真人），**这条绝对规则不受本文件影响**。
 
-`image_language` 的作用是给出那个被漏掉的出口：**画成一眼就能看出是"画"的插画**。因此 `image_language.style` 必须指向明确非写实的画法，并在每次成图时声明：
+写实路线放开的只是**画面质感**，没有放开**伪造证据**。所以 `image_language.rendering` 走写实，同时每页重申这句：
 
 ```
-Legal frame: this is a clearly conceptual, non-documentary illustration.
-It is not a photograph, screenshot, certificate, record or real event.
-Render it so it cannot be mistaken for documentary evidence.
+Rendering frame: this is a realistic rendering that communicates what the subject looks like.
+It is not a documentary record of a specific real event, site, or person.
+Never render official documents, seals, institution signage, logos, or identifiable portraits.
 ```
+

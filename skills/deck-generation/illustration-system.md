@@ -45,30 +45,50 @@
 - `growth`、`innovation`、`synergy`、`future`、`科技感`、`高级感` **不是有效的插图主体**。
 - 正确写法示例：
   - ❌ `an illustration about digital transformation`
-  - ✅ `a flat vector illustration of a paper document feeding through a scanner with two visible rollers, three lines of text on the page, and a tray of finished pages`
+  - ✅ `a documentary photograph of a technician in a hi-vis vest inspecting a damaged overhead power line with a handheld device, overcast daylight, real field conditions`
 - **如果一个页面写不出 3 个具体名词**，说明它应该是图表页或数据表页——那就明确声明它是，而不是画一团装饰。
 
-### 4. 插画语言（禁止留空）
+### 4. 画面语言（禁止留空）——**默认写实**
 
-使用 `visual_identity.image_language`：
+**默认走写实路线。** 用 `visual_identity.image_language` 指定，按页面内容二选一：
+
+**A. 写实影像（默认，适用于设备、现场、产品、工艺、实验、场景）**
 
 ```
-style:          具体画法，例如 flat vector editorial illustration /
-                isometric line-art technical illustration /
-                annotated technical cutaway diagram
-stroke:         uniform 2px, consistent across all elements
-fills:          solid flat fills only
-gradients:      forbidden
-shadows:        forbidden
-color_count:    3–5 flat colors from the deck palette
-view:           straight-on orthographic OR isometric 30-degree, consistent across all pages
-complexity:     no more than 5 distinct objects, no more than 2 levels of depth
-material:       matte printed finish, flat ink coverage, no specular highlight
+rendering:      photorealistic documentary photograph, shot on location, not a designed image
+lighting:       natural available light, slight unevenness, realistic shadow falloff
+materials:      real material texture — metal, concrete, fabric, cable, worn surfaces, dust
+camera:         35mm-equivalent field of view, eye-level or slightly low, restrained framing
+depth:          shallow depth of field on the subject, background readable but not busy
+finish:         true-to-life color, subtle grain, no heavy retouching
 subject_rule:   concrete nouns from page content; abstract nouns are not valid subjects
 ```
 
-**视角必须在整套图里保持一致。** 一页正面、一页斜 45°、一页带透视，观感立刻散。
-**`view` 与 `style` 每页都要重申**，否则模型会逐页漂移。
+**B. 技术图解（仅当页面在讲机制、结构、流程、数据时使用）**
+
+```
+rendering:      technical diagram or annotated sectional view, engineering-drawing discipline
+line:           fine precise lines, uniform weight, measured spacing
+depth:          flat or isometric, consistent across the whole deck
+labels:         5–8 direct callouts with leader lines, all traceable to confirmed facts
+```
+
+两条路线都**必须**遵守：
+
+```
+view:           同一视角贯穿整套（写实类固定机位与焦段；图解类固定等距角度）
+consistency:    全套共用同一镜头语言 / 同一制图规范，逐页重申
+```
+
+**绝对不要出现**：卡通、扁平矢量吉祥物、Q 版、厚描边描边插画、纸片剪贴、发光渐变球、通用图标拼贴。
+**"写实"不等于"假精致"**：不要影棚灯光、不要商业摆拍、不要过度磨皮的塑料感，那反而更假。
+
+> ⚠️ 写实渲染的边界（与真实性硬规则一致，必须逐页重申）：
+> **可以**写实描绘设备、工具、线缆、机械结构、自然环境、工艺流程、概念场景。
+> **不可以**生成伪造的公文（证书、合同、检测报告、专利页、盖章文件、软件截图）、
+> 可识别的机构招牌与 logo、以及可辨认的真实人物肖像。
+> 写实画面表达的是"这个概念/装置长什么样"，**不是**"这是我们现场的实拍记录"。
+
 
 ### 5. 文字与插图的比例
 
@@ -92,49 +112,63 @@ subject_rule:   concrete nouns from page content; abstract nouns are not valid s
 ### 正向（每页都要有）
 
 ```
-POSITIVE: one dominant illustration; flat solid fills; uniform stroke weight;
-a concrete recognizable subject drawn from this page's content;
-silhouette readable at 25% zoom; generous internal negative space;
-matte printed finish.
+POSITIVE: one dominant visual; a concrete recognizable subject taken from this page's content;
+photorealistic and true to life by default — real materials, natural light, honest textures;
+if the page is a mechanism or process, a precise technical diagram instead;
+full-bleed or edge-anchored so it reads large; silhouette readable at 25% zoom;
+restrained color; no decorative filler.
 ```
 
 ### 负向（每页都要有）
 
 ```
-NEGATIVE — never include: glowing spheres, gradient mesh backgrounds,
-neural-network node graphs, circuit board traces, binary code, matrix rain,
-holographic UI panels, floating translucent glass cards, glassmorphism,
-frosted glass, particle constellations, sparkles, lens flare, bokeh,
-light trails, abstract swirling ribbons, digital brains, robot hands,
-cyberpunk cities, faceless business silhouettes in offices,
-generic isometric cities, stock-photo people, clip art, emoji, cartoon mascots,
-3D beveled charts, glossy plastic, chrome, reflective surfaces, drop shadows,
-neon outlines, watermark, model signature, paper grain, noise texture,
-readable certificates, contracts, reports, patent pages, invoices,
+NEGATIVE — never include: cartoon, flat vector mascot, chibi, cel-shaded or thick-outline
+illustration, paper-cut collage, clip art, emoji, cute character art, glossy 3D plastic look,
+glowing spheres, gradient mesh backgrounds, neural-network node graphs, circuit board traces,
+binary code, matrix rain, holographic UI panels, floating translucent glass cards,
+glassmorphism, frosted glass, particle constellations, sparkles, lens flare, bokeh,
+light trails, abstract swirling ribbons, digital brains, cyberpunk cities,
+faceless business silhouettes in offices, generic isometric cities,
+studio-staged stock-photo posing, over-retouched plastic skin, heavy vignette,
+3D beveled charts, chrome, neon outlines, watermark, model signature,
+readable certificates, contracts, reports, patent pages, invoices, official stamps,
 official logos, institution signage, real brand marks, QR codes,
-photorealistic depictions of real campuses, labs, factories or customers.
+identifiable portraits of real people, fake software screenshots or dashboards.
 ```
+
+**注意最后三条与写实的关系**：写实**可以**画设备、现场、线缆、机械、自然环境；
+**不可以**画成公文、公章、可识别机构招牌或真人肖像——那三类是"声明"而不是"画面"。
 
 **自检句（写进提示词）**：
 
 ```
-For every decorative element, state in one clause what information it carries.
+For every element, state in one clause what information it carries.
 If it carries none, remove it.
 ```
 
 ---
 
-## 四、合法性框架（让插图不违反真实性硬规则）
+## 四、真实性边界（写实路线下的红线）
 
-真实性规则禁止伪造证书、合同、报告、机构招牌、客户现场和真人照片——**这一条绝对有效，不受本文件影响**。
+真实性规则禁止伪造**公文与身份类证据**——这一条绝对有效，不受本文件影响。
 
-本文件补上它一直缺失的那个出口：**画成一眼就能看出是"画"的插画。**
+写实路线放开的只是"画面的质感"，**没有放开"伪造证据"**。两者必须分清：
+
+| 可以写实描绘 | 绝不可以生成 |
+| --- | --- |
+| 设备、工具、线缆、机械结构、零部件 | 证书、合同、检测报告、专利页、盖章文件 |
+| 自然环境、天气、作业场地氛围 | 可识别的机构招牌、校名、logo、铭牌 |
+| 工艺流程、装配过程、概念场景 | 可辨认的真实人物肖像、真人合影 |
+| 通用仪表、通用软件界面轮廓 | 仿真软件截图、假数据看板、假订单、假发票 |
+
+**可以写实，但不能把生成画面说成"实拍记录"。** 每页重申这句：
 
 ```
-Legal frame: this is a clearly conceptual, non-documentary illustration.
-It is not a photograph, screenshot, certificate, record or real event.
-Render it so it cannot be mistaken for documentary evidence.
+Rendering frame: this is a realistic rendering that communicates what the subject looks like.
+It is not a documentary record of a specific real event, site, or person.
+Never render official documents, seals, institution signage, logos, or identifiable portraits.
 ```
+
 
 **两类东西必须分开，不能混在同一批禁令里：**
 

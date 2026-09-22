@@ -165,6 +165,14 @@ function providerError(result, fallback) {
     }
     return "YZStudio 已收到 GPT-5.6 请求，但返回文字账户余额不足；这不是配置缺项。请在 YZStudio 为 AI_TEXT_API_KEY 所属文字分组兑换或补充额度，确认套餐、每日额度和永久额度可用后，再点击“重新分析资料”。";
   }
+  // 中转站没有可用上游账号：这是中转站侧的容量/分组问题，不是本机配置或提示词问题。
+  // 不解释清楚的话，用户会以为是自己的配置或资料出了问题。
+  if (/no available compatible accounts|no available account|no upstream account/i.test(message)) {
+    if (/图片/.test(fallback)) {
+      return "图片中转站当前没有可用的上游账号（这是中转站侧的容量或分组问题，不是本机配置问题）。稍等片刻再点“重新生成本页”通常就能通过。若持续出现，请在 YZStudio 确认 AI_IMAGE_API_KEY 所属分组是否包含 gpt-image-2、以及该分组的账号额度是否耗尽。";
+    }
+    return "文字中转站当前没有可用的上游账号（中转站侧容量或分组问题）。稍等片刻后重试。";
+  }
   return message;
 }
 
@@ -1681,6 +1689,10 @@ function transientAiFailure(error, options = {}) {
   const message = error instanceof Error ? error.message : String(error);
   if (/This operation was aborted|请求超过\s*\d+\s*秒，本机已停止等待/i.test(message)) return false;
   if (options.noRetryHeadersTimeout && /UND_ERR_HEADERS_TIMEOUT|headers timeout/i.test(message)) return false;
+  // 中转站容量类错误必须按瞬态处理：它只表示"这一刻没有可用的上游账号"，隔几秒重试通常就能过。
+  // 实测（2026-09-22）"No available compatible accounts" 以前认不出来，于是整页直接判失败，
+  // 用户只能一页页手动点"重新生成本页"。
+  if (/no available compatible accounts|no available account|no upstream account|上游服务异常|请稍后重试|速率限制|rate ?limit|overloaded|capacity/i.test(message)) return true;
   return /temporar(?:y|ily)|upstream|service unavailable|bad gateway|gateway timeout|request timeout|too many requests|fetch failed|network|socket|tls|econn|enotfound|etimedout|(?:^|\D)(?:408|425|429|500|502|503|504)(?:\D|$)/i.test(message);
 }
 
@@ -3209,7 +3221,8 @@ function pageRenderContract(run, slide, planSlide, pagePlan, fingerprint, allSli
       ] : []),
       "不得生成假产品、假人物、假现场、假实验、假合同、假证书、假奖项、假界面、假新闻或假客户证明。",
       "用户资料中的图片不得作为页面裁片或背景复用。概念视觉必须服从 main_visual_brief，并与事实文字明确区分。",
-      "不得生成可读的机构招牌、校名、Logo、产品铭牌、证书、合同、报告截图或客户证明；未提供真实图片时只能做象征性表达，不能伪装成纪实照片。",
+      "概念视觉默认真实写实：设备、工具、线缆、机械结构、自然环境、工艺流程、作业场景都要画得像真实存在的实物，禁止卡通、扁平矢量吉祥物、Q 版和剪贴画。",
+      "不得生成可读的机构招牌、校名、Logo、产品铭牌、公文（证书、合同、检测报告、专利页、盖章文件）、官方截图或客户证明；不得生成可辨认的真实人物肖像。写实画面表达的是“这个装置/工艺长什么样”，不是“这是我们现场的实拍记录”，因此画面中不得出现公章、文件抬头、可读编号等会让人误认为是凭证的元素。",
       endingSlide
         ? "本页是整份 PPT 的结尾：必须封面级强视觉、重情绪、少文字。除 immutable_content 中明确逐字锁定的内容外，只呈现一句收束性结论和最多一条短支撑语；禁止把路线、指标、证据、行动清单或正文段落堆入结尾页。"
         : "封面少文字、强视觉；正文页必须有清楚的信息层级。",
@@ -3373,7 +3386,7 @@ Hard requirements:
 - Output a full 16:9 PPT page, not a poster, not an isolated illustration.
 - **Every page must carry one dominant illustration occupying at least 25% of the canvas, and it must be the largest single element on the page.** Only two cases may go without: a chart page where the chart itself is the visual, and a pure data-table page. A page made only of text and small icons is a failure.
 - **Name the illustration's subject with concrete nouns taken from this page's spec.** Abstract nouns such as growth, innovation, cooperation or future are not valid subjects; they produce generic decorative shapes instead of a real picture.
-- **Never render a generated scene as a photograph or a photorealistic image.** Draw it flat and clearly illustrative so it can never be mistaken for documentary evidence. Never fabricate certificates, contracts, reports, official signage, logos or real people.
+- **Render the illustration realistically by default** — photorealistic for equipment, sites, materials and processes, with a precise technical diagram when the page explains a mechanism. **Never cartoon, flat-vector, mascot or clip-art style.** Never fabricate documents (certificates, contracts, reports, patent pages, official seals, software screenshots), institution signage, logos, or identifiable real people.
 - The page must look like a real polished presentation slide with layout, title area, content hierarchy, refined background, and controlled whitespace.
 - Keep style consistent with the visual identity, including palette, card system, motifs, header/footer feel, typography feel, and image language.
 - Keep continuity with the previous and next slide while still making this page visually distinct.
