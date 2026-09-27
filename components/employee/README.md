@@ -14,7 +14,9 @@
 | `workbench-chrome.tsx` | 待审批页、左侧导航、订单任务、客户消息、客户需求面板、团队协作、设置页 | `/api/employee/me`、`/api/employee/orders` |
 | `employee-admin.tsx` | 管理控制台：成员审批/停用、角色与逐项权限、学校筛选、使用统计 | `/api/employee/admin/*` |
 | `onlyoffice-editor.tsx` | ONLYOFFICE 在线编辑器外壳，支持拖入 PPT/PPTX 替换当前文稿 | `/api/employee/work-documents/*` |
-| `tools-ai-panels.tsx` | AI 创作助手（会话 + 生图）与图片工具（抠图 / 图片转 PPT / PPT 提取图片） | `/api/employee/ai/*`、`/api/employee/images`、`/api/employee/tools` |
+| `ai-assistant-panel.tsx` | **生图 / AI 创作助手**：订单级 AI 会话（文字助手）与生图、两条中转的健康检查、任务轮询、图片预览与存入素材库 | `/api/employee/ai/*`、`/api/employee/images` |
+| `image-tools-panel.tsx` | **图片工具**：智能抠图（佐糖）、图片转 PPT（Codia）、从当前 PPT 提取图片 | `/api/employee/tools`、`/api/employee/images` |
+| `tools-ai-shared.ts` | 上面两个面板共用的小工具（只放真正共用的） | — |
 | `material-rail.tsx` | 底部素材栏：个人素材分页、批量导入、订单素材总库 | `/api/employee/images` |
 | `ppt-paste-tray.tsx` | PPT 粘贴托盘：把图片放进剪贴板，在 PPT 当前页 Ctrl+V 插图 | `/api/employee/images` |
 | `deck-generation-form.tsx` | 生成 PPT 的创建表单（快速版/高级版、大纲、资料、配色、统一元素） | `/api/employee/deck` |

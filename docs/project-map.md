@@ -244,8 +244,10 @@ components\employee\
 │   ├─ onlyoffice-editor.tsx       ONLYOFFICE 在线编辑器外壳（可拖入 PPTX 替换）
 │   ├─ material-rail.tsx           底部素材栏（分页、批量导入、订单素材总库）
 │   ├─ ppt-paste-tray.tsx          粘贴托盘（把图片放进剪贴板，在 PPT 里 Ctrl+V）
-│   ├─ tools-ai-panels.tsx         AI 创作助手 + 图片工具（抠图/图片转 PPT/PPT 提取图片）
-│   └─ tools-ai-types.ts           上面这个模块的类型
+│   ├─ ai-assistant-panel.tsx      生图 / AI 创作助手（2026-09-26 按模式拆出）
+│   ├─ image-tools-panel.tsx       图片工具（抠图 / 图片转 PPT / 提取图片）
+│   ├─ tools-ai-shared.ts          上面两个面板共用的小工具
+│   └─ tools-ai-types.ts           图片工具面板的类型
 │
 ├─ 【生成 PPT 链路】
 │   ├─ deck-generation-form.tsx    创建表单（快速版/高级版、大纲、资料、配色、统一元素）

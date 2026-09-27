@@ -68,7 +68,7 @@
 
 | 层 | 文件 |
 | --- | --- |
-| **界面** | `components/employee/tools-ai-panels.tsx` 里的 `AiPanel`（**第 45 行**，同一文件还有图片工具） |
+| **界面** | `components/employee/ai-assistant-panel.tsx`（`AiPanel`：AI 会话 + 生图） |
 | **接口** | `app/api/employee/services/[id]/generate-images/route.ts`<br>`app/api/employee/generated-images/[id]/route.ts`（读图 / 加入素材库） |
 | **执行方式** | ⚠️ **没有独立后台脚本**——在 Next 进程内异步执行（重启会留下 `processing` 任务） |
 | **供应商与模型** | `lib/ai-providers.ts`（`imageModelOptions`：ARK Seedream 5.0 默认 / YZStudio gpt-image-2） |
@@ -86,7 +86,7 @@
 | **界面** | `components/employee/design-run-panel.tsx`（阶段事件流、成品/背景预览） |
 | **接口（4 条）** | `app/api/employee/services/[id]/design-agent/runs/route.ts`<br>`…/runs/[runId]/{route,apply,cancel}.ts` |
 | **后台执行脚本** | `scripts/workers/design-agent/design-agent-worker.mjs`（98.9 KB） |
-| **提示词** | ⚠️ `scripts/workers/design-agent/design-agent-skills.mjs`（**写成 JS 字符串，不在 `skills/` 目录里**，与其它模式不一致） |
+| **提示词** | `scripts/workers/design-agent/design-agent-skills.mjs`（写成 JS 字符串，不在 `skills/` 目录里）。**注意它的实际归属**：7 个常量里 **6 个是"拆图 / 抠图 / 重建"规则**（`cleanBackgroundSkill`、`partDecompositionSkill`、`partCutoutSkill`、`textArtCutoutSkill`、`rebuildAlignmentSkill`、`partRepairSkill`），**只有 `masterRenderSkill` 是单页渲染规则**。`partRepairSkill` 全仓零引用。 |
 | **外部技能文件** | ~~`抠图准备工作skill/`~~ 已于 2026-09-26 删除（只被死代码引用，运行时从不读取）。`scripts/workers/design-agent/design-agent-worker.mjs` 里还留着一个指向它的路径常量，属于死代码 |
 
 **注意**：`design-agent-worker.mjs` **同时服务本模式与生图**；2026-09-26 已清掉 **31 个零引用声明**（文件从 1695 行降到 1282 行），现在 eslint 警告为 **0**。文件里仍保留 ~~5~~ 处**前任作者特意标注"为后续工作流保留"**的旧代码（图片炸开 / 拆图重建那条路，如 `buildSmartExplodeRun`、`decomposeMaster`、`generateCleanBackground`、`smartCleanPrompt`、`legacyProcessRun`），它们各自带着 `eslint-disable-next-line` 注释，**不是遗漏，不要当成垃圾清掉**。
@@ -97,7 +97,7 @@
 
 | 层 | 文件 |
 | --- | --- |
-| **界面** | `components/employee/tools-ai-panels.tsx` 里的 `ImageToolsPanel`（**第 294 行，与生图同一个文件**） |
+| **界面** | `components/employee/image-tools-panel.tsx`（`ImageToolsPanel`，2026-09-26 起与生图分开） |
 | **类型** | `components/employee/tools-ai-types.ts` |
 | **接口** | `app/api/employee/services/[id]/image-tools/segmentation/route.ts`（佐糖抠图/变清晰）<br>`…/image-to-pptx/route.ts`（Codia 图片转 PPTX）<br>`…/import-image/route.ts`（本地图片入库）<br>`app/api/employee/work-documents/[id]/extract-images/route.ts`（从 PPTX 抽图） |
 | **工具定义** | `lib/techsz-image-tools.ts` |
@@ -138,11 +138,22 @@
 2. **找脚本**：看 `scripts/workers/<模式>/`，**2026-09-26 已按模式分目录**（`deck-generation/` / `ppt-polish/` / `design-agent/` / `image-explode/` / `shared/`）。`scripts/` 顶层现在只剩启动与运维脚本。
 3. **找界面**：看 `components/employee/`，靠文件名前缀（`deck-*` / `polish-*` / `image-tools-*`）区分。`tools-ai-panels.tsx` 已于 2026-09-26 拆成 `ai-assistant-panel.tsx`（生图）与 `image-tools-panel.tsx`（图片工具）。
 
-**还剩两处没整理**（都需要项目 owner 授权，且会碰到生成 PPT 的提示词加载路径）：
+---
 
-| 待办 | 现状 | 建议 |
-| --- | --- | --- |
-| `skills/deck-generation/` 被两条链路共用 | 其中 `style-packs.md`、`illustration-system.md` **生成 PPT 与美化 PPT 都读**，所以目录名已不准 | 把这两个文件拆到 `skills/shared/`，让 `deck-generation/` 恢复"只服务生成 PPT" |
-| 生图提示词不在 `skills/` 里 | 写死在 `scripts/workers/design-agent/design-agent-skills.mjs` 的 JS 字符串中，与其它两个模式不一致 | 搬到 `skills/image-generation/*.md`，让 worker 读文件 |
+## 十、⚠️ 剩下的"共享"**决定不拆**（2026-09-26 决策，勿再重提）
 
-> 2026-09-26 已完成：UI 按模式拆分（`ai-assistant-panel` / `image-tools-panel`）、`scripts/` 按模式分目录、`design-agent-worker.mjs` 清掉 31 个零引用声明、eslint 基线收紧到 0。
+`skills/deck-generation/` 里有两个文件（`style-packs.md`、`illustration-system.md`）**生成 PPT 与美化 PPT 都读**，所以目录名严格讲已不准。**但决定保持现状，理由如下**：
+
+1. **拆它不会提升出图质量**，纯属目录美观。
+2. **风险性质和其他拆分不同**：`readSkill()` 是 `readFileSync`，**没有 try/catch、没有存在性检查**。路径写错 `npm run verify` **查不出来**，只会在真实生成任务跑到一半时抛错——正好砸在已验证有效的高级生成 PPT 链路上。
+3. 当前的共享不是"结构混乱"，而是**成熟链路给未成熟功能提供可靠底座**：美化 PPT 直接复用生成 PPT 已经调好的配色与画面规则，比让它各写一套更安全。
+4. 正确时机是：等**美化 PPT 或生图模式真正开发完整**时，再从现有规则里抽出"确实共用"的部分，那时才建立共享规则文件。
+
+**同样不拆的还有**：`scripts/workers/design-agent/design-agent-skills.mjs` **不能**搬到 `skills/image-generation/`。
+它 7 个常量里 6 个是**拆图 / 抠图 / 重建**规则，只有 1 个是单页渲染规则；而且**普通生图根本不用任何 skills**。搬过去会造成概念混淆。
+
+> 2026-09-26 已完成且**已验证**的拆分：UI 按模式拆（`ai-assistant-panel` / `image-tools-panel`）、`scripts/` 按模式分目录。
+> 这两项的验证方式是 43 条路径引用全部存在 + 真实启动确认 worker 按新路径拉起，**不是只跑 verify**。
+> 未做的：`design-agent-worker.mjs` 清掉 31 个零引用声明、eslint 基线收紧到 0。
+
+**下一步优先级（高于继续整理目录）**：把资源投入真实功能与出图验证——快速版、美化 PPT、生图三个模式的实跑效果，比目录整齐更能改善产品。
