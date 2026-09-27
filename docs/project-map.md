@@ -76,8 +76,9 @@ D:\PPTagent
 │   └─ .npm-cache\              792 MB 下载缓存
 │
 ├─ 【遗留 / 旁支】
-│   ├─ supabase\                另一套"报名+预约"业务的建表脚本（未接主链路）
-│   └─ 抠图准备工作skill\        外部技能素材（其中 1 个文件被后台脚本读取，见下）
+│   └─ supabase\                另一套"报名+预约"业务的建表脚本（未接主链路）
+│                               ⚠️ 不要删：scripts\supabase-migrate.mjs 会读它，package.json 有 supabase:migrate / supabase:sync
+│       （原 抠图准备工作skill\ 已于 2026-09-26 删除：只被死代码引用）
 │
 └─ 根目录散文件（清单见第七节）
 ```
@@ -414,7 +415,7 @@ public\
     └─ index.html
 ```
 
-### 7.2 `docs\`（9 个文件，含本文件与归档）
+### 7.2 `docs\`（7 个文件，另有 `archive\` 1 个）
 
 | 文件 | 什么时候看 |
 | --- | --- |
@@ -423,11 +424,12 @@ public\
 | `feature-file-map.md` | ⭐ **功能 → 文件对照表（按功能组织）**：某个模式涉及哪些界面/接口/脚本/提示词 |
 | `model-handoff.md` | 换模型/换人接手时的阅读顺序 |
 | `project-control-workflows.md` | 你验收业务流程时看（含每个确认点与交付物） |
-| `readonly-audit-2026-09-14.md` | 完整审计报告（目录脉络、74 条接口、问题清单、改造结果） |
+| `readonly-audit-2026-09-14.md` | 完整审计报告（目录脉络、74 条接口、问题清单、改造结果）。**历史快照，里面的路径引用按当时状态保留** |
 | `README.md` | 文档阅读顺序 |
-| `project-archive-2026-07-03.md` | 历史存档（方案已过时） |
-| `maintenance-audit-2026-07-03.md` | 历史维护审计 |
-| `archive\agents-history.md` | ⭐ 全部历史变更记录（从 `AGENTS.md` 拆出来的，69 KB） |
+| `archive\agents-history.md` | ⭐ 全部历史变更记录（从 `AGENTS.md` 拆出来的，69 KB）。**历史快照** |
+
+> 2026-09-26 减法：删除了 `project-archive-2026-07-03.md` 与 `maintenance-audit-2026-07-03.md`
+> （两者描述的都是**改造前**的状态，文档自己就标着"会误导"；需要追溯可查 git 历史）。
 
 ### 7.3 根目录 22 个文件怎么归类
 
@@ -527,7 +529,7 @@ git reset --hard HEAD          # 丢弃当前未提交的改动
 按这个顺序问自己四个问题：
 
 1. **它在 `.gitignore` 里吗？** 在 → 是缓存或数据，删了可能丢数据（`uploads\`、`prisma\dev.db`）。
-2. **`grep` 全仓，有人 import 它吗？** 没有 → 可能是废物，但先确认它不是被脚本路径字符串调用（例如 `抠图准备工作skill\skill.txt` 就是这样被读的）。
+2. **`grep` 全仓，有人 import 它吗？** 没有 → 可能是废物，但先确认它不是**被路径字符串**调用（例如 `scripts\supabase-migrate.mjs` 按路径读取 `supabase\migrations\*.sql`，`grep` 名字能搜到，但 import 关系里看不到）。
 3. **删了之后 `npm run verify` 还过吗？** 不过说明还在用。
 4. **它是"空目录"吗？** 空目录也可能是有意义的**分组壳**（如 `app\api\employee\admin\`），删了会让路由结构变乱。
 

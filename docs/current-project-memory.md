@@ -15,7 +15,8 @@
 - `docs/current-project-memory.md`：当前功能、运行条件、验证结果和已知风险，后续优先更新这里。
 - `docs/model-handoff.md`：新模型或新任务的阅读顺序和接手方式。
 - `docs/project-control-workflows.md`：项目 owner 用来验收用户流程的业务手册。
-- `docs/project-archive-2026-07-03.md`、`docs/maintenance-audit-2026-07-03.md`：历史存档和历史维护审计，只用于追溯，不代表当前状态。
+- `docs/project-map.md`：目录地图（按**目录**组织）；`docs/feature-file-map.md`：功能 → 文件对照表（按**功能**组织）。
+- `docs/archive/agents-history.md`、`docs/readonly-audit-2026-09-14.md`：**历史快照**，只用于追溯，里面的行号与路径按当时状态保留，不代表当前状态。
 
 ## 项目定位
 

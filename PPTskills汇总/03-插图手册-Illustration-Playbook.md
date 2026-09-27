@@ -443,7 +443,7 @@ Style: <从 01-风格库-Style-Library.md 选一个 IS-x，整段粘贴>
 Scale: the illustration occupies <N>% of the canvas area and is the single
        largest element on the page. Its tallest element spans at least 75%
        of the canvas height. Bleed: <which edges>.
-Composition: <从 02-版式库-Layout-Library.md 选一个 L-xx，写明分区百分比>
+Composition: <写明分区百分比与出血边；版式档位的面积与出血要求见 skills/advanced-layout-profiles.md>
 
 Text budget: at most <N> text blocks, <N> lines each, under <N> words total.
 

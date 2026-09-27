@@ -87,7 +87,7 @@
 | **接口（4 条）** | `app/api/employee/services/[id]/design-agent/runs/route.ts`<br>`…/runs/[runId]/{route,apply,cancel}.ts` |
 | **后台执行脚本** | `scripts/design-agent-worker.mjs`（98.9 KB） |
 | **提示词** | ⚠️ `scripts/design-agent-skills.mjs`（**写成 JS 字符串，不在 `skills/` 目录里**，与其它模式不一致） |
-| **外部技能文件** | `抠图准备工作skill/skill.txt`（读取函数存在，但只服务已废弃的下游，**运行时实际不读**） |
+| **外部技能文件** | ~~`抠图准备工作skill/`~~ 已于 2026-09-26 删除（只被死代码引用，运行时从不读取）。`scripts/design-agent-worker.mjs` 里还留着一个指向它的路径常量，属于死代码 |
 
 **注意**：`design-agent-worker.mjs` **同时服务本模式与生图**，并且含有大量死代码——`--max-warnings 11` 的 11 条历史警告全部来自这个文件。
 

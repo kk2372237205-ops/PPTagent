@@ -35,10 +35,12 @@
 
 | 文档 | 为什么不要读 |
 | --- | --- |
-| `docs/archive/agents-history.md`（69 KB） | 是**历史记录**，里面很多结论已经过时（例如"美化 PPT 只有 UI"、"用 OpenAI Key"）。只在需要追溯"当初为什么这么做"时查 |
-| `docs/project-archive-2026-07-03.md` | 2026-07-03 的存档，描述的是**改造前**的方案（那时 `employee-app.tsx` 还是 3754 行） |
-| `docs/maintenance-audit-2026-07-03.md` | 同上是历史审计，里面"约 2020 行"等数字都已过时 |
+| `docs/archive/agents-history.md`（69 KB） | 是**历史记录**，里面很多结论已经过时（例如"美化 PPT 只有 UI"、"用 OpenAI Key"）。只在需要追溯"当初为什么这么做"时查。**历史快照，里面提到的已删文件按当时状态保留** |
+| `docs/readonly-audit-2026-09-14.md`（56 KB） | 审计报告。**历史快照**，里面的行号与路径按当时状态保留，不要当现状读 |
 | `AGENTS.md` 里不带日期的"已实现功能"段落 | 是业务**意图**规则，不等于当前实现；判断实现请看 `lib/` 与 `app/api/` 的真实代码 |
+
+> 2026-09-26 减法：`docs/project-archive-2026-07-03.md` 与 `docs/maintenance-audit-2026-07-03.md`
+> 已删除（它们描述的正是"会误导你"的改造前状态）。需要追溯请查 git 历史。
 
 ## 当前系统骨架
 
