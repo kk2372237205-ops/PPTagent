@@ -18,8 +18,8 @@
 | 文件 | 生成 PPT | 美化 PPT | 说明 |
 | --- | --- | --- | --- |
 | `SKILL.md` | ✅ | — | 总规则 |
-| `style-packs.md` | ✅（仅内置配色模式） | ✅ | 4 个风格包的配色与版式定义（id 清单真源在 `lib/employee-deck-packs.mjs`） |
-| `advanced-layout-profiles.md` | ✅（仅参考图配色模式） | — | 无配色的版式语言 |
+| `style-packs.md` | ✅（仅内置配色模式） | ✅ | 4 个风格包的配色与版式定义。**id 清单的真源是 `lib/employee-deck-packs.mjs`**，本文件的段落由 `scripts/check-style-packs.mjs` 逐 id 校验 |
+| `advanced-layout-profiles.md` | ✅（仅参考图配色模式） | — | 无配色的版式语言。段落同样受 `scripts/check-style-packs.mjs` 校验 |
 | `visual-identity.md` | ✅ | — | 整套图的视觉身份（含 `image_language` 插图体系） |
 | `visual-storyboard.md` | ✅ | — | 页间连贯性与叙事节奏 |
 | `slide-image-specs.md` | ✅ | — | 单页怎么生成（含插图面积份额） |
