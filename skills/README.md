@@ -6,24 +6,35 @@
 
 ## ⚠️ 先看这个：谁在读哪些文件
 
-**本目录不是"生成 PPT 专用"。** 目前有**两个** worker 在读它：
+**本目录服务生成 PPT；美化 PPT 只共享其中 1 份。**
 
 | worker | 工程路径 | 读什么 |
 | --- | --- | --- |
 | 生成 PPT | `scripts/workers/deck-generation/deck-generation-worker.mjs` | **本目录全部 16 个文件** |
-| 美化 PPT | `scripts/workers/ppt-polish/ppt-polish-worker.mjs` | **只有 2 个**：`style-packs.md`、`illustration-system.md` |
+| 美化 PPT | `scripts/workers/ppt-polish/ppt-polish-worker.mjs` | **只有 1 个**：`style-packs.md` |
+| 生图 / 单页设计 | `scripts/workers/design-agent/design-agent-worker.mjs` | **一份都不读**（提示词全在代码里） |
 
-逐文件对照：
+> ⚠️ **共享边界按"性质"划，不按方便划（2026-09-26 owner 决定）。**
+>
+> **该共享的**：`style-packs.md`。美化的"目标风格"下拉框和生成用的是**同一份列表、同一个 id、同一个中文标签**（两边都渲染 `deckStylePacks`）。用户在美化里选"蓝金科技"，就必须和生成里的"蓝金科技"是同一个东西——否则同一个词在两个模式画出两种画面。这是"用户可见选项的定义"，必须唯一。
+>
+> **不该共享的**：`illustration-system.md` 这类**画面工程规则**。面积合同、出血、密度联动、图解路线、成图自检都是生成链路"从零画整页"的规则；美化是要大改的产品线，它用自己脚本里的那份硬性要求。两边各写各的"≥25%"是**各自的决定**，允许不同步。
+>
+> **判断标准一句话**：共享的是"用户在界面上看到的选项的含义"，不共享的是"某条链路怎么把画面做出来"。
+>
+> 美化后续大改时，它自己的新规则放 `skills/ppt-polish/`，**不要往这边多接文件**——每多接一份，生成那边的改动就会无声改掉美化的产出。
+
+逐文件对照（"生成 PPT"列为准）：
 
 | 文件 | 生成 PPT | 美化 PPT | 说明 |
 | --- | --- | --- | --- |
 | `SKILL.md` | ✅ | — | 总规则 |
-| `style-packs.md` | ✅（仅内置配色模式） | ✅ | 4 个风格包的配色与版式定义。**id 清单的真源是 `lib/employee-deck-packs.mjs`**，本文件的段落由 `scripts/check-style-packs.mjs` 逐 id 校验 |
+| `style-packs.md` | ✅（仅内置配色模式） | ✅（共享） | 4 个风格包的配色与版式定义。**id 清单的真源是 `lib/employee-deck-packs.mjs`**，本文件的段落由 `scripts/check-style-packs.mjs` 逐 id 校验 |
 | `advanced-layout-profiles.md` | ✅（仅参考图配色模式） | — | 无配色的版式语言。段落同样受 `scripts/check-style-packs.mjs` 校验 |
 | `visual-identity.md` | ✅ | — | 整套图的视觉身份（含 `image_language` 插图体系） |
 | `visual-storyboard.md` | ✅ | — | 页间连贯性与叙事节奏 |
 | `slide-image-specs.md` | ✅ | — | 单页怎么生成（含插图面积份额） |
-| `illustration-system.md` | ✅ | ✅ | **插图/画面体系与面积合同**（跨越两条链路的核心规则） |
+| `illustration-system.md` | ✅ | — | **插图/画面体系与面积合同**（生成链路的画面工程规则，美化用自己的那份） |
 | `regeneration-controls.md` | ✅ | — | 单页返工规则 |
 | `source-grounding.md` | ✅ | — | 资料读取与来源追溯 |
 | `outline-control.md` | ✅ | — | 高级版大纲与确认规则 |
@@ -33,7 +44,8 @@
 | `advanced-single-slide-director/**`（3 个） | ✅（仅高级版） | — | 单页导演 Skill |
 | `advanced-single-slide-director/agents/openai.yaml` | ❌ | ❌ | **全仓无代码读取**，是外部 agent 清单格式的遗留元数据 |
 
-> **共用是刻意保留的**，判断依据和"什么时候才该拆"写在 `docs/feature-file-map.md` 第十节。**动手拆之前先读那一节。**
+> **这份"共用"已经不存在了。** 2026-09-26 之前美化 PPT 会读其中 2 份，owner 决定按模式隔离后
+> 已从美化侧砍断。当时的判断依据（为什么曾决定不拆）保留在 `docs/feature-file-map.md` 第十节，作为决策记录。
 
 ---
 
@@ -51,7 +63,7 @@ function readSkill(name) {
 
 **2. 注入方式是"整篇拼接"，不是摘取。**
 
-`skillBundle()` 把上表 13 份用 `\n\n---\n\n` 连接后整篇注入**方案提示词**（给文字模型），只有 `illustration-system.md` 还额外进**单页图片提示词**。
+`skillBundle()` 把上表 13 份用 `\n\n---\n\n` 连接后整篇注入**方案提示词**（给文字模型），其中 `illustration-system.md` 还额外进**单页图片提示词**。（这是生成链路的拼装；美化只单独读 `style-packs.md` 一份。）
 
 **3. 有一个容易踩的条件分支。**
 
@@ -60,7 +72,7 @@ function readSkill(name) {
 参考图配色模式 → 读 advanced-layout-profiles.md（不读 style-packs.md）
 ```
 
-**只改其中一个，另一条链路完全不生效。** 跨模式都要生效的规则，写在 `illustration-system.md`（它无条件读取）。
+**只改其中一个，另一条配色链路完全不生效。** 两条链路都要生效的规则写在 `illustration-system.md`（生成链路无条件读取）。
 
 ---
 
@@ -78,7 +90,7 @@ function readSkill(name) {
 
 - `slide-image-specs.md`：单页怎么生成，含 `illustration_share` 面积份额与整套面积节奏。
 
-- `illustration-system.md`：**插图/画面体系**。三个症状（过小 / 没有 / 很假）的成因与修法、写实与图解两条路线、正负配对、真实性边界、成图后自检。**生成与美化两条链路共用。**
+- `illustration-system.md`：**插图/画面体系**。三个症状（过小 / 没有 / 很假）的成因与修法、写实与图解两条路线、正负配对、真实性边界、成图后自检。**生成链路的画面工程规则，美化不读。**
 
 - `source-grounding.md`：大量资料读取、事实与数字来源追溯。
 
@@ -101,5 +113,5 @@ function readSkill(name) {
 1. **优先改 Markdown 技能**，不要把长提示词塞回 `.mjs` 字符串。
 2. **改技能后用小页数任务验证**，不要一次跑大任务。
 3. **结尾页规则必须保留**：少内容、强情绪、强收束、强记忆点。
-4. **改了共用文件，要同时想到美化 PPT**（见上表）。
+4. **本目录默认只服务生成 PPT。** 美化 PPT 只共享 `style-packs.md`（用户选项的定义），生图不读任何一份；**画面工程规则不要接给它们**（2026-09-26 owner 决定，见开头说明）。
 5. **本目录的文件名与路径被 `docs/feature-file-map.md` 和 `docs/model-handoff.md` 引用**，移动文件时一并更新。

@@ -363,7 +363,7 @@ scripts\workers\
 ├─ deck-generation\
 │   ├─ deck-generation-worker.mjs                  ⭐ 生成 PPT 全流程：读资料 → GPT 规划 → Image2 逐页出图 → PDF → Codia 转 PPTX
 │   └─ deck-source-parser.mjs                      解析 PDF / Word / Excel / PPTX / 文本，保留来源页码
-├─ ppt-polish\ppt-polish-worker.mjs                美化 PPT：逐页重绘并出预览图（读 skills/deck-generation 的 2 份规则）
+├─ ppt-polish\ppt-polish-worker.mjs                美化 PPT：逐页重绘并出预览图（只共享 skills 的 style-packs.md，画面规则在自己脚本里）
 ├─ design-agent\
 │   ├─ design-agent-worker.mjs                     单页智能设计与生图链路
 │   └─ design-agent-skills.mjs                     设计脚本的技能文档读取工具
@@ -396,7 +396,7 @@ skills\
     ├─ SKILL.md                           总规则
     ├─ style-packs.md                     内置配色的颜色与版式定义（4 个风格包，仅内置配色模式读）
     ├─ advanced-layout-profiles.md        高级版"版式语言"（不含颜色，仅参考图配色模式读）
-    ├─ illustration-system.md             ⭐ 插图体系：写实、面积合同、负面清单（两条链路无条件读）
+    ├─ illustration-system.md             ⭐ 插图体系：写实、面积合同、负面清单（生成链路无条件读，美化不读）
     ├─ visual-identity.md                 整套 PPT 的视觉身份
     ├─ visual-storyboard.md               页与页之间的连贯性
     ├─ slide-image-specs.md               单页怎么生成
@@ -486,7 +486,7 @@ public\
 | **③ 员工端界面模块** | `components\employee\`（23 个文件） | 拆出来的 17 个界面块 |
 | **④ 员工端主干** | `lib\employee-auth.ts` + `employee-api.ts` + `employee-api-types.ts` + `employee-permissions.ts` + `use-smart-studio-runs.ts` | 权限、接口、类型、状态编排 |
 | **⑤ 生成 PPT 一条链路** | `app\api\...\deck-generation\` + `components\employee\deck-*.tsx` + `lib\employee-deck-*.ts` + `lib\employee-deck-packs.mjs` + `scripts\workers\deck-generation\` + `skills\deck-generation\` | **改生成效果要同时想到这 7 处**；只加/删风格包则只改 `.mjs` + 两份 Markdown |
-| **⑥ 美化 PPT 一条链路** | `app\api\...\ppt-polish\` + `components\employee\polish-*.tsx` + `scripts\workers\ppt-polish\ppt-polish-worker.mjs` + `lib\ppt-polish-worker-health.ts` + `skills\deck-generation\`（只读 2 份） | 同上，5 处 |
+| **⑥ 美化 PPT 一条链路** | `app\api\...\ppt-polish\` + `components\employee\polish-*.tsx` + `scripts\workers\ppt-polish\ppt-polish-worker.mjs` + `lib\ppt-polish-worker-health.ts` | 同上，4 处；与生成 PPT 的共享边界只有风格包定义（见 `docs\feature-file-map.md` 第十节） |
 | **⑦ 图片炸开一条链路** | `app\api\employee\services\[id]\image-explode\` + `app\api\employee\image-explode\` + `components\employee\explode-*.tsx` + `scripts\workers\image-explode\image-explode-worker.mjs` + `component-extractor.*` | 后端全在，**入口被停用** |
 | **⑧ 单页智能设计与生图** | `app\api\...\design-agent\` + `app\api\...\generate-images\` + `scripts\workers\design-agent\` + `components\employee\design-run-panel.tsx` | 普通生图不读 `skills\` |
 

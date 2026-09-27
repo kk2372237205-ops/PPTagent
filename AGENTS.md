@@ -22,7 +22,7 @@
 | `app/employee/styles/*.css` | 按模块拆开的样式，顺序由入口文件固定 | 只改自己模块那份 |
 | `scripts/*.mjs` | **启动与运维脚本**（`dev.mjs`、`dev-lite.mjs`、`agent-workers.mjs`、`init-db.mjs` 等） | **可以分别派人改** |
 | `scripts/workers/<模式>/*.mjs` | **后台执行脚本按模式分目录**：`deck-generation/`（生成 PPT）、`ppt-polish/`（美化 PPT）、`design-agent/`（生图 + 单页设计）、`image-explode/`（图片炸开）、`shared/`（共用网络层） | **按模式分别派人改**；`shared/` 改动要回归全部 worker |
-| `skills/deck-generation/**` | 生成 PPT 的提示词规则 | 改提示词优先改这里 |
+| `skills/deck-generation/**` | 生成 PPT 的提示词规则；美化 PPT **只允许共享 `style-packs.md`**（"目标风格"选项的定义），**画面工程规则与生图链路都不得读取本目录**（2026-09-26 起按性质划共享边界） | 改提示词优先改这里 |
 
 ## 派活模板（给别人或给 AI 派任务时照抄）
 

@@ -165,7 +165,8 @@ git diff --stat main...HEAD   # 22 个文件，+4053 / -404
 
 ### 覆盖陷阱（最容易白干）
 
-6. **`style-packs.md` 只在「内置配色」模式被读取；「参考图配色」模式读的是 `advanced-layout-profiles.md`。** 只改其中一个，另一条链路完全不生效。**`illustration-system.md` 是无条件读取的**，跨模式的规则写在那里最保险。
+6. **`style-packs.md` 只在「内置配色」模式被读取；「参考图配色」模式读的是 `advanced-layout-profiles.md`。** 只改其中一个，另一条配色链路完全不生效。**`illustration-system.md` 在生成链路里是无条件读取的**，生成链路跨两种配色都要生效的规则写在那里最保险。
+   **⚠️ 2026-09-26 起：共享边界按性质划。** `style-packs.md` 是**共享的**——美化的"目标风格"下拉框和生成用同一份列表、同一个标签，用户选"蓝金科技"在两处必须是同一个意思。`illustration-system.md` 这类**画面工程规则不共享**，美化用它自己脚本里的硬性要求（原来它也注入 `illustration-system.md`，已删）。**判断标准：共享"用户可见选项的含义"，不共享"某条链路怎么把画面做出来"。** 生成 PPT 的读取面一个字节没动。
 7. **风格包 id 现在只有一处真源：`lib/employee-deck-packs.mjs`。** 2026-09-26 之前它在 8 处重复定义（`lib/employee-deck-constants.ts`、4 个 API 路由、worker 里 2 个映射表、美化 worker 1 个），漏一处就是"界面能选、后台认不出"。现在界面、接口、两个 worker 全部 import 这一个 `.mjs`，**新增/删除风格包只需改 `.mjs` + `skills/deck-generation/style-packs.md`（+ 参考图配色模式还要改 `advanced-layout-profiles.md`）**。`scripts/check-style-packs.mjs` 会逐 id 校验三处一致、阻止已删除的 id 复活，并禁止任何消费者文件再写 id 字面量。**界面名和提示词名是两个字段**（`label` / `promptLabel`），别把"（推荐）"喂进提示词。
 8. **`normalizePlan` 是严格白名单**（`deck-generation-worker.mjs`）。往方案 JSON 里加新字段**不会**进入图片提示词——必须用散文写进 `composition` / `main_visual_brief` 这些自由文本字段。
 

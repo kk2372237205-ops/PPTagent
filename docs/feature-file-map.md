@@ -13,8 +13,8 @@
 | --- | --- | --- |
 | **`app/api/employee/services/[id]/`** | ✅ **分得很干净** | 一条链路一个目录：`deck-generation/`、`ppt-polish/`、`generate-images/`、`design-agent/`、`image-explode/`、`image-tools/`、`image-to-pptx/` |
 | `components/employee/` | 🟡 **命名分了，目录没分** | 16 个面板平铺在一个目录，靠**文件名前缀**区分（`deck-*` / `polish-*` / `explode-*`） |
-| `scripts/` | ❌ **混在一起** | 8 个脚本平铺，不按模式分目录 |
-| `skills/deck-generation/` | ⚠️ **名字已不准** | 原属"生成 PPT"，**本话题起"美化 PPT"也读它**，所以它是两条链路共用 |
+| `scripts/` | ✅ **已按模式分目录** | 后台脚本在 `scripts/workers/<模式>/`（`deck-generation/` / `ppt-polish/` / `design-agent/` / `image-explode/` / `shared/`），顶层只剩启动与运维脚本 |
+| `skills/deck-generation/` | ✅ **边界已划清** | 服务生成 PPT；美化只共享 `style-packs.md`（用户选项的定义），画面工程规则不共享（见第十节）；生图不读任何 skill |
 | `uploads/employee-workspace/` | 🟡 **部分共用** | 生成 PPT 有自己的子目录；**图片产物三条链路共用 `images/`**（按时间戳命名） |
 | `app/employee/styles/` | ❌ **不按模式分** | 9 层样式按"覆盖顺序"分，不是按功能分 |
 
@@ -40,7 +40,7 @@
 | **产物落盘** | `uploads/employee-workspace/deck-generation/{sources,themes,evidence}/` + `images/`（成图） |
 
 **两个容易踩的点**：
-- `skills/deck-generation/style-packs.md` **只在「内置配色」模式被读取**；「参考图配色」模式读的是 `advanced-layout-profiles.md`。改一个不影响另一个。`illustration-system.md` 是**两条链路都读**的。
+- `skills/deck-generation/style-packs.md` **只在「内置配色」模式被读取**；「参考图配色」模式读的是 `advanced-layout-profiles.md`。改一个不影响另一个。`illustration-system.md` 在生成链路的两种配色模式下**都读**；美化链路只读 `style-packs.md`，**不读** `illustration-system.md`。
 - `normalizePlan`（worker 内）是**严格白名单**，往逐页方案 JSON 里加新字段不会进图片提示词。
 
 ---
@@ -55,8 +55,8 @@
 | **接口（7 条）** | `app/api/employee/services/[id]/ppt-polish/runs/route.ts`<br>`…/runs/[runId]/{confirm,retry,pdf,ppt}/route.ts`<br>`…/runs/[runId]/slides/[slideIndex]/{image,regenerate}/route.ts` |
 | **后台执行脚本** | ⭐ `scripts/workers/ppt-polish/ppt-polish-worker.mjs`（33.6 KB） |
 | **心跳检查** | `lib/ppt-polish-worker-health.ts` |
-| **提示词规则** | ⚠️ **只读 `skills/deck-generation/` 的 2 份**：`style-packs.md`、`illustration-system.md`（其余 12 份不读）+ 自身硬编码字符串 |
-| **风格包真源（新）** | ⭐ `lib/employee-deck-packs.mjs`（中文名映射，不再自带副本，见第十一节） |
+| **提示词规则** | 共享 1 份：`skills/deck-generation/style-packs.md`（"目标风格"选项的定义，与生成同一份列表）。**画面工程规则不共享**，美化的画面合同在本脚本内的硬性要求里（见第十节） |
+| **风格包（共用 id 契约）** | ⭐ `lib/employee-deck-packs.mjs`（中文名映射，不再自带副本，见第十一节） |
 | **接口校验** | `app/api/employee/services/[id]/ppt-polish/runs/route.ts` 用 `deckStylePackIds` 校验 `stylePack` |
 | **产物落盘** | `uploads/employee-workspace/ppt-polish-runs/*.json`（任务状态）+ `images/`（成图） |
 
@@ -143,17 +143,27 @@
 
 ---
 
-## 十、⚠️ 剩下的"共享"**决定不拆**（2026-09-26 决策，勿再重提）
+## 十、按模式隔离：共享边界按"性质"划（2026-09-26 owner 决定）
 
-`skills/deck-generation/` 里有两个文件（`style-packs.md`、`illustration-system.md`）**生成 PPT 与美化 PPT 都读**，所以目录名严格讲已不准。**但决定保持现状，理由如下**：
+**owner 的判断（以此为准）**：生成 PPT、美化 PPT、生图是**三个不同的模式，不应该存在黏连**；同时明确"**确实该共享的东西就共享**"。所以不是一刀切，而是**按性质划线**：
 
-1. **拆它不会提升出图质量**，纯属目录美观。
-2. **风险性质和其他拆分不同**：`readSkill()` 是 `readFileSync`，**没有 try/catch、没有存在性检查**。路径写错 `npm run verify` **查不出来**，只会在真实生成任务跑到一半时抛错——正好砸在已验证有效的高级生成 PPT 链路上。
-3. 当前的共享不是"结构混乱"，而是**成熟链路给未成熟功能提供可靠底座**：美化 PPT 直接复用生成 PPT 已经调好的配色与画面规则，比让它各写一套更安全。
-4. 正确时机是：等**美化 PPT 或生图模式真正开发完整**时，再从现有规则里抽出"确实共用"的部分，那时才建立共享规则文件。
+| | 内容 | 为什么 |
+| --- | --- | --- |
+| ✅ **共享** | `skills/deck-generation/style-packs.md`（风格包定义） | 美化的"目标风格"下拉框与生成用的是**同一份列表、同一个 id、同一个中文标签**（两边都渲染 `deckStylePacks`）。用户在美化里选"蓝金科技"，就必须和生成里的"蓝金科技"是同一个东西，否则同一个词在两个模式画出两种画面。**这是"用户可见选项的定义"，必须唯一。** |
+| ✅ **共享** | `lib/employee-deck-packs.mjs`（风格包 id 清单） | 界面与接口之间的 id 契约，只决定"用户能选哪些选项"，不是画面规则。详见第十一节 |
+| ❌ **不共享** | `skills/deck-generation/illustration-system.md`（画面工程规则） | 面积合同、出血、密度联动、图解路线、成图自检都是生成链路**"从零画整页"**的工程规则；美化是要大改的产品线，用自己那份 |
+| ❌ **不共享** | 生图链路的提示词 | 普通生图的提示词全在 `design-agent-worker.mjs` 代码里，本来就不读 skills |
 
-**同样不拆的还有**：`scripts/workers/design-agent/design-agent-skills.mjs` **不能**搬到 `skills/image-generation/`。
-它 7 个常量里 6 个是**拆图 / 抠图 / 重建**规则，只有 1 个是单页渲染规则；而且**普通生图根本不用任何 skills**。搬过去会造成概念混淆。
+**判断标准一句话**：共享的是"用户在界面上看到的选项的**含义**"，不共享的是"某条链路怎么把画面**做出来**"。
+
+**已执行**：`ppt-polish-worker.mjs` 现在只读 `style-packs.md` 一份；`illustration-system.md` 的注入已删除，美化的画面合同改为它自己脚本里那份硬性要求（面积下限、具体名词、写实、禁伪造、安全区、跨页连贯）。**生成 PPT 的读取面一个字节都没动。**
+
+**允许不同步**：两边都写了"≥25%"这类数字，那是**各自的决定**，不是同一份规则的副本，不要求一致、也不设一致性检查。
+
+**美化后续大改时**：它自己的新规则放 `skills/ppt-polish/`，**不要往 `skills/deck-generation/` 多接文件**——每多接一份，生成那边的规则改动就会无声改掉美化的产出，这正是本次要消掉的黏连。
+
+**生图链路同理**：`scripts/workers/design-agent/design-agent-skills.mjs` **不能**搬到 `skills/image-generation/`。
+它 7 个常量里 6 个是**拆图 / 抠图 / 重建**规则，只有 1 个是单页渲染规则；搬过去会造成概念混淆。
 
 ---
 

@@ -18,9 +18,7 @@ const workspaceRoot = path.join(root, "uploads", "employee-workspace");
 const documentRoot = path.join(workspaceRoot, "documents");
 const imageRoot = path.join(workspaceRoot, "images");
 const polishRunRoot = path.join(workspaceRoot, "ppt-polish-runs");
-// 风格包"规则文字"的唯一真源：skills/deck-generation/style-packs.md（与 deck-generation-worker 读取同一份文件）
-// 风格包"id 清单"的唯一真源：lib/employee-deck-packs.mjs（本文件只 import，不再自带副本）
-const skillRoot = path.join(root, "skills", "deck-generation");
+// 只共享风格包定义（用户可见选项的唯一含义）；画面工程规则不共享，见下方说明。
 const workerHeartbeatPath = path.join(root, ".next-dev", "ppt-polish-worker-heartbeat.json");
 const pollMs = Math.max(1500, Number(process.env.PPT_POLISH_POLL_MS || 3000));
 const staleGeneratingMs = Math.max(60_000, Number(process.env.PPT_POLISH_STALE_GENERATING_MS || 60_000));
@@ -178,14 +176,30 @@ function stylePackName(id) {
 }
 
 /**
- * 读取 skills/deck-generation 下的规则文件。
+ * 美化 PPT 与生成 PPT 的共享边界（2026-09-26 owner 决定，改动前先读完这段）
  *
- * 美化链路过去完全不读 skills/，所有提示词都是本文件里的硬编码长字符串。
- * 现在改为与 deck-generation-worker 相同的方式读取，让 Markdown 成为唯一真源：
- * 改提示词只需改 skills/，不必改这个脚本。
+ * owner 的要求：生成 PPT、美化 PPT、生图是三个不同的模式，不应该互相黏连；
+ * 同时明确"确实该共享的东西就共享"。所以这里按**性质**划线，而不是一刀切：
  *
- * 读取失败时返回空字符串而不是抛错——规则文件缺失不应该让整条美化链路停摆。
+ * ✅ 共享：`skills/deck-generation/style-packs.md`（风格包定义）
+ *    理由：美化的"目标风格"下拉框和生成用的是**同一份列表、同一个 id、同一个中文标签**
+ *    （两边都渲染 `deckStylePacks`）。用户在美化里选"蓝金科技"，就必须和生成里的
+ *    "蓝金科技"是同一个东西；否则同一个词在两个模式画出两种画面。这不是图省事，
+ *    是"用户可见选项的定义"必须唯一。这份文件同时给了配色、版式、母题与渲染路线。
+ *
+ * ❌ 不共享：`skills/deck-generation/illustration-system.md`（画面工程规则）
+ *    理由：面积合同、出血、密度联动、图解路线、成图自检都是**生成链路"从零画整页"**
+ *    的工程规则；美化是要大改的产品线，它拿自己的那份。美化当前的画面合同就是
+ *    `slidePrompt()` 里那份自带硬性要求（面积下限、具体名词、写实、禁伪造、安全区、跨页连贯）。
+ *    两边都写了"≥25%"是**各自的决定**，不是同一份规则的副本，允许不同步。
+ *
+ * ⚠️ 美化后续大改时：它自己的新规则放 `skills/ppt-polish/`，
+ * **不要在这里去读 `skills/deck-generation/` 的其它文件**——每多读一份，
+ * 生成那边的规则改动就会无声改掉美化的产出，这正是本次要消掉的黏连。
+ *
+ * 读取失败时返回空字符串而不是抛错：规则文件缺失不应该让整条美化链路停摆。
  */
+const skillRoot = path.join(root, "skills", "deck-generation");
 const skillCache = new Map();
 function readSkill(name) {
   if (skillCache.has(name)) return skillCache.get(name);
@@ -354,11 +368,8 @@ ${optionLines(run.options)}
 Visual consistency requirements:
 ${visualSystemPrompt(run, slide)}
 
-Style Pack Reference (authoritative — apply the section whose title matches "${stylePackName(run.stylePack)}" above):
+Style pack definitions (shared with the deck-generation mode, and authoritative for what the target style name means — apply the section whose title matches "${stylePackName(run.stylePack)}" above):
 ${readSkill("style-packs.md") || "(风格包定义文件缺失：请仅依据 Target style 名称推导视觉系统，并保持整套一致。)"}
-
-Illustration rules (authoritative):
-${readSkill("illustration-system.md") || "(插图规则文件缺失：请至少保证每页有一个占画面 35% 以上、且在缩略图下可辨认的具体画面主体。)"}
 
 Previous generated page visual anchor:
 ${wantsPreviousAnchor ? previousVisualAnchor(previous) : "Use the previous page only for broad continuity; prioritize the current slide request."}
