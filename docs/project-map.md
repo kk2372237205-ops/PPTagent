@@ -78,7 +78,7 @@ D:\PPTagent
 ├─ 【遗留 / 旁支】
 │   └─ supabase\                另一套"报名+预约"业务的建表脚本（未接主链路）
 │                               ⚠️ 不要删：scripts\supabase-migrate.mjs 会读它，package.json 有 supabase:migrate / supabase:sync
-│       （原 抠图准备工作skill\ 已于 2026-09-26 删除：只被死代码引用）
+│       （原 抠图准备工作skill\ 已于 2026-09-27 删除：只被死代码引用）
 │
 └─ 根目录散文件（清单见第七节）
 ```
@@ -244,7 +244,7 @@ components\employee\
 │   ├─ onlyoffice-editor.tsx       ONLYOFFICE 在线编辑器外壳（可拖入 PPTX 替换）
 │   ├─ material-rail.tsx           底部素材栏（分页、批量导入、订单素材总库）
 │   ├─ ppt-paste-tray.tsx          粘贴托盘（把图片放进剪贴板，在 PPT 里 Ctrl+V）
-│   ├─ ai-assistant-panel.tsx      生图 / AI 创作助手（2026-09-26 按模式拆出）
+│   ├─ ai-assistant-panel.tsx      生图 / AI 创作助手（2026-09-27 按模式拆出）
 │   ├─ image-tools-panel.tsx       图片工具（抠图 / 图片转 PPT / 提取图片）
 │   ├─ tools-ai-shared.ts          上面两个面板共用的小工具
 │   └─ tools-ai-types.ts           图片工具面板的类型
@@ -355,7 +355,7 @@ components\employee\
 
 **B 组｜后台执行脚本 `scripts\workers\`（按模式分目录，互相不 import，可以分别派人改）**
 
-> 2026-09-26 起按**模式**分目录。加脚本时放进对应模式目录，不要平铺回 `scripts\`。
+> 2026-09-27 起按**模式**分目录。加脚本时放进对应模式目录，不要平铺回 `scripts\`。
 
 ```
 scripts\workers\
@@ -442,7 +442,7 @@ public\
 | `README.md` | 文档阅读顺序 |
 | `archive\agents-history.md` | ⭐ 全部历史变更记录（从 `AGENTS.md` 拆出来的，69 KB）。**历史快照** |
 
-> 2026-09-26 减法：删除了 `project-archive-2026-07-03.md` 与 `maintenance-audit-2026-07-03.md`
+> 2026-09-27 减法：删除了 `project-archive-2026-07-03.md` 与 `maintenance-audit-2026-07-03.md`
 > （两者描述的都是**改造前**的状态，文档自己就标着"会误导"；需要追溯可查 git 历史）。
 
 ### 7.3 根目录 22 个文件怎么归类
@@ -527,7 +527,7 @@ npm run verify:build  # 只跑生产构建，交付前必跑
 
 `verify:check` 的第一项 `node scripts/check-style-packs.mjs` 专门守"风格包清单漂移"：它逐 id 比对 `lib\employee-deck-packs.mjs`（真源）与 `skills\deck-generation\` 的两份 Markdown，还会揪出**已经删掉的风格包 id 在代码里复活**、以及**任何消费者文件里又抄了一份 id 字面量**。删风格包时只要漏改一处，这条命令就会带着"该改哪个文件"的提示失败。
 
-**为什么是 `--max-warnings 0`**：2026-09-26 之前基线是 11 条（全在 `scripts\workers\design-agent\design-agent-worker.mjs`），那天把 31 个零引用声明清掉后收紧到 **0**。数字写死的意思是——**不许添新账**。它会拦住未使用的 import 和删代码留下的孤儿函数，这正是它能防止代码腐坏的原因。
+**为什么是 `--max-warnings 0`**：2026-09-27 之前基线是 11 条（全在 `scripts\workers\design-agent\design-agent-worker.mjs`），那天把 31 个零引用声明清掉后收紧到 **0**。数字写死的意思是——**不许添新账**。它会拦住未使用的 import 和删代码留下的孤儿函数，这正是它能防止代码腐坏的原因。
 
 > ⚠️ `scripts\workers\design-agent\design-agent-worker.mjs` 里仍有 **5 处前任作者特意标注"为后续工作流保留"** 的旧代码，各带 `eslint-disable-next-line`。**它们是有意保留的，不是垃圾。**
 
@@ -612,7 +612,7 @@ git reset --hard HEAD          # 丢弃当前未提交的改动
 ## 十、当前目录结构与改进建议的对应关系（改造已完成的部分）
 
 作为对照，20 轮改造前后的变化（**下表是 2026-09-14 的数字，其中"现在"一列已是历史**；
-2026-09-26 拆 UI 后 `components\employee\` 为 23 个文件，见 §4.2）：
+2026-09-27 拆 UI 后 `components\employee\` 为 23 个文件，见 §4.2）：
 
 | 目录 | 改造前 | 现在 |
 | --- | --- | --- |

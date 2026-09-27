@@ -9,7 +9,7 @@
  *         `components/employee/polish-inline-run.tsx`、`app/api/employee/services/[id]/**` 的 4 个接口路由。
  * 验证方式：`npm run verify`（含 `scripts/check-style-packs.mjs` 的一致性校验）。
  *
- * ⚠️ 2026-09-26 起，风格包清单不再在本文件里定义，改为从 `employee-deck-packs.mjs` 重新导出。
+ * ⚠️ 2026-09-27 起，风格包清单不再在本文件里定义，改为从 `employee-deck-packs.mjs` 重新导出。
  * 原因：同一份 id 列表曾在 8 处重复（本文件 2 份、4 个接口路由各 1 份、两个 worker 各 1 份），
  * 改一处漏一处就会出现"界面能选、后台认不出"。
  * 现在只有 `lib/employee-deck-packs.mjs` 一个来源，Markdown 定义由检查脚本保证同步。

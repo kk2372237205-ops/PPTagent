@@ -13,7 +13,7 @@ const db = new PrismaClient();
 const workspaceRoot = path.join(root, "uploads", "employee-workspace");
 const imageRoot = path.join(workspaceRoot, "images");
 const referenceRoot = path.join(workspaceRoot, "references");
-// 原「抠图准备工作skill/skill.txt」已于 2026-09-26 删除（那个目录只被本文件里保留的旧流程引用）。
+// 原「抠图准备工作skill/skill.txt」已于 2026-09-27 删除（那个目录只被本文件里保留的旧流程引用）。
 // 读取处有 try/catch 兜底，读不到就返回空串，所以不会抛错；下面是保留的旧路径以便追溯。
 const projectCutoutSkillPath = path.join(root, "\u62a0\u56fe\u51c6\u5907\u5de5\u4f5cskill", "skill.txt");
 const textService = aiTextConfig();

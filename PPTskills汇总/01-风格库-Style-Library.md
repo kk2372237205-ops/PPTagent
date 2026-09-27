@@ -625,5 +625,5 @@ Vary only: layout silhouette, illustration size and placement, content density.
 | SP-11 Riso | 无 | 新增 |
 | SP-12 Soft Clay | 无 | 新增 |
 
-**关键差异**：现有 4 个风格包（2026-09-26 由 7 个精简而来，见 `lib/employee-deck-packs.mjs`）**全部没有 `illustration_system`**，且 `forbidden` 里只写了"不要卡通""不要霓虹"这类模糊词，没有写死线宽、色数、是否渐变。这就是同一套风格包在不同页面出来的插图质量波动很大的原因。真正补上这一层的是 `skills/deck-generation/illustration-system.md`。
+**关键差异**：现有 4 个风格包（2026-09-27 由 7 个精简而来，见 `lib/employee-deck-packs.mjs`）**全部没有 `illustration_system`**，且 `forbidden` 里只写了"不要卡通""不要霓虹"这类模糊词，没有写死线宽、色数、是否渐变。这就是同一套风格包在不同页面出来的插图质量波动很大的原因。真正补上这一层的是 `skills/deck-generation/illustration-system.md`。
 

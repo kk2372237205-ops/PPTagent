@@ -39,7 +39,7 @@
 | `docs/readonly-audit-2026-09-14.md`（56 KB） | 审计报告。**历史快照**，里面的行号与路径按当时状态保留，不要当现状读 |
 | `AGENTS.md` 里不带日期的"已实现功能"段落 | 是业务**意图**规则，不等于当前实现；判断实现请看 `lib/` 与 `app/api/` 的真实代码 |
 
-> 2026-09-26 减法：`docs/project-archive-2026-07-03.md` 与 `docs/maintenance-audit-2026-07-03.md`
+> 2026-09-27 减法：`docs/project-archive-2026-07-03.md` 与 `docs/maintenance-audit-2026-07-03.md`
 > 已删除（它们描述的正是"会误导你"的改造前状态）。需要追溯请查 git 历史。
 
 ## 当前系统骨架
@@ -95,7 +95,7 @@ git diff --stat main...HEAD   # 22 个文件，+4053 / -404
 | `components/`、`lib/`、`app/`、`prisma/`、`docs/` | **0**（架构与界面完全没动） |
 | `skills/deck-generation/**` | 10 个（9 改 + 1 新增 `illustration-system.md`） |
 | `scripts/` | 3 个（`ai-service-client.mjs`、`deck-generation-worker.mjs`、`ppt-polish-worker.mjs`） |
-| `PPTskills汇总/`（新顶层目录） | 5 个纯文档（原有 8 个，2026-09-26 减法删掉 3 个已消化的），**代码不读它** |
+| `PPTskills汇总/`（新顶层目录） | 5 个纯文档（原有 8 个，2026-09-27 减法删掉 3 个已消化的），**代码不读它** |
 
 ### 做了什么
 
@@ -134,7 +134,7 @@ git diff --stat main...HEAD   # 22 个文件，+4053 / -404
 | 指标 | 改造前 | 现在 |
 | --- | --- | --- |
 | `components/employee-app.tsx` | 3753 行 | **422 行** |
-| 员工端结构 | 1 个巨型文件 | 16 个组件 + 11 个主干模块 + 9 个样式层（**这是 2026-09-14 的数字**；2026-09-26 拆 UI 后为 17 个 .tsx 面板 + 5 个 .ts，目录合计 23 个文件） |
+| 员工端结构 | 1 个巨型文件 | 16 个组件 + 11 个主干模块 + 9 个样式层（**这是 2026-09-14 的数字**；2026-09-27 拆 UI 后为 17 个 .tsx 面板 + 5 个 .ts，目录合计 23 个文件） |
 | 组件内手写 `fetch("/api/…")` | 60 处 | 4 处 |
 | `employee.css` | 3426 行单文件 | 11 行入口 + `styles/` 9 层 |
 | `AGENTS.md` | 87,965 字节（超预算会被截断） | 19,015 字节（可完整读入） |
@@ -166,8 +166,8 @@ git diff --stat main...HEAD   # 22 个文件，+4053 / -404
 ### 覆盖陷阱（最容易白干）
 
 6. **`style-packs.md` 只在「内置配色」模式被读取；「参考图配色」模式读的是 `advanced-layout-profiles.md`。** 只改其中一个，另一条配色链路完全不生效。**`illustration-system.md` 在生成链路里是无条件读取的**，生成链路跨两种配色都要生效的规则写在那里最保险。
-   **⚠️ 2026-09-26 起：共享边界按性质划。** `style-packs.md` 是**共享的**——美化的"目标风格"下拉框和生成用同一份列表、同一个标签，用户选"蓝金科技"在两处必须是同一个意思。`illustration-system.md` 这类**画面工程规则不共享**，美化用它自己脚本里的硬性要求（原来它也注入 `illustration-system.md`，已删）。**判断标准：共享"用户可见选项的含义"，不共享"某条链路怎么把画面做出来"。** 生成 PPT 的读取面一个字节没动。
-7. **风格包 id 现在只有一处真源：`lib/employee-deck-packs.mjs`。** 2026-09-26 之前它在 8 处重复定义（`lib/employee-deck-constants.ts`、4 个 API 路由、worker 里 2 个映射表、美化 worker 1 个），漏一处就是"界面能选、后台认不出"。现在界面、接口、两个 worker 全部 import 这一个 `.mjs`，**新增/删除风格包只需改 `.mjs` + `skills/deck-generation/style-packs.md`（+ 参考图配色模式还要改 `advanced-layout-profiles.md`）**。`scripts/check-style-packs.mjs` 会逐 id 校验三处一致、阻止已删除的 id 复活，并禁止任何消费者文件再写 id 字面量。**界面名和提示词名是两个字段**（`label` / `promptLabel`），别把"（推荐）"喂进提示词。
+   **⚠️ 2026-09-27 起：共享边界按性质划。** `style-packs.md` 是**共享的**——美化的"目标风格"下拉框和生成用同一份列表、同一个标签，用户选"蓝金科技"在两处必须是同一个意思。`illustration-system.md` 这类**画面工程规则不共享**，美化用它自己脚本里的硬性要求（原来它也注入 `illustration-system.md`，已删）。**判断标准：共享"用户可见选项的含义"，不共享"某条链路怎么把画面做出来"。** 生成 PPT 的读取面一个字节没动。
+7. **风格包 id 现在只有一处真源：`lib/employee-deck-packs.mjs`。** 2026-09-27 之前它在 8 处重复定义（`lib/employee-deck-constants.ts`、4 个 API 路由、worker 里 2 个映射表、美化 worker 1 个），漏一处就是"界面能选、后台认不出"。现在界面、接口、两个 worker 全部 import 这一个 `.mjs`，**新增/删除风格包只需改 `.mjs` + `skills/deck-generation/style-packs.md`（+ 参考图配色模式还要改 `advanced-layout-profiles.md`）**。`scripts/check-style-packs.mjs` 会逐 id 校验三处一致、阻止已删除的 id 复活，并禁止任何消费者文件再写 id 字面量。**界面名和提示词名是两个字段**（`label` / `promptLabel`），别把"（推荐）"喂进提示词。
 8. **`normalizePlan` 是严格白名单**（`deck-generation-worker.mjs`）。往方案 JSON 里加新字段**不会**进入图片提示词——必须用散文写进 `composition` / `main_visual_brief` 这些自由文本字段。
 
 ### 网络层的三条硬事实
@@ -186,7 +186,7 @@ npm run verify:build    # 只跑生产构建，交付前必跑
 
 `verify:check` 的第一项是 `node scripts/check-style-packs.mjs`（风格包三处一致性 + 已删 id 复活检测），秒级失败、报错信息直接给出该改哪个文件。
 
-**eslint 警告基线是 0**（2026-09-26 从 11 收紧）。**任何新增警告都会让这条命令失败**——包括未使用的 import，也包括"删了调用点留下的孤儿函数"。这是刻意的。同一天清掉了 `scripts/workers/design-agent/design-agent-worker.mjs` 里 31 个零引用声明（文件从 1695 行降到 1282 行）。
+**eslint 警告基线是 0**（2026-09-27 从 11 收紧）。**任何新增警告都会让这条命令失败**——包括未使用的 import，也包括"删了调用点留下的孤儿函数"。这是刻意的。同一天清掉了 `scripts/workers/design-agent/design-agent-worker.mjs` 里 31 个零引用声明（文件从 1695 行降到 1282 行）。
 
 > 注意：该文件里还留着 **5 处前任作者特意标注"为后续工作流保留"的旧代码**（`buildSmartExplodeRun`、`decomposeMaster`、`generateCleanBackground`、`smartCleanPrompt`、`legacyProcessRun`），各自带 `eslint-disable-next-line` 注释。
 > **它们是有意保留的，不是垃圾。** 要删必须单独确认。

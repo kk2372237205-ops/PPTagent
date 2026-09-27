@@ -14,7 +14,7 @@
 | 美化 PPT | `scripts/workers/ppt-polish/ppt-polish-worker.mjs` | **只有 1 个**：`style-packs.md` |
 | 生图 / 单页设计 | `scripts/workers/design-agent/design-agent-worker.mjs` | **一份都不读**（提示词全在代码里） |
 
-> ⚠️ **共享边界按"性质"划，不按方便划（2026-09-26 owner 决定）。**
+> ⚠️ **共享边界按"性质"划，不按方便划（2026-09-27 owner 决定）。**
 >
 > **该共享的**：`style-packs.md`。美化的"目标风格"下拉框和生成用的是**同一份列表、同一个 id、同一个中文标签**（两边都渲染 `deckStylePacks`）。用户在美化里选"蓝金科技"，就必须和生成里的"蓝金科技"是同一个东西——否则同一个词在两个模式画出两种画面。这是"用户可见选项的定义"，必须唯一。
 >
@@ -44,7 +44,7 @@
 | `advanced-single-slide-director/**`（3 个） | ✅（仅高级版） | — | 单页导演 Skill |
 | `advanced-single-slide-director/agents/openai.yaml` | ❌ | ❌ | **全仓无代码读取**，是外部 agent 清单格式的遗留元数据 |
 
-> **这份"共用"已经不存在了。** 2026-09-26 之前美化 PPT 会读其中 2 份，owner 决定按模式隔离后
+> **这份"共用"已经不存在了。** 2026-09-27 之前美化 PPT 会读其中 2 份，owner 决定按模式隔离后
 > 已从美化侧砍断。当时的判断依据（为什么曾决定不拆）保留在 `docs/feature-file-map.md` 第十节，作为决策记录。
 
 ---
@@ -113,5 +113,5 @@ function readSkill(name) {
 1. **优先改 Markdown 技能**，不要把长提示词塞回 `.mjs` 字符串。
 2. **改技能后用小页数任务验证**，不要一次跑大任务。
 3. **结尾页规则必须保留**：少内容、强情绪、强收束、强记忆点。
-4. **本目录默认只服务生成 PPT。** 美化 PPT 只共享 `style-packs.md`（用户选项的定义），生图不读任何一份；**画面工程规则不要接给它们**（2026-09-26 owner 决定，见开头说明）。
+4. **本目录默认只服务生成 PPT。** 美化 PPT 只共享 `style-packs.md`（用户选项的定义），生图不读任何一份；**画面工程规则不要接给它们**（2026-09-27 owner 决定，见开头说明）。
 5. **本目录的文件名与路径被 `docs/feature-file-map.md` 和 `docs/model-handoff.md` 引用**，移动文件时一并更新。

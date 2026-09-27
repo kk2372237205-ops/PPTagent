@@ -1,7 +1,7 @@
 # 功能 → 文件 对照表
 
 > 用途：想知道「某个模式到底有哪些文件」时查这份，不用再翻目录。
-> 生成时间：2026-09-26。配套 `docs/project-map.md`（目录地图）与 `components/employee/README.md`（界面模块索引）。
+> 生成时间：2026-09-27。配套 `docs/project-map.md`（目录地图）与 `components/employee/README.md`（界面模块索引）。
 >
 > **本文件只做索引，不是状态清单。** 功能是否可用看 `docs/current-project-memory.md`。
 
@@ -90,9 +90,9 @@
 | **接口（4 条）** | `app/api/employee/services/[id]/design-agent/runs/route.ts`<br>`…/runs/[runId]/{route,apply,cancel}.ts` |
 | **后台执行脚本** | `scripts/workers/design-agent/design-agent-worker.mjs`（98.9 KB） |
 | **提示词** | `scripts/workers/design-agent/design-agent-skills.mjs`（写成 JS 字符串，不在 `skills/` 目录里）。**注意它的实际归属**：7 个常量里 **6 个是"拆图 / 抠图 / 重建"规则**（`cleanBackgroundSkill`、`partDecompositionSkill`、`partCutoutSkill`、`textArtCutoutSkill`、`rebuildAlignmentSkill`、`partRepairSkill`），**只有 `masterRenderSkill` 是单页渲染规则**。`partRepairSkill` 全仓零引用。 |
-| **外部技能文件** | ~~`抠图准备工作skill/`~~ 已于 2026-09-26 删除（只被死代码引用，运行时从不读取）。`scripts/workers/design-agent/design-agent-worker.mjs` 里还留着一个指向它的路径常量，属于死代码 |
+| **外部技能文件** | ~~`抠图准备工作skill/`~~ 已于 2026-09-27 删除（只被死代码引用，运行时从不读取）。`scripts/workers/design-agent/design-agent-worker.mjs` 里还留着一个指向它的路径常量，属于死代码 |
 
-**注意**：`design-agent-worker.mjs` **同时服务本模式与生图**；2026-09-26 已清掉 **31 个零引用声明**（文件从 1695 行降到 1282 行），现在 eslint 警告为 **0**。文件里仍保留 ~~5~~ 处**前任作者特意标注"为后续工作流保留"**的旧代码（图片炸开 / 拆图重建那条路，如 `buildSmartExplodeRun`、`decomposeMaster`、`generateCleanBackground`、`smartCleanPrompt`、`legacyProcessRun`），它们各自带着 `eslint-disable-next-line` 注释，**不是遗漏，不要当成垃圾清掉**。
+**注意**：`design-agent-worker.mjs` **同时服务本模式与生图**；2026-09-27 已清掉 **31 个零引用声明**（文件从 1695 行降到 1282 行），现在 eslint 警告为 **0**。文件里仍保留 ~~5~~ 处**前任作者特意标注"为后续工作流保留"**的旧代码（图片炸开 / 拆图重建那条路，如 `buildSmartExplodeRun`、`decomposeMaster`、`generateCleanBackground`、`smartCleanPrompt`、`legacyProcessRun`），它们各自带着 `eslint-disable-next-line` 注释，**不是遗漏，不要当成垃圾清掉**。
 
 ---
 
@@ -100,7 +100,7 @@
 
 | 层 | 文件 |
 | --- | --- |
-| **界面** | `components/employee/image-tools-panel.tsx`（`ImageToolsPanel`，2026-09-26 起与生图分开） |
+| **界面** | `components/employee/image-tools-panel.tsx`（`ImageToolsPanel`，2026-09-27 起与生图分开） |
 | **类型** | `components/employee/tools-ai-types.ts` |
 | **接口** | `app/api/employee/services/[id]/image-tools/segmentation/route.ts`（佐糖抠图/变清晰）<br>`…/image-to-pptx/route.ts`（Codia 图片转 PPTX）<br>`…/import-image/route.ts`（本地图片入库）<br>`app/api/employee/work-documents/[id]/extract-images/route.ts`（从 PPTX 抽图） |
 | **工具定义** | `lib/techsz-image-tools.ts` |
@@ -138,12 +138,12 @@
 ## 九、三句话总结
 
 1. **找后端**：看 `app/api/employee/services/[id]/<模式名>/`，一条链路一个目录，最清楚。
-2. **找脚本**：看 `scripts/workers/<模式>/`，**2026-09-26 已按模式分目录**（`deck-generation/` / `ppt-polish/` / `design-agent/` / `image-explode/` / `shared/`）。`scripts/` 顶层现在只剩启动与运维脚本。
-3. **找界面**：看 `components/employee/`，靠文件名前缀（`deck-*` / `polish-*` / `image-tools-*`）区分。`tools-ai-panels.tsx` 已于 2026-09-26 拆成 `ai-assistant-panel.tsx`（生图）与 `image-tools-panel.tsx`（图片工具）。
+2. **找脚本**：看 `scripts/workers/<模式>/`，**2026-09-27 已按模式分目录**（`deck-generation/` / `ppt-polish/` / `design-agent/` / `image-explode/` / `shared/`）。`scripts/` 顶层现在只剩启动与运维脚本。
+3. **找界面**：看 `components/employee/`，靠文件名前缀（`deck-*` / `polish-*` / `image-tools-*`）区分。`tools-ai-panels.tsx` 已于 2026-09-27 拆成 `ai-assistant-panel.tsx`（生图）与 `image-tools-panel.tsx`（图片工具）。
 
 ---
 
-## 十、按模式隔离：共享边界按"性质"划（2026-09-26 owner 决定）
+## 十、按模式隔离：共享边界按"性质"划（2026-09-27 owner 决定）
 
 **owner 的判断（以此为准）**：生成 PPT、美化 PPT、生图是**三个不同的模式，不应该存在黏连**；同时明确"**确实该共享的东西就共享**"。所以不是一刀切，而是**按性质划线**：
 
@@ -167,7 +167,7 @@
 
 ---
 
-## 十一、风格包清单：一处真源 + 一道自动闸门（2026-09-26）
+## 十一、风格包清单：一处真源 + 一道自动闸门（2026-09-27）
 
 **问题**：同一份风格包 id 列表曾在 **8 处**重复定义——`lib/employee-deck-constants.ts`、4 个接口路由（`deck-generation/runs`、`runs/[runId]/settings`、`runs/[runId]/replan`、`ppt-polish/runs`）、`deck-generation-worker.mjs` 里的 2 个映射表、`ppt-polish-worker.mjs` 里的 1 个。改一处漏一处就是"界面上能选、后台认不出"。
 
@@ -193,7 +193,7 @@
 `lib/employee-deck-packs.mjs` → `skills/deck-generation/style-packs.md` → （参考图配色）`skills/deck-generation/advanced-layout-profiles.md`。
 界面、接口、后台执行脚本都不用动——它们只 import 真源。改完跑 `npm run verify:check`，漏改会自动失败并告诉你该改哪个文件。
 
-> 2026-09-26 已完成且**已验证**的拆分：UI 按模式拆（`ai-assistant-panel` / `image-tools-panel`）、`scripts/` 按模式分目录、风格包清单收敛为单真源。
+> 2026-09-27 已完成且**已验证**的拆分：UI 按模式拆（`ai-assistant-panel` / `image-tools-panel`）、`scripts/` 按模式分目录、风格包清单收敛为单真源。
 > 前两项的验证方式是 43 条路径引用全部存在 + 真实启动确认 worker 按新路径拉起，**不是只跑 verify**；
 > 风格包收敛的验证方式是 `scripts/check-style-packs.mjs` 正反两个方向都试过（正常通过、故意塞回一个已删 id 就失败）+ 两个 worker 的具名 import 在真实 Node 下能加载。
 > 未做的：`design-agent-worker.mjs` 清掉 31 个零引用声明、eslint 基线收紧到 0。

@@ -22,7 +22,7 @@
 | `app/employee/styles/*.css` | 按模块拆开的样式，顺序由入口文件固定 | 只改自己模块那份 |
 | `scripts/*.mjs` | **启动与运维脚本**（`dev.mjs`、`dev-lite.mjs`、`agent-workers.mjs`、`init-db.mjs` 等） | **可以分别派人改** |
 | `scripts/workers/<模式>/*.mjs` | **后台执行脚本按模式分目录**：`deck-generation/`（生成 PPT）、`ppt-polish/`（美化 PPT）、`design-agent/`（生图 + 单页设计）、`image-explode/`（图片炸开）、`shared/`（共用网络层） | **按模式分别派人改**；`shared/` 改动要回归全部 worker |
-| `skills/deck-generation/**` | 生成 PPT 的提示词规则；美化 PPT **只允许共享 `style-packs.md`**（"目标风格"选项的定义），**画面工程规则与生图链路都不得读取本目录**（2026-09-26 起按性质划共享边界） | 改提示词优先改这里 |
+| `skills/deck-generation/**` | 生成 PPT 的提示词规则；美化 PPT **只允许共享 `style-packs.md`**（"目标风格"选项的定义），**画面工程规则与生图链路都不得读取本目录**（2026-09-27 起按性质划共享边界） | 改提示词优先改这里 |
 
 ## 派活模板（给别人或给 AI 派任务时照抄）
 
@@ -328,8 +328,8 @@ node scripts/employee-visual-test.mjs
 - 开发过程只提交并推送当前功能分支，不得提前把未验证代码推入 `main`。
 - 功能分支至少通过与改动风险相匹配的检查；**统一使用 `npm run verify`**（= `node scripts/check-style-packs.mjs` + `tsc --noEmit` + `eslint . --max-warnings 0` + `prisma validate` + `next build --webpack`）。涉及界面时还要完成对应视觉与交互验收。
 - `npm run verify:check` 只跑静态检查，改代码过程中随时可用；`npm run verify:build` 只跑生产构建，交付前必跑。
-- **风格包 id 只有一处真源：`lib/employee-deck-packs.mjs`**（2026-09-26 收敛，此前散在 8 处）。新增/删除风格包只改它 + `skills/deck-generation/style-packs.md`（参考图配色模式再加 `advanced-layout-profiles.md`）；`scripts/check-style-packs.mjs` 会逐 id 校验并阻止已删 id 复活，**不要在任何地方再抄一份 id 列表**。
-- **eslint 警告基线是 0**（2026-09-26 收紧，历史 11 条已清理）。`--max-warnings 0` 会拦住任何新增警告——这是刻意的，包括未使用的 import 和删代码留下的孤儿函数。
+- **风格包 id 只有一处真源：`lib/employee-deck-packs.mjs`**（2026-09-27 收敛，此前散在 8 处）。新增/删除风格包只改它 + `skills/deck-generation/style-packs.md`（参考图配色模式再加 `advanced-layout-profiles.md`）；`scripts/check-style-packs.mjs` 会逐 id 校验并阻止已删 id 复活，**不要在任何地方再抄一份 id 列表**。
+- **eslint 警告基线是 0**（2026-09-27 收紧，历史 11 条已清理）。`--max-warnings 0` 会拦住任何新增警告——这是刻意的，包括未使用的 import 和删代码留下的孤儿函数。
 - 功能确认稳定后再合并到 `main` 并推送；合并后保留功能分支作为开发记录，除非项目 owner 明确要求删除。
 - `.env`、API Key、`prisma/dev.db`、`uploads/`、`.codex-tmp/`、构建缓存和本地生成文件禁止提交或上传。
 - 项目 owner 不需要操作 Git 命令。以后只需说明要开发的功能，Codex 负责创建分支、验证、提交、推送，并在准备合并 `main` 时说明验证结果。
@@ -338,7 +338,7 @@ node scripts/employee-visual-test.mjs
 
 - 仓库已于 2026-09-14 初始化：基线提交 `8e2f313`，标签 `baseline`，183 个受控文件，仓库体积约 3.29 MB。
 - 基线状态：`npm run verify` 全绿（tsc 通过、eslint 0 error / 11 warning、prisma validate 通过、webpack 生产构建通过）。
-  > 2026-09-26：eslint 基线已收紧到 **0 warning**（清理了 `scripts/workers/design-agent/design-agent-worker.mjs` 里 31 个零引用声明）。上面这条是当天的历史记录。
+  > 2026-09-27：eslint 基线已收紧到 **0 warning**（清理了 `scripts/workers/design-agent/design-agent-worker.mjs` 里 31 个零引用声明）。上面这条是当天的历史记录。
 - 未纳入版本控制（按 `.gitignore`）：`.env`、`prisma/dev.db`、`uploads/`（约 6.4 GB 业务与创作文件）、`node_modules/`、`.next*`、`.npm-cache/`、`.artifacts/`、`tmp/`、`__pycache__/`。
 - **重要**：`uploads/` 不在 Git 里，因此没有版本回退保护；它包含客户资料、工作文稿和生成结果，必须单独做备份（外置硬盘或对象存储），不能依赖 Git 恢复。
 - 本机 PowerShell 执行策略禁止直接运行 `npm`/`npx`：如需手工执行，可用 `node node_modules/<工具>/bin/...` 直调，或临时 `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`。

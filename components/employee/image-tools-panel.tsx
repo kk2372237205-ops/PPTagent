@@ -11,7 +11,7 @@
  * 被谁用：`components/employee-app.tsx` 的订单工作台。
  * 验证方式：`npm run verify`。
  *
- * 拆自 `tools-ai-panels.tsx`（2026-09-26 按模式拆分）。
+ * 拆自 `tools-ai-panels.tsx`（2026-09-27 按模式拆分）。
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

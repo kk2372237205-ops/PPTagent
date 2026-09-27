@@ -44,4 +44,4 @@
 2. 需要跨模块的请求走 `lib/employee-api.ts`，**不要在新代码里手写 `fetch("/api/...")`**。
 3. 需要跨模块的类型从 `lib/employee-api-types.ts` 取，**不要 import `employee-app.tsx`**（会形成循环依赖）。
 4. 用到 `<img>` 的文件沿用文件级 `eslint-disable @next/next/no-img-element`（与主文件一致）。
-5. 改完必须跑 `npm run verify`；其中 `--max-warnings 0` 会拦住任何新增警告（2026-09-26 收紧，历史 11 条已清理）。
+5. 改完必须跑 `npm run verify`；其中 `--max-warnings 0` 会拦住任何新增警告（2026-09-27 收紧，历史 11 条已清理）。
