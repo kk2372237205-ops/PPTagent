@@ -2766,6 +2766,13 @@ function normalizeDirectorContract(value, page) {
   }).filter(item => item.supports && item.form);
   const fallbackArchetype = fallbackPageArchetype(page);
   const ending = page.role === "ending";
+  const bodyPage = !["cover", "ending"].includes(page.role);
+  const bodyPictureFrameDirection = bodyPage
+    ? "正文页的写实插图必须是可替换的完整图片框：明确使用 16:9、4:3、方形或指定比例的矩形画面，保留主体完整、自然且不透明；图片与页面背景之间是清晰硬边，可用细实线或小圆角。禁止渐变蒙版、羽化、透明叠色、蓝色蒙层、图片向背景渐隐，以及在图片上压正文文字；标题、标签和连线放在图片框外。"
+    : "";
+  const bodyPictureFrameIntegration = bodyPage
+    ? "写实图片作为完整硬边图片框参与阅读路径，可用邻近文字或连线建立关系；不得将图片溶解成背景、长条渐隐图或文字底图。"
+    : "";
   const requestedArchetypeRaw = String(source.page_archetype || "");
   const requestedArchetype = requestedArchetypeRaw === "evidence-wall" && !visualEvidence.length
     ? "proof-summary"
@@ -2812,7 +2819,7 @@ function normalizeDirectorContract(value, page) {
       ? (requestedBrief.startsWith("封面级情绪收束：")
         ? requestedBrief
         : `封面级情绪收束：以 ${requestedBrief} 为基础，使用一个有力量的象征性主题画面，主体占据大部分画面；为一句收束性结论留出大面积空白。不得制作信息图、路线图、数据图、卡片或纪实证明场景。`).slice(0, 1400)
-      : [requestedBrief, webReferenceDirection].filter(Boolean).join(" ").slice(0, 1400),
+      : [bodyPictureFrameDirection, requestedBrief, webReferenceDirection].filter(Boolean).join(" ").slice(0, 1400),
     visual_weight: visualWeight,
     visual_units: visualUnits.length || effectiveVisualStrategy === "typography"
       ? visualUnits
@@ -2825,7 +2832,10 @@ function normalizeDirectorContract(value, page) {
         relationship: effectiveVisualStrategy === "comparison" ? "contrast" : effectiveVisualStrategy === "process" || effectiveVisualStrategy === "timeline" ? "sequence" : "context",
         importance: "primary"
       }],
-    integration_rule: String(source.integration_rule || "让每个画面单元紧邻或贯穿其所支撑的文字，按本页语义建立一条阅读路径；不得把画面统一塞入固定的底部、右侧或背景图片区。").trim().slice(0, 1200),
+    integration_rule: [
+      bodyPictureFrameIntegration,
+      String(source.integration_rule || "让每个画面单元紧邻或贯穿其所支撑的文字，按本页语义建立一条阅读路径；不得把画面统一塞入固定的底部、右侧或背景图片区。").trim()
+    ].filter(Boolean).join(" ").slice(0, 1200),
     primary_evidence_id: primaryEvidenceId,
     secondary_evidence_ids: secondaryEvidenceIds,
     evidence_priority: cleanStringList(source.evidence_priority, 6),
@@ -2922,6 +2932,7 @@ ${advancedDirectorSkillBundle()}
 - 每页 director_contract 必须给出明确的 unique_takeaway、visual_strategy、main_visual_brief、visual_weight、visual_units、integration_rule 和版式骨架，让 Image2 只负责执行，不再自行理解原始资料。
 - 仅正文页的 director_contract 必须给出 web_visual_search：按本页 structure、main_visual_brief 和 visual_units 写 1–3 条简短英文检索词，供系统到公开图片库寻找“物体、材质、工艺或通用环境”的视觉参考。每条 query 必须是具体名词，不能是抽象气质词、机构名、人名、品牌、校名或事实声明；不得检索肖像、人物、Logo、机构招牌、公文、证书、报告、仪表盘或截图。封面与结尾页 queries 必须为空。
 - 网络图只会作为 Image2 在这一次完整页面生成中的视觉语义参考：它会被重新绘制、融合到新页面，而不是原图贴入、事实证据或第二次生图。把其主体、景别、材料和光线方向同时落实进 main_visual_brief；不要把检索字段当作观众可见文字。
+- 正文页的写实插图必须规划为一张或数张完整可替换的图片框：在 main_visual_brief 与 integration_rule 中写明 16:9、4:3、方形或指定比例的独立矩形区域、完整主体、自然不透明颜色与清晰硬边。严禁渐变蒙版、羽化、透明叠色、蓝色蒙层、向页面背景渐隐或在照片上压正文文字；文字、标签和连线放在图片框外。封面和结尾页不受此限制，继续采用强情绪的整合式主视觉。
 - 适合图像表达的正文页优先规划 1-3 个画面单元，高密度页最多 4 个；纯文字论证可以为 0 个。每个 visual_unit 必须明确支撑逐页内容包中的哪条正文、阶段、对比、机制、背景或结果，不能只写“配图”“科技图片”或情绪词。
 - 所有画面单元与文字必须在同一次 Image2 请求的一张完整页面图中共同构图。位置由 sequence、cause、contrast、mechanism、context、result 或 evidence 关系决定，不得固定为左文右图、上文下图或统一底部图片区。
 - 多个画面单元必须形成一个主次清楚的语义构图，不得拼贴互不相关的图片，也不得默认改成等权卡片阵列。
@@ -2951,7 +2962,7 @@ ${advancedDirectorSkillBundle()}
       title: page.title,
       role: page.role,
       content_summary: [page.purpose, ...blocks.map(block => [block.subtitle, block.content || block.instruction].filter(Boolean).join("：")), page.conclusion].filter(Boolean).join("\n").slice(0, 6000),
-      composition: `版式类型：${page.layoutType}；信息密度：${page.density}。 ${slide.composition}`,
+      composition: `版式类型：${page.layoutType}；信息密度：${page.density}。 ${slide.composition}${!["cover", "ending"].includes(page.role) ? " 正文写实插图使用完整、独立且可替换的硬边图片框；不得使用渐变蒙版、羽化、透明叠色或向背景渐隐。" : ""}`,
       text_density: density,
       must_include: audienceMustInclude(mustInclude.map(String), page.title).slice(0, 30),
       evidence: jsonArray(page.evidenceJson),
@@ -4128,6 +4139,9 @@ function advancedSlidePrompt(run, slide, contract, instruction, references = [],
     : slide.role === "cover"
       ? "- This is the cover: keep it minimal and project-identifying, with one strong thematic hero visual and no body-page information grid. The hero may be symbolic or conceptual, but must not impersonate a real campus, product, customer site, institution sign, or logo."
       : "- This is a body slide: honor the contract's density and proof goal; keep enough substantive evidence to support the conclusion instead of forcing a sparse closing-page treatment.";
+  const bodyPictureFrameRule = !["cover", "ending"].includes(slide.role)
+    ? "- Body-page photorealistic visuals must be complete, replaceable picture frames: use an explicit 16:9, 4:3, square, or contract-specified rectangular crop with the full subject inside it, natural opaque colour, and a crisp hard edge against the slide background. A subtle solid border or small corner radius is allowed. Never use gradient masks, feathering, transparency, blue colour washes, image-to-background fades, or body copy over the image pixels. Put titles, labels, data, and connectors in the surrounding layout. A frame may be large or touch an outer edge, but it must remain a distinct complete asset rather than an atmospheric background. Keep technical diagrams and charts in equally clean hard-edged regions."
+    : "";
   const visualCompositionRules = [
     "- Follow director_contract.visual_weight when balancing visible copy and imagery.",
     "- Generate every director_contract.visual_unit as part of this same complete slide image. There is no later image insertion or second visual-generation pass.",
@@ -4164,6 +4178,7 @@ function advancedSlidePrompt(run, slide, contract, instruction, references = [],
     "- Never invent numbers, dates, names, awards, claims, logos, watermarks, signatures, or unrelated characters.",
     "- Make director_contract.unique_takeaway and director_contract.proof_goal visually clear. Execute director_contract.main_visual_brief with a deliberate focal point, framing, scale and whitespace direction.",
     ...visualCompositionRules,
+    bodyPictureFrameRule,
     "- Generated visuals are communication devices, not proof. Never add readable school or institution signage, logos, product labels, certificates, contracts, reports, dashboards, customer photos, awards, or news coverage that were not explicitly supplied as exact visible text.",
     "- Follow director_contract.icon_policy and card_policy. Generic decorative icons are zero by default; equal-weight card grids are not the default composition.",
     "- Only render user-facing text found inside immutable_content or editable_content. Never render JSON keys, evidence filenames, source locators, role names, prompt instructions, or invented navigation labels.",

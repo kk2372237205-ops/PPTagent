@@ -18,6 +18,7 @@ Turn one confirmed page into a delivery-grade communication task. Improve the pa
 - Treat uploaded content images as OCR/understanding inputs only. Do not crop, extract, or reuse them as slide artwork.
 - Treat the palette reference and style strip as visual constraints, never as factual evidence.
 - For a body page, create a small `web_visual_search` brief for public-web visual research. Its results are **not** user-source material: Image2 may use them only to redraw generic objects, materials, processes, camera distance and natural light in the same final slide request.
+- For a body page that uses a photorealistic visual, specify it as one or more **complete, replaceable picture frames**. This is a layout rule for the final slide image, not a request to reuse source pixels.
 
 ## Two Separate Policies (read this before anything else)
 
@@ -52,6 +53,19 @@ site or person. Never render official documents, seals, institution signage, log
 software screenshots, or identifiable portraits.
 ```
 
+### C. BODY-PAGE IMAGE-SLOT POLICY — binding, except covers and endings
+
+Photorealistic visuals on a normal body page must remain practical to replace when the page is later rebuilt or converted:
+
+- Put each photo-like visual in a self-contained 16:9, 4:3, square, or deliberately specified picture frame. The complete subject stays visible inside that frame.
+- The frame must meet the slide background with a crisp hard edge; a restrained solid outline or small corner radius is allowed.
+- Keep the image natural and fully opaque. **Never use a gradient mask, feathered edge, transparency, blue colour wash, dissolve, or fade from the image into the page background.**
+- Do not lay body copy on top of a photographic frame. Put titles, labels, connectors, and data in the surrounding slide layout, outside the image pixels.
+- A page can still use a large image frame or let a frame touch an outer edge. It must remain a complete rectangular asset rather than becoming an atmospheric background.
+- Technical diagrams and charts are not photographs; retain clean hard-edged diagram regions for them too.
+
+Write this image-slot treatment into both `main_visual_brief` and `integration_rule`, not into a new JSON field. The normalizer only forwards those fields to Image2. Covers and endings deliberately remain free to use a full-bleed, emotionally integrated composition.
+
 ## Direct The Page
 
 1. State one `unique_takeaway` that the audience should understand after viewing the page.
@@ -60,7 +74,7 @@ software screenshots, or identifiable portraits.
 4. Choose one `visual_strategy` and write a concrete `main_visual_brief` that defines the overall subject, composition, framing, **scale**, whitespace direction, and emotion. It may coordinate several visual units; it is not limited to one isolated hero image.
 5. Choose `visual_weight` from `text-led`, `balanced`, or `visual-led` according to the page's semantic job and density, then apply the **area floor** for that tier (below).
 6. Define one to four `visual_units`. **Default to one dominant unit.** Add more only when the content is genuinely parallel (multiple stages, comparisons, or independent proof categories). For every unit, state the confirmed claim it supports, its visual form, its semantic relationship, and whether it is primary or supporting.
-7. Write one `integration_rule` that makes text and visual units share a reading path. Never place all visuals in a detached fixed bottom, right, or background slot.
+7. Write one `integration_rule` that makes text and visual units share a reading path. For body-page photoreal visuals, keep a complete hard-edged picture frame while integrating it with nearby text or connectors; do not dissolve it into the background. Do not force every page into the same bottom or right-side layout.
 8. Choose a layout blueprint that gives the page one dominant information hierarchy and keeps supporting content subordinate. Multiple visuals are allowed when they form one semantic composition.
 9. Preserve every exact fact, number, date, proper noun, source locator, and user-locked phrase.
 10. Return explicit icon, authenticity, and fabrication policies.
@@ -120,7 +134,7 @@ Every prohibition below is paired with the replacement you must use instead. A p
 - Treat matched blocks, summaries, and evidence as a fact bank, not a requirement to render every sentence. Preserve only explicit exact text verbatim; compress other copy to a professional visible-text budget.
 - Never render production scaffolding such as "evidence from the source", "pending source match", filenames, locators, or internal sequence numbers.
 - When a palette reference is active, use only its extracted palette for the presentation system. Do not borrow unlisted colors for titles, metrics, lines, cards, or decoration.
-- Generated visual units are communication devices inside the same final slide image, not separately generated assets and not documentary proof.
+- Generated visual units are communication devices inside the same final slide image, not separately generated assets and not documentary proof. On body pages, photo-like units are complete hard-edged picture frames, never translucent or gradient-dissolved backgrounds.
 - **Do not drop the illustration because a chart or typography seems "clearer".** For every content page, either draw the dominant illustration or state in one sentence why this page is one of the two legal exceptions (a chart page where the chart *is* the visual, or a pure data table page).
 - Do not place a generated scene behind dense text unless contrast and whitespace make both fully readable.
 
@@ -134,6 +148,7 @@ Every prohibition below is paired with the replacement you must use instead. A p
 | Visual looks fake in a glossy way | Remove studio lighting and beauty-retouch language; ask for available light, unevenness, dust, worn surfaces, no heavy retouching. |
 | Visual is an abstract blob | Replace the abstract noun with 3+ concrete nouns from the page content. |
 | Several tiny icons instead of one visual | Consolidate into one unit at 40%+ and delete the icon row. |
+| Photo disappears into the blue slide background | Specify a complete 16:9/4:3 picture frame, opaque natural image, hard edge, no gradient mask, no fade, and keep text outside it. |
 | Page shows fake documents, seals, logos or faces | Delete them. Depict the device or mechanism realistically instead; a credential-shaped image is never acceptable. |
 | Fake charts | Use only confirmed values; write the exact labels and numbers into the brief. |
 
@@ -205,4 +220,4 @@ Keep this object concise enough to pass to Image2 as part of the existing page r
 
 `web_visual_search` is an internal research brief, never audience-facing copy. It does not weaken the fabrication boundary: the public image is never embedded, never treated as proof, and must be redrawn as a new generic visual in the only Image2 call for that page.
 
-> **`main_visual_brief` is the field that actually reaches the image model** (up to 1200 characters). Everything the image model needs to know about the illustration — subject in concrete nouns, area percentage, height span, bleed edges, illustration style, text budget, and the legal frame — **must appear in `main_visual_brief` as prose.** A number that only exists in `illustration_share` does not reach the model.
+> **`main_visual_brief` is the field that actually reaches the image model** (up to 1200 characters). Everything the image model needs to know about the illustration — subject in concrete nouns, area percentage, height span, frame aspect ratio, hard edge/no-fade treatment, illustration style, text budget, and the legal frame — **must appear in `main_visual_brief` as prose.** A number that only exists in `illustration_share` does not reach the model.
