@@ -32,7 +32,10 @@ const deckEvidenceRoot = path.join(workspaceRoot, "deck-generation", "evidence")
 const skillRoot = path.join(root, "skills", "deck-generation");
 const pollMs = Math.max(1200, Number(process.env.DECK_GENERATION_POLL_MS || 2500));
 const deckGenerationConcurrency = Math.min(4, Math.max(1, Number(process.env.DECK_GENERATION_CONCURRENCY || 2)));
-const advancedDeckGenerationConcurrency = Math.min(6, Math.max(1, Number(process.env.DECK_ADVANCED_GENERATION_CONCURRENCY || 6)));
+// Image2 requests are expensive and the relay queues aggressively when too many
+// page renders arrive together. Three is the stable default; deployments that
+// have measured spare relay capacity may still explicitly raise this to six.
+const advancedDeckGenerationConcurrency = Math.min(6, Math.max(1, Number(process.env.DECK_ADVANCED_GENERATION_CONCURRENCY || 3)));
 const advancedSourceReadConcurrency = Math.min(3, Math.max(1, Number(process.env.DECK_ADVANCED_SOURCE_CONCURRENCY || 3)));
 const maxAdvancedVisualEvidence = 4;
 const advancedImageReferencesEnabled = process.env.DECK_ADVANCED_REFERENCE_IMAGES !== "0";
@@ -3939,6 +3942,166 @@ async function advancedVisualReferences(run, slide, instruction) {
   return Array.from(new Map(references.map(reference => [reference.storedName, reference])).values());
 }
 
+const maxAdvancedImagePromptBytes = 30000;
+
+function compactPromptText(value, maximumBytes) {
+  const text = String(value || "").trim();
+  if (!text || Buffer.byteLength(text, "utf8") <= maximumBytes) return text;
+  const suffix = "…";
+  const usableBytes = Math.max(0, maximumBytes - Buffer.byteLength(suffix, "utf8"));
+  let result = "";
+  let usedBytes = 0;
+  for (const character of text) {
+    const characterBytes = Buffer.byteLength(character, "utf8");
+    if (usedBytes + characterBytes > usableBytes) break;
+    result += character;
+    usedBytes += characterBytes;
+  }
+  return result + suffix;
+}
+
+function compactPromptTextList(value, { maxItems, maxItemBytes }) {
+  return normalizeArray(value)
+    .slice(0, maxItems)
+    .map(item => compactPromptText(item, maxItemBytes))
+    .filter(Boolean);
+}
+
+function compactPromptLayout(value, level) {
+  const layout = value && typeof value === "object" ? value : {};
+  const itemBytes = level === 0 ? 320 : 180;
+  return {
+    silhouette: compactPromptText(layout.silhouette, itemBytes),
+    title_zone: compactPromptText(layout.title_zone, itemBytes),
+    primary_zone: compactPromptText(layout.primary_zone, itemBytes),
+    support_zone: compactPromptText(layout.support_zone, itemBytes),
+    reading_order: compactPromptTextList(layout.reading_order, {
+      maxItems: level === 0 ? 7 : 5,
+      maxItemBytes: itemBytes
+    })
+  };
+}
+
+function compactPromptStyle(value, level) {
+  const style = value && typeof value === "object" ? value : {};
+  const groupBytes = level === 0 ? 1500 : 700;
+  const compactGroup = key => compactPromptText(JSON.stringify(style[key] || {}), groupBytes);
+  return {
+    palette_contract: compactGroup("palette_contract"),
+    palette: compactGroup("palette"),
+    typography: compactGroup("typography"),
+    background: compactGroup("background"),
+    header_footer: compactGroup("header_footer"),
+    cards_and_shapes: compactGroup("cards_and_shapes"),
+    motifs: compactGroup("motifs"),
+    image_language: compactGroup("image_language"),
+    spacing_and_grid: compactGroup("spacing_and_grid"),
+    locked_system: compactGroup("locked_system")
+  };
+}
+
+function compactAdvancedImage2Contract(contract, level = 0) {
+  const strict = level > 0;
+  const immutable = contract?.immutable_content || {};
+  const editable = contract?.editable_content || {};
+  const visualIntent = contract?.visual_intent || {};
+  const director = contract?.director_contract || {};
+  const fingerprint = contract?.global_style_fingerprint || {};
+  const project = contract?.project || {};
+  const continuitySummary = item => {
+    if (!item || typeof item !== "object") return null;
+    return {
+      slide_index: item.slide_index,
+      title: compactPromptText(item.title, strict ? 80 : 120),
+      role: compactPromptText(item.role, 80),
+      key_message: compactPromptText(item.key_message || item.content_summary || item.story_goal, strict ? 220 : 420),
+      visual_change: compactPromptText(item.visual_change || item.composition, strict ? 140 : 240),
+      main_visual: compactPromptText(item.main_visual, strict ? 180 : 360)
+    };
+  };
+  const visualUnitBytes = strict ? 260 : 620;
+  const blocks = normalizeArray(editable.blocks).slice(0, strict ? 3 : 4).map(block => ({
+    subtitle: compactPromptText(block?.subtitle, strict ? 110 : 180),
+    instruction: compactPromptText(block?.instruction, strict ? 180 : 360),
+    content: compactPromptText(block?.content, strict ? 500 : 1100)
+  }));
+
+  return {
+    project: {
+      name: compactPromptText(project.name, strict ? 160 : 300),
+      use_case: compactPromptText(project.use_case, strict ? 180 : 420),
+      slide_index: project.slide_index,
+      total_slides: project.total_slides,
+      role: compactPromptText(project.role, 80)
+    },
+    user_priority_requirements: compactPromptText(contract?.user_priority_requirements?.deck_wide, strict ? 500 : 1100),
+    immutable_content: {
+      title: compactPromptText(immutable.title, strict ? 240 : 480),
+      exact_visible_text: compactPromptTextList(immutable.exact_visible_text, {
+        maxItems: strict ? 24 : 36,
+        maxItemBytes: strict ? 180 : 420
+      }),
+      warnings: compactPromptTextList(immutable.warnings, {
+        maxItems: strict ? 3 : 5,
+        maxItemBytes: strict ? 180 : 420
+      })
+    },
+    editable_content: {
+      purpose: compactPromptText(editable.purpose, strict ? 380 : 800),
+      blocks,
+      conclusion: compactPromptText(editable.conclusion, strict ? 380 : 800),
+      visible_text_budget: editable.visible_text_budget || {}
+    },
+    visual_intent: {
+      composition: compactPromptText(visualIntent.composition, strict ? 500 : 1000),
+      main_visual: compactPromptText(visualIntent.main_visual, strict ? 500 : 1000),
+      text_density: compactPromptText(visualIntent.text_density, 60),
+      white_space: compactPromptText(visualIntent.white_space, strict ? 220 : 480),
+      must_avoid: compactPromptTextList(visualIntent.must_avoid, {
+        maxItems: strict ? 6 : 12,
+        maxItemBytes: strict ? 150 : 300
+      })
+    },
+    director_contract: {
+      unique_takeaway: compactPromptText(director.unique_takeaway, strict ? 360 : 760),
+      page_archetype: compactPromptText(director.page_archetype, 100),
+      proof_goal: compactPromptText(director.proof_goal, strict ? 460 : 900),
+      visual_strategy: compactPromptText(director.visual_strategy, 100),
+      main_visual_brief: compactPromptText(director.main_visual_brief, strict ? 1000 : 2200),
+      visual_weight: compactPromptText(director.visual_weight, 100),
+      visual_units: normalizeArray(director.visual_units).slice(0, strict ? 3 : 5).map(unit => ({
+        supports: compactPromptText(unit?.supports, visualUnitBytes),
+        form: compactPromptText(unit?.form, visualUnitBytes),
+        relationship: compactPromptText(unit?.relationship, 80),
+        importance: compactPromptText(unit?.importance, 80)
+      })),
+      integration_rule: compactPromptText(director.integration_rule, strict ? 520 : 1100),
+      layout_blueprint: compactPromptLayout(director.layout_blueprint, level),
+      icon_policy: compactPromptText(director.icon_policy, 100),
+      card_policy: compactPromptText(director.card_policy, 100),
+      authenticity_policy: compactPromptText(director.authenticity_policy, strict ? 440 : 900),
+      forbidden_fabrication: compactPromptTextList(director.forbidden_fabrication, {
+        maxItems: strict ? 10 : 18,
+        maxItemBytes: strict ? 160 : 340
+      }),
+      director_notes: compactPromptText(director.director_notes, strict ? 280 : 650)
+    },
+    global_style_fingerprint: compactPromptStyle(fingerprint, level),
+    palette_lock: {
+      mode: compactPromptText(contract?.palette_lock?.mode, 80),
+      allowed_presentation_colors: compactPromptTextList(contract?.palette_lock?.allowed_presentation_colors, {
+        maxItems: 20,
+        maxItemBytes: 40
+      })
+    },
+    continuity: {
+      previous_slide: continuitySummary(contract?.continuity?.previous_slide),
+      next_slide: continuitySummary(contract?.continuity?.next_slide),
+      instruction: compactPromptText(contract?.continuity?.instruction, strict ? 180 : 400)
+    }
+  };
+}
+
 function advancedSlidePrompt(run, slide, contract, instruction, references = [], options = {}) {
   const pixelLockedReferences = references.filter(reference => /authentic page evidence/i.test(reference.role) && reference.pixelLockRequired !== false);
   const groundedRedrawReferences = references.filter(reference => reference.renderMode === "grounded-redraw");
@@ -3972,41 +4135,14 @@ function advancedSlidePrompt(run, slide, contract, instruction, references = [],
     "- Multiple visual units are allowed only when they form one semantic composition with a clear primary-secondary hierarchy. Never create an unrelated stock-image collage or an equal card grid by default.",
     "- Treat user_priority_requirements as high-priority production direction, never as audience-facing copy, factual evidence, or permission to violate palette and authenticity rules."
   ];
-  // Runtime provenance contains long public URLs and attribution metadata for
-  // auditing, not for Image2. Keeping it out of the prompt preserves room for
-  // the actual page contract and avoids provider prompt-size rejection.
-  const image2Contract = { ...contract };
-  delete image2Contract.runtime_web_visual_references;
-  const image2DirectorContract = { ...(contract?.director_contract || {}) };
-  // The query has already selected and uploaded its visual reference. Image2
-  // receives the semantic result in main_visual_brief and the reference role;
-  // it does not need the research mechanics a second time.
-  delete image2DirectorContract.web_visual_search;
-  image2Contract.director_contract = image2DirectorContract;
-  const continuitySummary = item => {
-    if (!item || typeof item !== "object") return null;
-    return {
-      slide_index: item.slide_index,
-      title: String(item.title || "").slice(0, 120),
-      role: String(item.role || "").slice(0, 80),
-      key_message: String(item.key_message || item.content_summary || item.story_goal || "").slice(0, 420),
-      visual_change: String(item.visual_change || "").slice(0, 240),
-      main_visual: String(item.main_visual || "").slice(0, 360)
-    };
-  };
-  image2Contract.continuity = {
-    previous_slide: continuitySummary(contract?.continuity?.previous_slide),
-    next_slide: continuitySummary(contract?.continuity?.next_slide),
-    instruction: String(contract?.continuity?.instruction || "").slice(0, 400)
-  };
-  return [
+  const buildPrompt = image2Contract => [
     "Create one complete, premium 16:9 PPT slide image.",
     "",
     "This JSON is the complete handoff contract prepared by GPT-5.6. Follow it exactly. Do not reinterpret source documents and do not invent content:",
     JSON.stringify(image2Contract),
     "",
     "Current regeneration or correction instruction:",
-    instruction || "none",
+    compactPromptText(instruction, 1200) || "none",
     "",
     "Input image reference roles in upload order:",
     referenceRoles,
@@ -4042,8 +4178,20 @@ function advancedSlidePrompt(run, slide, contract, instruction, references = [],
     "- Do not add internal sequence labels such as 1), 2), 5), 6), or repeat the title as a second heading unless exact_visible_text explicitly requires it.",
     paletteRule,
     roleRule,
-    "- Project: " + run.projectName + "; slide " + slide.slideIndex + "/" + run.pageCount + "."
+    "- Project: " + compactPromptText(run.projectName, 240) + "; slide " + slide.slideIndex + "/" + run.pageCount + "."
   ].join("\n");
+  // Contracts retain complete sources and provenance for auditability. Image2
+  // needs only the concise execution handoff. Keeping every render request
+  // below the relay's 32 KiB ceiling prevents a long factual source trail from
+  // spending minutes in the provider queue before it is rejected.
+  let prompt = buildPrompt(compactAdvancedImage2Contract(contract));
+  if (Buffer.byteLength(prompt, "utf8") > maxAdvancedImagePromptBytes) {
+    prompt = buildPrompt(compactAdvancedImage2Contract(contract, 1));
+  }
+  if (Buffer.byteLength(prompt, "utf8") > maxAdvancedImagePromptBytes) {
+    throw new Error("页面制作说明超过 Image2 安全字节预算；请缩短本页固定可见文字后重新生成。本次未调用 Image2。");
+  }
+  return prompt;
 }
 
 async function claimImageCall(run, slide, endpoint, referenceCount) {
@@ -4119,12 +4267,12 @@ async function generateAdvancedSlide(run, slide, instruction = "") {
   const image2References = references.filter(reference => reference.renderMode !== "grounded-redraw");
   const image2ReferenceCount = protectedEvidence ? 1 : image2References.length;
   const endpoint = image2ReferenceCount ? "/images/edits" : "/images/generations";
-  const imageCall = await claimImageCall(run, slide, endpoint, image2ReferenceCount);
-  let referenceTransport = "none";
-  let evidencePixelsRestored = false;
   const finalPrompt = advancedSlidePrompt(run, slide, contract, initialInstruction, references, {
     protectedEvidence
   });
+  const imageCall = await claimImageCall(run, slide, endpoint, image2ReferenceCount);
+  let referenceTransport = "none";
+  let evidencePixelsRestored = false;
   let finalImage;
   try {
     await db.deckGenerationSlide.update({
