@@ -20,6 +20,7 @@
 
 | 你要改什么 | 读这些 |
 | --- | --- |
+| **不确定某个模式有哪些文件** | ⭐ **`docs/feature-file-map.md`**（功能 → 文件对照表：界面 / 接口 / 脚本 / 提示词 / 数据表 / 产物 / 共享层） |
 | 员工端任何界面 | `components/employee/README.md`（21 个模块索引表），再看对应的单个 `.tsx` |
 | 生成 PPT | `skills/README.md` + `skills/deck-generation/` + `scripts/README.md` |
 | **画面/插图质量（写实、面积、风格）** | ⭐ **`PPTskills汇总/README.md`** → 再看 `03-插图手册` 与 `01-风格库` 第 1.5 节 |
