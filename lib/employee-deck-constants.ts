@@ -7,7 +7,7 @@
  * 被谁用：`components/employee-app.tsx`、`components/employee/deck-generation-form.tsx` 等。
  * 验证方式：`npm run verify`。
  *
- * ⚠️ 同步要求：这些 id 必须和 `scripts/deck-generation-worker.mjs` 里的
+ * ⚠️ 同步要求：这些 id 必须和 `scripts/workers/deck-generation/deck-generation-worker.mjs` 里的
  * `stylePackName()` / `advancedLayoutName()` 白名单保持一致，否则后台会认不出风格包。
  * 新增或改名风格包时，两处必须同时改。
  */

@@ -20,7 +20,8 @@
 | `components/employee-app.tsx` | 只剩壳、常量与 4 处 design-agent 调用 | 只做小改，不要再往里堆功能 |
 | `app/employee/employee.css` | 样式入口，只有 `@import` 列表 | 不要往这里加规则 |
 | `app/employee/styles/*.css` | 按模块拆开的样式，顺序由入口文件固定 | 只改自己模块那份 |
-| `scripts/*.mjs` | 后台执行脚本，互相不 import | **可以分别派人改** |
+| `scripts/*.mjs` | **启动与运维脚本**（`dev.mjs`、`dev-lite.mjs`、`agent-workers.mjs`、`init-db.mjs` 等） | **可以分别派人改** |
+| `scripts/workers/<模式>/*.mjs` | **后台执行脚本按模式分目录**：`deck-generation/`（生成 PPT）、`ppt-polish/`（美化 PPT）、`design-agent/`（生图 + 单页设计）、`image-explode/`（图片炸开）、`shared/`（共用网络层） | **按模式分别派人改**；`shared/` 改动要回归全部 worker |
 | `skills/deck-generation/**` | 生成 PPT 的提示词规则 | 改提示词优先改这里 |
 
 ## 派活模板（给别人或给 AI 派任务时照抄）
@@ -173,7 +174,7 @@ npm start
 - 美化 PPT 的后端接口位于：
   `app/api/employee/services/[id]/ppt-polish/runs`
   以及其下的 `confirm`、`retry`、`slides/[slideIndex]/image`、`slides/[slideIndex]/regenerate`、`pdf`、`ppt`。
-- 美化 PPT worker 为 `scripts/ppt-polish-worker.mjs`，健康检查在 `lib/ppt-polish-worker-health.ts`。
+- 美化 PPT worker 为 `scripts/workers/ppt-polish/ppt-polish-worker.mjs`，健康检查在 `lib/ppt-polish-worker-health.ts`。
 - `npm run dev`、`npm run dev:lite` 和 `npm run agent:workers` 都应包含美化 PPT worker。
 - 美化 PPT 生成页图时并发数为 2；排队和生成中的预览卡都要有动态反馈。
 - 封面页和结尾页应强情绪、少文字、风格突出；中间页要保持统一色彩、统一版式语言和上下文连贯。
@@ -336,7 +337,7 @@ node scripts/employee-visual-test.mjs
 
 - 仓库已于 2026-09-14 初始化：基线提交 `8e2f313`，标签 `baseline`，183 个受控文件，仓库体积约 3.29 MB。
 - 基线状态：`npm run verify` 全绿（tsc 通过、eslint 0 error / 11 warning、prisma validate 通过、webpack 生产构建通过）。
-  > 2026-09-26：eslint 基线已收紧到 **0 warning**（清理了 `scripts/design-agent-worker.mjs` 里 31 个零引用声明）。上面这条是当天的历史记录。
+  > 2026-09-26：eslint 基线已收紧到 **0 warning**（清理了 `scripts/workers/design-agent/design-agent-worker.mjs` 里 31 个零引用声明）。上面这条是当天的历史记录。
 - 未纳入版本控制（按 `.gitignore`）：`.env`、`prisma/dev.db`、`uploads/`（约 6.4 GB 业务与创作文件）、`node_modules/`、`.next*`、`.npm-cache/`、`.artifacts/`、`tmp/`、`__pycache__/`。
 - **重要**：`uploads/` 不在 Git 里，因此没有版本回退保护；它包含客户资料、工作文稿和生成结果，必须单独做备份（外置硬盘或对象存储），不能依赖 Git 恢复。
 - 本机 PowerShell 执行策略禁止直接运行 `npm`/`npx`：如需手工执行，可用 `node node_modules/<工具>/bin/...` 直调，或临时 `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`。

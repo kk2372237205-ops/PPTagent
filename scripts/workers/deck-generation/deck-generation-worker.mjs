@@ -17,7 +17,7 @@ import {
   textEndpoint,
   textFromResponse,
   textRequestBody
-} from "./ai-service-client.mjs";
+} from "../shared/ai-service-client.mjs";
 
 const root = process.cwd();
 loadEnv();

@@ -91,11 +91,11 @@ npm run storage:report
 - `app/api/employee/admin/`
   - 管理员控制台读取成员、统计使用情况和修改权限的后端入口。
 
-- `scripts/deck-generation-worker.mjs`
+- `scripts/workers/deck-generation/deck-generation-worker.mjs`
   - 生成 PPT 的后台执行脚本。
   - 负责方案规划、逐页生图、PDF 合成、Codia 转 PPT。
 
-- `scripts/ppt-polish-worker.mjs`
+- `scripts/workers/ppt-polish/ppt-polish-worker.mjs`
   - 美化 PPT 的后台执行脚本。
   - 负责确认方案后逐页重绘、生成预览图，并配合转 PDF/PPT。
 
@@ -103,7 +103,7 @@ npm run storage:report
   - 生成 PPT 的可读 Markdown 技能规则。
   - 这里是“图组导演层”的人类可读版本。
 
-- `scripts/design-agent-worker.mjs`
+- `scripts/workers/design-agent/design-agent-worker.mjs`
   - 单页生图和旧智能设计任务后台执行脚本。
 
 - `app/api/employee/services/[id]/deck-generation/`

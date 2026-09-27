@@ -26,7 +26,7 @@
 | **画面/插图质量（写实、面积、风格）** | ⭐ **`PPTskills汇总/README.md`** → 再看 `03-插图手册` 与 `01-风格库` 第 1.5 节 |
 | **为什么插图以前画不好** | `PPTskills汇总/05-根因诊断-为什么插图画不好.md`（带行号证据，通读，这是本话题的地基） |
 | 美化 PPT / 生图 / 图片工具 | `components/employee/` 里对应的那个文件 + `scripts/README.md` |
-| **AI 调用网络层（超时/重试/HTTP2）** | `scripts/ai-service-client.mjs` + `docs/model-handoff.md` 的"网络层"一节 |
+| **AI 调用网络层（超时/重试/HTTP2）** | `scripts/workers/shared/ai-service-client.mjs` + `docs/model-handoff.md` 的"网络层"一节 |
 | 后台执行与启动脚本 | `scripts/README.md` |
 | 业务验收流程（给项目 owner 看） | `docs/project-control-workflows.md`（53 KB，只在需要验收时读） |
 | 历史问题与安全清单 | `docs/readonly-audit-2026-09-14.md`（56 KB，按需跳读，不要通读） |
@@ -59,8 +59,8 @@
 - `lib/employee-permissions.ts`：角色/功能中文名与默认权限。
 - `lib/use-smart-studio-runs.ts`：智能模式三条链路的状态与请求编排。
 - `lib/ai-providers.ts`：文字模型与图片模型的服务端配置边界。
-- `scripts/deck-generation-worker.mjs`：生成 PPT 的后台执行脚本。
-- `scripts/ppt-polish-worker.mjs`：美化 PPT 的后台执行脚本。
+- `scripts/workers/deck-generation/deck-generation-worker.mjs`：生成 PPT 的后台执行脚本。
+- `scripts/workers/ppt-polish/ppt-polish-worker.mjs`：美化 PPT 的后台执行脚本。
 - `skills/deck-generation/`：资料引用、结构控制、信息密度、配色和质量规则。
 - `prisma/schema.prisma`：业务数据结构。
 
@@ -183,7 +183,7 @@ npm run verify:check    # 只跑静态检查，改代码过程中随时可用
 npm run verify:build    # 只跑生产构建，交付前必跑
 ```
 
-**eslint 警告基线是 0**（2026-09-26 从 11 收紧）。**任何新增警告都会让这条命令失败**——包括未使用的 import，也包括"删了调用点留下的孤儿函数"。这是刻意的。同一天清掉了 `scripts/design-agent-worker.mjs` 里 31 个零引用声明（文件从 1695 行降到 1282 行）。
+**eslint 警告基线是 0**（2026-09-26 从 11 收紧）。**任何新增警告都会让这条命令失败**——包括未使用的 import，也包括"删了调用点留下的孤儿函数"。这是刻意的。同一天清掉了 `scripts/workers/design-agent/design-agent-worker.mjs` 里 31 个零引用声明（文件从 1695 行降到 1282 行）。
 
 > 注意：该文件里还留着 **5 处前任作者特意标注"为后续工作流保留"的旧代码**（`buildSmartExplodeRun`、`decomposeMaster`、`generateCleanBackground`、`smartCleanPrompt`、`legacyProcessRun`），各自带 `eslint-disable-next-line` 注释。
 > **它们是有意保留的，不是垃圾。** 要删必须单独确认。

@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import sharp from "sharp";
 import { PrismaClient } from "@prisma/client";
-import { aiImageConfig, createServiceFetch, requireImageEdits } from "./ai-service-client.mjs";
+import { aiImageConfig, createServiceFetch, requireImageEdits } from "../shared/ai-service-client.mjs";
 
 const root = process.cwd();
 loadEnv();

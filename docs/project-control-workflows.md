@@ -20,7 +20,7 @@
 
 | 我之前常说的词 | 以后文档里的说法 | 当前真实文件 |
 | --- | --- | --- |
-| worker | 后台执行脚本 | `scripts/deck-generation-worker.mjs`、`scripts/ppt-polish-worker.mjs` |
+| worker | 后台执行脚本 | `scripts/workers/deck-generation/deck-generation-worker.mjs`、`scripts/workers/ppt-polish/ppt-polish-worker.mjs` |
 | run | 一次生成任务 / 一次美化任务 | 数据库记录或 `workspace/ppt-polish-runs/*.json` |
 | slide | 单页预览图任务 | 生成 PPT 存数据库，美化 PPT 存 JSON |
 | plan_ready | 方案待确认 | 用户还没点“确认生成/确认方案” |
@@ -224,7 +224,7 @@
 
 资料读取脚本：
 
-- `scripts/deck-source-parser.mjs`
+- `scripts/workers/deck-generation/deck-source-parser.mjs`
 
 当前读取规则：
 
@@ -253,7 +253,7 @@
 
 快速版保留页数滑杆，范围为 2 到 30 页。用户提供简介、资料和配色后点击“生成快速方案”。
 
-后台执行脚本（工程文件 `scripts/deck-generation-worker.mjs`）会：
+后台执行脚本（工程文件 `scripts/workers/deck-generation/deck-generation-worker.mjs`）会：
 
 1. 读取全部资料并保留来源位置。
 2. 识别汇报对象、任务目标、必须回答的问题和资料中的可靠事实。
@@ -510,7 +510,7 @@ Image2 接收这份任务包和整套视觉规则条带。内容资料图片与�
 
 后台执行脚本：
 
-- `scripts/ppt-polish-worker.mjs`
+- `scripts/workers/ppt-polish/ppt-polish-worker.mjs`
 
 健康检查文件：
 
@@ -662,10 +662,10 @@ PDF 接口：
 ### 真实文件位置
 
 - 服务端统一配置与网页接口调用：`lib/ai-providers.ts`。
-- 后台执行脚本统一调用：`scripts/ai-service-client.mjs`。
-- 生成 PPT：`scripts/deck-generation-worker.mjs`。
-- 美化 PPT：`scripts/ppt-polish-worker.mjs`。
-- 单页生图/设计与图片炸开：`scripts/design-agent-worker.mjs`、`scripts/image-explode-worker.mjs`。
+- 后台执行脚本统一调用：`scripts/workers/shared/ai-service-client.mjs`。
+- 生成 PPT：`scripts/workers/deck-generation/deck-generation-worker.mjs`。
+- 美化 PPT：`scripts/workers/ppt-polish/ppt-polish-worker.mjs`。
+- 单页生图/设计与图片炸开：`scripts/workers/design-agent/design-agent-worker.mjs`、`scripts/workers/image-explode/image-explode-worker.mjs`。
 - 普通 AI 图片与 AI 清字接口：`app/api/employee/services/[id]/generate-images/route.ts`、`app/api/employee/services/[id]/image-explode/runs/[runId]/parts/[partId]/clean-text/route.ts`。
 - 管理控制台状态：`app/api/employee/admin/overview/route.ts`、`components/employee-app.tsx`。
 
@@ -676,7 +676,7 @@ PDF 接口：
 - 全局 `AI_TEXT_MODEL` 已统一为 `gpt-5.6-sol`，快速版、AI 助手、美化 PPT 和其他文字功能都不再请求裸 `gpt-5.6`。高级版保留独立覆盖变量只是为了以后按功能切换模型，当前与全局完全一致。这个修复不增加表单、确认步骤、GPT 请求轮次或 Image2 生图次数。
 - 高级版不再建立视觉证据索引，也不保存来源图片裁片；普通解析文字不足时才进行 OCR 补救。普通 502、503、网络断线仍按短暂故障重试。
 - 前端轮询按请求顺序接收任务状态，旧响应不能覆盖新状态；进入“完整方案待确认”后不会继续显示旧的中转站中止错误。
-- 修改 `.env` 或 `scripts/deck-generation-worker.mjs` 后必须重启本项目的生成 PPT 后台执行脚本；只刷新网页不会加载新模型配置。
+- 修改 `.env` 或 `scripts/workers/deck-generation/deck-generation-worker.mjs` 后必须重启本项目的生成 PPT 后台执行脚本；只刷新网页不会加载新模型配置。
 
 ### 配置与验收
 
@@ -727,7 +727,7 @@ PDF 接口：
 
 ### 真实代码位置
 
-- 文字/图片账户选择和余额提示：`scripts/deck-generation-worker.mjs`
+- 文字/图片账户选择和余额提示：`scripts/workers/deck-generation/deck-generation-worker.mjs`
 - 失败任务的“重新分析资料”入口：`components/employee-app.tsx`
 - 原任务恢复接口：`app/api/employee/services/[id]/deck-generation/runs/[runId]/replan/route.ts`
 ## YZStudio 地址误填与余额排查（2026-08-03）
@@ -750,10 +750,10 @@ PDF 接口：
 
 ### 本次代码保护
 
-- `scripts/ai-service-client.mjs`：后台执行脚本创建代理连接前先校验地址；误把 `/v1` API 地址填入代理字段时显示中文配置说明。
+- `scripts/workers/shared/ai-service-client.mjs`：后台执行脚本创建代理连接前先校验地址；误把 `/v1` API 地址填入代理字段时显示中文配置说明。
 - `lib/ai-providers.ts`：网页服务端请求使用相同校验，避免同类误填变成难理解的 `invalid url`。
 - `.env`：两个 `BASE_URL` 统一保存官网根地址 `https://yzstudio.vip`，两个 `PROXY_URL` 保持为空；代码自动补 `/v1`。
-- `scripts/deck-generation-worker.mjs`：余额提示明确说明“请求已到达 YZStudio、不是配置缺项”，并指出应检查文字分组额度。
+- `scripts/workers/deck-generation/deck-generation-worker.mjs`：余额提示明确说明“请求已到达 YZStudio、不是配置缺项”，并指出应检查文字分组额度。
 ### 补充验证：不是模型或接口模式错误（2026-08-03）
 
 - 已脱敏核对 `.env`：文字 Key 与此前创建的文字分组 Key 一致，图片 Key 与生图分组 Key 一致，两把 Key 没有放反。
@@ -766,10 +766,10 @@ PDF 接口：
 ## YZStudio 官网 Base URL 兼容修复（2026-08-03）
 
 - YZStudio 管理员要求 Base URL 填官网 `https://yzstudio.vip`，因此本机 `.env`、`.env.example` 和 `.env.production.example` 已统一采用官网根地址。
-- `scripts/ai-service-client.mjs` 与 `lib/ai-providers.ts` 会把官网根地址标准化为 `https://yzstudio.vip/v1`；如果以后填写的旧值本身已经带 `/v1`，也不会重复拼接。
+- `scripts/workers/shared/ai-service-client.mjs` 与 `lib/ai-providers.ts` 会把官网根地址标准化为 `https://yzstudio.vip/v1`；如果以后填写的旧值本身已经带 `/v1`，也不会重复拼接。
 - 最终文字请求仍为 `https://yzstudio.vip/v1/chat/completions`，最终图片请求仍为 `https://yzstudio.vip/v1/images/generations`。`*_PROXY_URL` 继续留空。
 - 这次修改解决的是“后台页面填写官网、代码需要 API 路径”的口径差异，不会伪装修复供应商计费。当前两把 Key 直连 `/v1/models` 以及各自正式接口仍返回 `403 / INSUFFICIENT_BALANCE`，需要 YZStudio 检查账户余额与 Key 分组的计费绑定。
-- 真实改动文件：`.env`、`.env.example`、`.env.production.example`、`scripts/ai-service-client.mjs`、`lib/ai-providers.ts`、`README.md`、`docs/project-control-workflows.md`、`AGENTS.md`。
+- 真实改动文件：`.env`、`.env.example`、`.env.production.example`、`scripts/workers/shared/ai-service-client.mjs`、`lib/ai-providers.ts`、`README.md`、`docs/project-control-workflows.md`、`AGENTS.md`。
 ## YZStudio Key 鉴权与余额绑定复核（2026-08-03）
 
 - 新截图显示的“Base URL + 文本接口”容易被误读为无 `/v1`：实测 `POST https://yzstudio.vip/chat/completions` 返回 `405`，而 `POST https://yzstudio.vip/v1/chat/completions` 进入 YZStudio API 并返回结构化 `403 / INSUFFICIENT_BALANCE`。因此官网输入框实际应与 `/v1` API 根路径组合，当前程序自动补 `/v1` 的写法正确。
@@ -799,9 +799,9 @@ PDF 接口：
 
 真实代码位置：
 
-- 外部网络错误详情：`scripts/ai-service-client.mjs`
-- 生成 PPT 转换：`scripts/deck-generation-worker.mjs`
-- 美化 PPT 转换：`scripts/ppt-polish-worker.mjs`
+- 外部网络错误详情：`scripts/workers/shared/ai-service-client.mjs`
+- 生成 PPT 转换：`scripts/workers/deck-generation/deck-generation-worker.mjs`
+- 美化 PPT 转换：`scripts/workers/ppt-polish/ppt-polish-worker.mjs`
 - 图片转 PPT：`app/api/employee/services/[id]/image-to-pptx/route.ts`
 
 ### `invalid content-length header` 的最终处理（2026-08-04）

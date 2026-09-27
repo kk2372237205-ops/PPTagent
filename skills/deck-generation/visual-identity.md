@@ -6,7 +6,7 @@
 
 ## ⚠️ 字段名必须与后台读取的键完全一致
 
-`scripts/deck-generation-worker.mjs:3006-3013` 按固定键名读取本文件产出的 JSON。**键名写错等于这个字段不存在**，后台拿到的是空对象，图片模型收到一句"请遵循某个空字段"。
+`scripts/workers/deck-generation/deck-generation-worker.mjs:3006-3013` 按固定键名读取本文件产出的 JSON。**键名写错等于这个字段不存在**，后台拿到的是空对象，图片模型收到一句"请遵循某个空字段"。
 
 | 后台读取的键（`deck-generation-worker.mjs`） | 必须用的字段名 |
 | --- | --- |

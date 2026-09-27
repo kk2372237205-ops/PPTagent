@@ -60,9 +60,9 @@ console.log("Use npm run dev when you need ONLYOFFICE checks or image-explode/co
 
 const children = [
   { name: "Next dev server", process: spawn(process.execPath, ["scripts/next-with-env-proxy.mjs", "dev"], { stdio: "inherit", shell: false, env: devEnv }) },
-  { name: "Design agent worker", process: spawn(process.execPath, ["scripts/design-agent-worker.mjs"], { stdio: "inherit", shell: false, env: devEnv }) },
-  { name: "Deck generation worker", process: spawn(process.execPath, ["scripts/deck-generation-worker.mjs"], { stdio: "inherit", shell: false, env: devEnv }) },
-  { name: "PPT polish worker", process: spawn(process.execPath, ["scripts/ppt-polish-worker.mjs"], { stdio: "inherit", shell: false, env: devEnv }) }
+  { name: "Design agent worker", process: spawn(process.execPath, ["scripts/workers/design-agent/design-agent-worker.mjs"], { stdio: "inherit", shell: false, env: devEnv }) },
+  { name: "Deck generation worker", process: spawn(process.execPath, ["scripts/workers/deck-generation/deck-generation-worker.mjs"], { stdio: "inherit", shell: false, env: devEnv }) },
+  { name: "PPT polish worker", process: spawn(process.execPath, ["scripts/workers/ppt-polish/ppt-polish-worker.mjs"], { stdio: "inherit", shell: false, env: devEnv }) }
 ];
 
 const supervisor = superviseProcessGroup(children, "lite development services");

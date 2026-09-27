@@ -8,7 +8,7 @@ import {
   createServiceFetch,
   imageGenerationBody,
   requireImageService
-} from "./ai-service-client.mjs";
+} from "../shared/ai-service-client.mjs";
 
 const root = process.cwd();
 loadEnv();
