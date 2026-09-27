@@ -23,8 +23,8 @@ A layout profile decides **information organization, area and rhythm only** — 
 - Choose information organization, visual weight, whitespace, reading rhythm, **illustration area, and bleed** only. Never introduce palette names or colors.
 - Compose text and generated visuals as one semantic page. Do not reserve a fixed bottom, right, or background image slot across the deck.
 - **Every profile below carries an illustration area range and a bleed rule. Those numbers are binding.** A body page may use one to four generated visual units when they clarify the content; each unit must support a named claim, stage, comparison, mechanism, context, or result.
-- **Default to one dominant unit at the profile's area range.** Several small units at 5–10% each are not a substitute and must be consolidated into one larger visual.
-- Multiple visuals must form one reading path and one hierarchy. Avoid unrelated collages and equal-weight card grids — instead use a labeled process chain, one annotated mechanism, a before/after split, or a dominant chart with a narrow insight rail.
+- **Default to one dominant unit at the profile's area range when the page has one concrete subject.** When the confirmed body content has two or three independent cases, stages, or parallel claims, use two or three distinct hard-edged picture frames or technical views instead; several tiny units at 5–10% each are not a substitute.
+- Multiple visuals must form one reading path and one hierarchy. Avoid unrelated collages and decorative equal-weight card grids — instead use a labeled process chain, a parallel case comparison with one picture frame per named case, one annotated mechanism, a before/after split, or a dominant chart with a narrow insight rail.
 - Density remains a per-page decision. A layout profile does not force every page to be sparse, standard, or compact. **But an illustration-led page (area ≥ 55%) must stay at `low` or `medium` density.**
 - **Every "Avoid" below is paired with what to use instead.** A prohibition without a replacement is what produces text-only pages.
 - Repeat the area number in the page's `composition` and `main_visual_brief`. The image model only receives those free-text fields, not the numeric field.
@@ -97,7 +97,7 @@ A layout profile decides **information organization, area and rhythm only** — 
 - Prefer visual-led sequences, contextual scenes, progression, before-after logic, and memorable metrics.
 - Vary visual scale and placement according to the story rather than repeating a template, while keeping adjacent pages within ±25% illustration area of each other.
 - Avoid empty spectacle, generic arrows, and unsupported growth imagery — instead draw the concrete subject of each story beat (the object, the place, the action) and label the real stages.
-- Avoid more than one illustration per page; consolidate rather than multiply.
+- Avoid more than three illustrations per page. Use one when the story has a single concrete subject; use two or three complete hard-edged frames only when they correspond to distinct parallel story beats.
 
 ## Deck Rhythm (applies across profiles)
 

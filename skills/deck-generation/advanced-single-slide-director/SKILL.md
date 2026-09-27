@@ -66,6 +66,18 @@ Photorealistic visuals on a normal body page must remain practical to replace wh
 
 Write this image-slot treatment into both `main_visual_brief` and `integration_rule`, not into a new JSON field. The normalizer only forwards those fields to Image2. Covers and endings deliberately remain free to use a full-bleed, emotionally integrated composition.
 
+### D. BODY-PAGE IMAGE QUANTITY — derive it from the content structure
+
+Do not mechanically use one photo on every body page, and do not turn every page into a stock-photo collage. Choose the count from the confirmed content:
+
+- One concrete mechanism, place, object, or causal chain → one dominant picture frame or one technical diagram.
+- Two or three independent concrete cases, pain points, process stages, or application contexts → use **two or three distinct picture frames**, one tied to each named block. Each frame needs its own subject and caption/connector; do not repeat one generic scene.
+- A timeline, system map, or data page → the confirmed diagram/chart stays primary; add one or two contextual picture frames only when they clarify named stages or cases.
+- Use at most three photo-like frames on a normal body page. Their combined area must still satisfy the illustration-area rule, and one frame or diagram must remain the primary visual anchor.
+- Parallel claim panels are allowed when every panel carries a different confirmed point and the sequence or comparison is explicit. This is not a decorative equal-card grid.
+
+When two or three frames are chosen, write each frame's aspect ratio, concrete subject, supporting claim, and position in `visual_units`, `main_visual_brief`, and `integration_rule`. Request one concise public-web query per distinct photo subject, up to three queries total. A reference image is not required for every final frame; Image2 may create an additional generic frame from the confirmed brief in the same single-page request.
+
 ## Direct The Page
 
 1. State one `unique_takeaway` that the audience should understand after viewing the page.
@@ -73,13 +85,13 @@ Write this image-slot treatment into both `main_visual_brief` and `integration_r
 3. State a `proof_goal`: what must be demonstrated, not merely listed.
 4. Choose one `visual_strategy` and write a concrete `main_visual_brief` that defines the overall subject, composition, framing, **scale**, whitespace direction, and emotion. It may coordinate several visual units; it is not limited to one isolated hero image.
 5. Choose `visual_weight` from `text-led`, `balanced`, or `visual-led` according to the page's semantic job and density, then apply the **area floor** for that tier (below).
-6. Define one to four `visual_units`. **Default to one dominant unit.** Add more only when the content is genuinely parallel (multiple stages, comparisons, or independent proof categories). For every unit, state the confirmed claim it supports, its visual form, its semantic relationship, and whether it is primary or supporting.
+6. Define one to four `visual_units`. Start with one dominant unit; when the content contains two or three genuinely parallel concrete stages, cases, or proof categories, add a distinct hard-edged picture frame or technical view for each of them. For every unit, state the confirmed claim it supports, its visual form, its semantic relationship, and whether it is primary or supporting.
 7. Write one `integration_rule` that makes text and visual units share a reading path. For body-page photoreal visuals, keep a complete hard-edged picture frame while integrating it with nearby text or connectors; do not dissolve it into the background. Do not force every page into the same bottom or right-side layout.
 8. Choose a layout blueprint that gives the page one dominant information hierarchy and keeps supporting content subordinate. Multiple visuals are allowed when they form one semantic composition.
 9. Preserve every exact fact, number, date, proper noun, source locator, and user-locked phrase.
 10. Return explicit icon, authenticity, and fabrication policies.
 11. When a page needs a chart, timeline, process, comparison, or system diagram, define it only from confirmed text facts and relationships.
-12. For every body page that benefits from realistic subject reference, write one to three concise English `web_visual_search.queries`. Search for generic concrete objects, tools, materials, process states or anonymous environments — never people, institutions, brands, logos, signage, documents, screenshots, certificates or named locations. State that the reference is semantic-only and will be redrawn, not pasted or used as proof. Covers and endings leave this field empty.
+12. For every body page that benefits from realistic subject reference, write one to three concise English `web_visual_search.queries`. When the page uses several picture frames, use one query for each distinct concrete subject, up to three. Search for generic concrete objects, tools, materials, process states or anonymous environments — never people, institutions, brands, logos, signage, documents, screenshots, certificates or named locations. State that the reference is semantic-only and will be redrawn, not pasted or used as proof. Covers and endings leave this field empty.
 
 ## `visual_weight` Area Floors (binding numbers)
 
@@ -134,7 +146,7 @@ Every prohibition below is paired with the replacement you must use instead. A p
 - Treat matched blocks, summaries, and evidence as a fact bank, not a requirement to render every sentence. Preserve only explicit exact text verbatim; compress other copy to a professional visible-text budget.
 - Never render production scaffolding such as "evidence from the source", "pending source match", filenames, locators, or internal sequence numbers.
 - When a palette reference is active, use only its extracted palette for the presentation system. Do not borrow unlisted colors for titles, metrics, lines, cards, or decoration.
-- Generated visual units are communication devices inside the same final slide image, not separately generated assets and not documentary proof. On body pages, photo-like units are complete hard-edged picture frames, never translucent or gradient-dissolved backgrounds.
+- Generated visual units are communication devices inside the same final slide image, not separately generated assets and not documentary proof. On body pages, photo-like units are complete hard-edged picture frames, never translucent or gradient-dissolved backgrounds. When several independent content blocks need pictures, use two or three distinct frames with a named relationship rather than one unrelated decorative scene.
 - **Do not drop the illustration because a chart or typography seems "clearer".** For every content page, either draw the dominant illustration or state in one sentence why this page is one of the two legal exceptions (a chart page where the chart *is* the visual, or a pure data table page).
 - Do not place a generated scene behind dense text unless contrast and whitespace make both fully readable.
 
@@ -148,6 +160,7 @@ Every prohibition below is paired with the replacement you must use instead. A p
 | Visual looks fake in a glossy way | Remove studio lighting and beauty-retouch language; ask for available light, unevenness, dust, worn surfaces, no heavy retouching. |
 | Visual is an abstract blob | Replace the abstract noun with 3+ concrete nouns from the page content. |
 | Several tiny icons instead of one visual | Consolidate into one unit at 40%+ and delete the icon row. |
+| Several concrete blocks but only one unrelated picture | Give each parallel case/stage a distinct hard-edged picture frame, up to three; bind every frame to one named block and keep one clear primary anchor. |
 | Photo disappears into the blue slide background | Specify a complete 16:9/4:3 picture frame, opaque natural image, hard edge, no gradient mask, no fade, and keep text outside it. |
 | Page shows fake documents, seals, logos or faces | Delete them. Depict the device or mechanism realistically instead; a credential-shaped image is never acceptable. |
 | Fake charts | Use only confirmed values; write the exact labels and numbers into the brief. |
