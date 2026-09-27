@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "fs";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { createHash } from "crypto";
+import { execFile } from "child_process";
 import path from "path";
 import sharp from "sharp";
 import { PrismaClient } from "@prisma/client";
@@ -39,6 +40,13 @@ const advancedImageReferencesEnabled = process.env.DECK_ADVANCED_REFERENCE_IMAGE
 // are intentionally not reused as final-slide artwork.
 const advancedSourceVisualReuseEnabled = false;
 const protectedEvidenceMasksEnabled = false;
+// Public-web visual references are a third, deliberately separate input class:
+// they may guide a new Image2 rendering, but are never user-source evidence or
+// palette-reference pixels. Set to 0 only when the deployment cannot reach
+// Wikimedia Commons.
+const advancedWebVisualReferencesEnabled = process.env.DECK_ADVANCED_WEB_VISUAL_REFERENCES !== "0";
+const advancedWebVisualReferenceTimeoutMs = Math.max(8_000, Number(process.env.DECK_ADVANCED_WEB_VISUAL_REFERENCE_TIMEOUT_MS || 25_000));
+const maxAdvancedWebVisualReferences = 3;
 const advancedVisualTimeoutMs = Math.max(120000, Number(process.env.DECK_ADVANCED_VISUAL_TIMEOUT_MS || 180000));
 // The final advanced plan is the only GPT call that must consider every confirmed page together.
 // It keeps a longer budget without extending unrelated text requests.
@@ -58,6 +66,12 @@ const textRequest = createServiceFetch(textService);
 const advancedTextRequest = createServiceFetch(advancedTextService);
 const imageRequest = createServiceFetch(imageService);
 const externalRequest = createServiceFetch({ serviceName: "Codia", proxyUrl: process.env.CODIA_PROXY_URL || "" });
+const commonsVisualRequest = createServiceFetch({
+  serviceName: "Wikimedia Commons visual reference",
+  proxyUrl: process.env.DECK_ADVANCED_WEB_VISUAL_REFERENCE_PROXY_URL || ""
+});
+const windowsWebReferenceFallbackEnabled = process.platform === "win32" && process.env.DECK_ADVANCED_WEB_VISUAL_REFERENCE_WINDOWS_FALLBACK !== "0";
+let commonsDirectRouteUnavailable = false;
 const codiaBaseUrl = trimSlash(process.env.CODIA_BASE_URL || "https://openapi.codia.ai");
 
 function loadEnv() {
@@ -1385,6 +1399,274 @@ function visualEvidenceFilePath(storedName) {
   return path.join(deckEvidenceRoot, path.basename(storedName));
 }
 
+function plainMetadataText(value) {
+  return String(value || "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&(?:nbsp|amp|quot|lt|gt);/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isSafeCommonsImageUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return url.protocol === "https:" && (url.hostname === "wikimedia.org" || url.hostname.endsWith(".wikimedia.org"));
+  } catch {
+    return false;
+  }
+}
+
+function windowsWebReferenceFallback(url) {
+  if (!windowsWebReferenceFallbackEnabled || !isSafeCommonsImageUrl(url)) return Promise.resolve(null);
+  // On this Windows deployment, the system web stack can use the configured
+  // enterprise route while Node/Undici may have no direct route to Commons.
+  // The URL is passed through an environment variable (not a shell command)
+  // and has already been constrained to Wikimedia HTTPS hosts above.
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    "$uri = $env:WZLCF_WEB_REFERENCE_URL",
+    "if ([string]::IsNullOrWhiteSpace($uri)) { throw 'missing visual reference URL' }",
+    "$response = Invoke-WebRequest -UseBasicParsing -Uri $uri -TimeoutSec 25 -Headers @{ 'User-Agent' = 'WZLCF-Presentation-Studio/1.0 visual-reference-research' }",
+    "$content = $response.Content",
+    "if ($content -is [byte[]]) { $bytes = $content } else { $bytes = [System.Text.Encoding]::UTF8.GetBytes([string]$content) }",
+    "[Console]::Out.Write(([string]$response.StatusCode) + '|' + [Convert]::ToBase64String($bytes))"
+  ].join("; ");
+  const encoded = Buffer.from(script, "utf16le").toString("base64");
+  return new Promise(resolve => {
+    execFile("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded], {
+      windowsHide: true,
+      timeout: advancedWebVisualReferenceTimeoutMs + 5_000,
+      maxBuffer: 24 * 1024 * 1024,
+      env: { ...process.env, WZLCF_WEB_REFERENCE_URL: url }
+    }, (error, stdout) => {
+      if (error) return resolve(null);
+      const separator = String(stdout || "").indexOf("|");
+      if (separator < 1) return resolve(null);
+      const status = Number(String(stdout).slice(0, separator));
+      const data = String(stdout).slice(separator + 1).trim();
+      if (!Number.isInteger(status) || !data) return resolve(null);
+      try {
+        const buffer = Buffer.from(data, "base64");
+        if (!buffer.length) return resolve(null);
+        resolve({
+          ok: status >= 200 && status < 300,
+          status,
+          headers: { get: () => null },
+          text: async () => buffer.toString("utf8"),
+          arrayBuffer: async () => buffer
+        });
+      } catch {
+        resolve(null);
+      }
+    });
+  });
+}
+
+async function commonsVisualFetch(url, init = {}) {
+  let directError = null;
+  if (!commonsDirectRouteUnavailable) {
+    try {
+      return await commonsVisualRequest(url, init, advancedWebVisualReferenceTimeoutMs);
+    } catch (error) {
+      directError = error;
+      commonsDirectRouteUnavailable = true;
+    }
+  }
+  const fallback = await windowsWebReferenceFallback(url);
+  if (fallback) return fallback;
+  if (directError) throw directError;
+  throw new Error("Wikimedia Commons 直连路由当前不可用，Windows 系统网络回退也没有返回内容。");
+}
+
+function isReusableCommonsLicense(value) {
+  const license = plainMetadataText(value).toLowerCase();
+  return /(?:public domain|cc0|cc by(?:-sa)?)/.test(license) && !/(?:-nc|-nd|noncommercial|no derivatives)/.test(license);
+}
+
+function isUnsafeCommonsVisualTitle(value) {
+  return /(?:\.(?:pdf|djvu|svg|webm|og[gv]|tiff?)$|\b(?:portrait|headshot|selfie|person|people|human|man|woman|child|student|employee|technician|worker|engineer|logo|brand|emblem|coat of arms|seal|certificate|contract|invoice|passport|identity card|id card|report|document|screenshot|dashboard|signage|sign board|street sign|poster|advertisement)\b)/i.test(String(value || ""));
+}
+
+function webReferencePlan(contract, slide) {
+  if (!advancedWebVisualReferencesEnabled || slide.role === "cover" || slide.role === "ending") return null;
+  const source = contract?.director_contract?.web_visual_search;
+  if (!source || source.enabled === false) return null;
+  const queries = normalizeArray(source.queries).map((item, index) => {
+    const entry = item && typeof item === "object" && !Array.isArray(item) ? item : {};
+    const query = String(entry.query || "").replace(/\s+/g, " ").trim().slice(0, 180);
+    if (!query) return null;
+    return {
+      query,
+      role: String(entry.role) === "supporting" ? "supporting" : index === 0 ? "primary" : "supporting",
+      requiredSubjects: cleanStringList(entry.required_subjects, 6).map(subject => subject.slice(0, 100))
+    };
+  }).filter(Boolean).slice(0, maxAdvancedWebVisualReferences);
+  return queries.length ? { queries, selectionRule: String(source.selection_rule || "").slice(0, 800) } : null;
+}
+
+function commonsSearchTerms(search) {
+  const terms = [];
+  const add = value => {
+    const term = String(value || "").replace(/\s+/g, " ").trim().slice(0, 120);
+    if (term && !terms.includes(term)) terms.push(term);
+  };
+  add(search.query);
+  for (const subject of normalizeArray(search.requiredSubjects)) add(subject);
+  // Commons' full-text file search often ranks scanned PDFs above photographs
+  // for a long natural-language query. Fall back to the concrete English nouns
+  // supplied by the director, never to an institution, person, or brand name.
+  const stopWords = new Set(["natural", "light", "close", "outdoor", "work", "scene", "generic", "anonymous", "realistic", "equipment", "tools", "material", "materials", "process", "background", "environment", "with", "and", "the", "for"]);
+  for (const source of [search.query, ...normalizeArray(search.requiredSubjects)]) {
+    for (const word of String(source || "").toLowerCase().match(/[a-z][a-z-]{3,}/g) || []) {
+      if (!stopWords.has(word)) add(word);
+    }
+  }
+  return terms.slice(0, 8);
+}
+
+function runtimeWebVisualReferences(contract) {
+  return normalizeArray(contract?.runtime_web_visual_references).filter(item => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+    const storedName = String(item.stored_name || "");
+    return storedName && !isUnsafeCommonsVisualTitle(item.source_title) && existsSync(visualEvidenceFilePath(storedName));
+  }).slice(0, maxAdvancedWebVisualReferences);
+}
+
+async function searchCommonsVisualCandidates(query) {
+  const params = new URLSearchParams({
+    action: "query",
+    generator: "search",
+    gsrsearch: query,
+    gsrnamespace: "6",
+    gsrlimit: "8",
+    prop: "imageinfo",
+    iiprop: "url|size|mime|extmetadata",
+    iiurlwidth: "1600",
+    iiurlheight: "1200",
+    format: "json",
+    formatversion: "2",
+    origin: "*"
+  });
+  try {
+    const response = await commonsVisualFetch(`https://commons.wikimedia.org/w/api.php?${params.toString()}`, {
+      headers: { Accept: "application/json", "User-Agent": "WZLCF-Presentation-Studio/1.0 visual-reference-research" }
+    });
+    if (!response.ok) return [];
+    const result = safeJson(await response.text(), {});
+    const pages = Array.isArray(result?.query?.pages)
+      ? result.query.pages
+      : Object.values(result?.query?.pages || {});
+    return pages.map(page => {
+      const image = normalizeArray(page?.imageinfo)[0] || {};
+      const metadata = image.extmetadata && typeof image.extmetadata === "object" ? image.extmetadata : {};
+      const license = plainMetadataText(metadata.LicenseShortName?.value || metadata.UsageTerms?.value || "");
+      const sourceUrl = String(image.thumburl || image.url || "");
+      return {
+        title: String(page?.title || "").slice(0, 240),
+        sourceUrl,
+        license,
+        attribution: plainMetadataText(metadata.Artist?.value || metadata.Credit?.value || "").slice(0, 500),
+        mimeType: String(image.mime || "").toLowerCase(),
+        width: Number(image.thumbwidth || image.width || 0),
+        height: Number(image.thumbheight || image.height || 0)
+      };
+    }).filter(item =>
+      item.title &&
+      isSafeCommonsImageUrl(item.sourceUrl) &&
+      isReusableCommonsLicense(item.license) &&
+      item.mimeType.startsWith("image/") &&
+      !isUnsafeCommonsVisualTitle(item.title)
+    );
+  } catch (error) {
+    console.warn(`[deck-generation] Wikimedia Commons search unavailable for "${query.slice(0, 80)}":`, error instanceof Error ? error.message : String(error));
+    return [];
+  }
+}
+
+async function downloadCommonsVisualReference(candidate) {
+  try {
+    const response = await commonsVisualFetch(candidate.sourceUrl, {
+      headers: { Accept: "image/avif,image/webp,image/apng,image/png,image/jpeg;q=0.9,*/*;q=0.6", "User-Agent": "WZLCF-Presentation-Studio/1.0 visual-reference-research" }
+    });
+    if (!response.ok) return null;
+    const declaredLength = Number(response.headers.get("content-length") || 0);
+    if (declaredLength > 12 * 1024 * 1024) return null;
+    const raw = Buffer.from(await response.arrayBuffer());
+    if (!raw.length || raw.length > 12 * 1024 * 1024) return null;
+    const metadata = await sharp(raw, { animated: false }).metadata();
+    const width = Number(metadata.width || 0);
+    const height = Number(metadata.height || 0);
+    if (width < 600 || height < 400) return null;
+    const buffer = await sharp(raw, { animated: false })
+      .rotate()
+      .resize(1600, 1200, { fit: "inside", withoutEnlargement: true })
+      .png({ compressionLevel: 9 })
+      .toBuffer();
+    const normalized = await sharp(buffer).metadata();
+    return {
+      buffer,
+      width: Number(normalized.width || width),
+      height: Number(normalized.height || height)
+    };
+  } catch (error) {
+    console.warn(`[deck-generation] skipped Wikimedia Commons reference ${candidate.title}:`, error instanceof Error ? error.message : String(error));
+    return null;
+  }
+}
+
+async function ensureWebVisualReferences(run, slide, contract) {
+  const plan = webReferencePlan(contract, slide);
+  if (!plan) return runtimeWebVisualReferences(contract);
+  const existing = runtimeWebVisualReferences(contract);
+  if (existing.length) return existing;
+
+  const saved = [];
+  const usedUrls = new Set();
+  for (const search of plan.queries) {
+    if (saved.length >= maxAdvancedWebVisualReferences) break;
+    let candidate = null;
+    let download = null;
+    for (const term of commonsSearchTerms(search)) {
+      const candidates = await searchCommonsVisualCandidates(term);
+      for (const item of candidates) {
+        if (usedUrls.has(item.sourceUrl)) continue;
+        const fetched = await downloadCommonsVisualReference(item);
+        usedUrls.add(item.sourceUrl);
+        if (!fetched) continue;
+        candidate = item;
+        download = fetched;
+        break;
+      }
+      if (candidate && download) break;
+    }
+    if (!candidate || !download) continue;
+    const storedName = nowName("png");
+    await writeFile(visualEvidenceFilePath(storedName), download.buffer);
+    saved.push({
+      stored_name: storedName,
+      source_url: candidate.sourceUrl,
+      source_title: candidate.title,
+      source_license: candidate.license,
+      source_attribution: candidate.attribution,
+      query: search.query,
+      role: search.role,
+      required_subjects: search.requiredSubjects,
+      width: download.width,
+      height: download.height
+    });
+  }
+  if (!saved.length) return existing;
+  const updatedContract = {
+    ...contract,
+    runtime_web_visual_references: saved
+  };
+  await db.deckGenerationSlide.update({
+    where: { id: slide.id },
+    data: { renderContractJson: JSON.stringify(updatedContract) }
+  });
+  return saved;
+}
+
 function normalizeSourceFocusBox(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const x = Number(value.x);
@@ -2385,6 +2667,68 @@ function fallbackPageArchetype(page) {
   return "solution-system";
 }
 
+function normalizeWebVisualSearch(value, page, requestedBrief, visualWeight) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  // Covers and closing pages are deliberately authored from the project's own
+  // emotional theme. Public-web photo references would pull those sparse pages
+  // back toward a documentary collage.
+  if (page.role === "cover" || page.role === "ending") {
+    return { enabled: false, queries: [], selection_rule: "封面和结尾页不用网络图片参考，直接围绕项目主题生成强情绪主视觉。" };
+  }
+  const rawQueries = Array.isArray(source.queries)
+    ? source.queries
+    : Array.isArray(source.visual_queries)
+      ? source.visual_queries
+      : source.query || source.search_query
+        ? [source]
+        : [];
+  const limit = visualWeight === "visual-led" ? maxAdvancedWebVisualReferences : 2;
+  const queries = rawQueries.slice(0, limit).map((item, index) => {
+    const entry = item && typeof item === "object" && !Array.isArray(item) ? item : { query: item };
+    const query = String(entry.query || entry.search_query || entry.terms || "")
+      .replace(/[\r\n]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 180);
+    const requiredSubjects = cleanStringList(entry.required_subjects || entry.subjects, 6)
+      .map(subject => subject.slice(0, 100));
+    if (!query) return null;
+    return {
+      query,
+      role: String(entry.role) === "supporting" ? "supporting" : index === 0 ? "primary" : "supporting",
+      required_subjects: requiredSubjects
+    };
+  }).filter(Boolean);
+  // GPT-5.6 is instructed to produce concrete English search terms. The
+  // fallback preserves a usable route when an older cached plan lacks them;
+  // it is intentionally only one query so it cannot turn a page into a collage.
+  if (!queries.length && requestedBrief) {
+    queries.push({
+      query: String(requestedBrief).replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 180),
+      role: "primary",
+      required_subjects: []
+    });
+  }
+  return {
+    enabled: source.enabled !== false && queries.length > 0,
+    queries,
+    selection_rule: String(source.selection_rule || "仅选择不含可辨认人物、Logo、机构招牌、可读标签、公文或截图的通用物体、材料、工艺或环境画面；它只用于一次 Image2 重绘的视觉语义参考。").slice(0, 800)
+  };
+}
+
+function dedupeDirectorMainVisualBrief(value) {
+  let brief = String(value || "").replace(/\s+/g, " ").trim();
+  // A plan can be re-entered through the editable page-plan route. Keep the
+  // system-owned clauses idempotent even if a model echoes them on a replan.
+  brief = brief.replace(/(网络视觉参考方向：[^。]*地点身份。)(?:\s*\1)+/g, "$1");
+  brief = brief.replace(/封面级情绪收束：以\s*封面级情绪收束：以\s*/g, "封面级情绪收束：以 ");
+  const closingRule = "为基础，使用一个有力量的象征性主题画面，主体占据大部分画面；为一句收束性结论留出大面积空白。不得制作信息图、路线图、数据图、卡片或纪实证明场景。";
+  const firstClosingRule = brief.indexOf(closingRule);
+  const secondClosingRule = firstClosingRule < 0 ? -1 : brief.indexOf(closingRule, firstClosingRule + closingRule.length);
+  if (secondClosingRule >= 0) brief = brief.slice(0, secondClosingRule).trim();
+  return brief.slice(0, 1200);
+}
+
 function normalizeDirectorContract(value, page) {
   const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   const visualEvidence = jsonArray(page.visualEvidenceJson);
@@ -2444,7 +2788,11 @@ function normalizeDirectorContract(value, page) {
     const matched = visualEvidence.find(item => need.evidence.test(visualEvidenceTextForPage(page, item)));
     return matched ? { label: need.label, evidence_id: matched.id, locator: matched.locator || "" } : null;
   }).filter(Boolean);
-  const requestedBrief = String(source.main_visual_brief || source.director_notes || `${page.title} 的主题化主视觉，服务于本页唯一结论`).slice(0, 1200);
+  const requestedBrief = dedupeDirectorMainVisualBrief(source.main_visual_brief || source.director_notes || `${page.title} 的主题化主视觉，服务于本页唯一结论`);
+  const webVisualSearch = normalizeWebVisualSearch(source.web_visual_search || source.web_visual_research, page, requestedBrief, visualWeight);
+  const webReferenceDirection = webVisualSearch.enabled && !requestedBrief.includes("网络视觉参考方向：")
+    ? `网络视觉参考方向：${webVisualSearch.queries.map(item => `${item.role === "primary" ? "主" : "辅"}视觉 ${item.required_subjects.length ? item.required_subjects.join("、") : item.query}`).join("；")}。参考只用于在同一次整页生成中重绘通用物体、材质、工艺或环境，不复制原图构图、文字、人物、Logo、机构或地点身份。`
+    : "";
   const endingLayout = {
     silhouette: "cover-level emotional close with one dominant thematic visual",
     title_zone: "标题或收束句置于大留白区，保持克制",
@@ -2458,8 +2806,10 @@ function normalizeDirectorContract(value, page) {
     proof_goal: String(source.proof_goal || page.purpose || page.conclusion || "让本页结论得到资料证据支持").slice(0, 700),
     visual_strategy: effectiveVisualStrategy,
     main_visual_brief: ending
-      ? `封面级情绪收束：以 ${requestedBrief} 为基础，使用一个有力量的象征性主题画面，主体占据大部分画面；为一句收束性结论留出大面积空白。不得制作信息图、路线图、数据图、卡片或纪实证明场景。`.slice(0, 1400)
-      : requestedBrief,
+      ? (requestedBrief.startsWith("封面级情绪收束：")
+        ? requestedBrief
+        : `封面级情绪收束：以 ${requestedBrief} 为基础，使用一个有力量的象征性主题画面，主体占据大部分画面；为一句收束性结论留出大面积空白。不得制作信息图、路线图、数据图、卡片或纪实证明场景。`).slice(0, 1400)
+      : [requestedBrief, webReferenceDirection].filter(Boolean).join(" ").slice(0, 1400),
     visual_weight: visualWeight,
     visual_units: visualUnits.length || effectiveVisualStrategy === "typography"
       ? visualUnits
@@ -2488,6 +2838,7 @@ function normalizeDirectorContract(value, page) {
     protected_evidence_layout: protectedEvidenceLayout,
     icon_policy: page.role === "cover" || page.role === "ending" ? "none" : iconPolicy,
     card_policy: ending ? "avoid" : cardPolicy,
+    web_visual_search: webVisualSearch,
     authenticity_policy: String(source.authenticity_policy || "用户资料图片不进入最终页面；生成视觉只能作为主题化表达，不能冒充真实机构、产品、人物、客户现场或证明材料").slice(0, 800),
     forbidden_fabrication: Array.from(new Set([
       ...cleanStringList(source.forbidden_fabrication, 20),
@@ -2557,7 +2908,7 @@ ${advancedDirectorSkillBundle()}
   "outline":{"title":"","slides":[]},
   "visual_identity":{},
   "visual_storyboard":{"slides":[]},
-  "slide_image_specs":{"slides":[{"slide_index":1,"composition":"","main_visual":"","director_contract":{"unique_takeaway":"","page_archetype":"","proof_goal":"","visual_strategy":"conceptual-illustration|editorial-composition|fact-based-chart|timeline|process|comparison|typography","main_visual_brief":"","visual_weight":"text-led|balanced|visual-led","visual_units":[{"supports":"","form":"","relationship":"context|sequence|cause|contrast|mechanism|result|evidence","importance":"primary|supporting"}],"integration_rule":"","layout_blueprint":{},"icon_policy":"none|functional-only|limited-semantic","card_policy":"avoid|limited|justified-grid","authenticity_policy":"","forbidden_fabrication":[],"director_notes":""}}]}
+  "slide_image_specs":{"slides":[{"slide_index":1,"composition":"","main_visual":"","director_contract":{"unique_takeaway":"","page_archetype":"","proof_goal":"","visual_strategy":"conceptual-illustration|editorial-composition|fact-based-chart|timeline|process|comparison|typography","main_visual_brief":"","visual_weight":"text-led|balanced|visual-led","visual_units":[{"supports":"","form":"","relationship":"context|sequence|cause|contrast|mechanism|result|evidence","importance":"primary|supporting"}],"integration_rule":"","layout_blueprint":{},"icon_policy":"none|functional-only|limited-semantic","card_policy":"avoid|limited|justified-grid","web_visual_search":{"queries":[{"query":"concise English concrete object or process nouns for Wikimedia Commons","role":"primary|supporting","required_subjects":[""]}],"selection_rule":""},"authenticity_policy":"","forbidden_fabrication":[],"director_notes":""}}]}
 }
 
 要求：
@@ -2566,6 +2917,8 @@ ${advancedDirectorSkillBundle()}
 - sparse 用于封面和最后一页；standard 为普通正文；compact 必须做成高密度但有清楚分区的专业汇报页。最后一页无论包含价值、落地、路线、证据、指标或下一步，都必须压缩为有情绪力量的一句收束性结论和最多一条支撑语；只有用户明确锁定的原文例外。
 - 所有数字、日期和专名只能来自逐页内容包的 evidence。
 - 每页 director_contract 必须给出明确的 unique_takeaway、visual_strategy、main_visual_brief、visual_weight、visual_units、integration_rule 和版式骨架，让 Image2 只负责执行，不再自行理解原始资料。
+- 仅正文页的 director_contract 必须给出 web_visual_search：按本页 structure、main_visual_brief 和 visual_units 写 1–3 条简短英文检索词，供系统到公开图片库寻找“物体、材质、工艺或通用环境”的视觉参考。每条 query 必须是具体名词，不能是抽象气质词、机构名、人名、品牌、校名或事实声明；不得检索肖像、人物、Logo、机构招牌、公文、证书、报告、仪表盘或截图。封面与结尾页 queries 必须为空。
+- 网络图只会作为 Image2 在这一次完整页面生成中的视觉语义参考：它会被重新绘制、融合到新页面，而不是原图贴入、事实证据或第二次生图。把其主体、景别、材料和光线方向同时落实进 main_visual_brief；不要把检索字段当作观众可见文字。
 - 适合图像表达的正文页优先规划 1-3 个画面单元，高密度页最多 4 个；纯文字论证可以为 0 个。每个 visual_unit 必须明确支撑逐页内容包中的哪条正文、阶段、对比、机制、背景或结果，不能只写“配图”“科技图片”或情绪词。
 - 所有画面单元与文字必须在同一次 Image2 请求的一张完整页面图中共同构图。位置由 sequence、cause、contrast、mechanism、context、result 或 evidence 关系决定，不得固定为左文右图、上文下图或统一底部图片区。
 - 多个画面单元必须形成一个主次清楚的语义构图，不得拼贴互不相关的图片，也不得默认改成等权卡片阵列。
@@ -3193,9 +3546,12 @@ function pageRenderContract(run, slide, planSlide, pagePlan, fingerprint, allSli
       instruction: "只延续全局色彩、字体气质、页眉页脚、背景纹理、卡片与装饰语言；不得复制相邻页内容。"
     },
     visual_reference_policy: {
-      palette_reference: run.paletteMode === "reference" ? "实际配色参考图会直接作为 Image2 输入，只学习颜色关系、明暗比例、饱和度和气质，不照抄内容或版式。" : "无上传配色参考图。",
+      palette_reference: run.paletteMode === "reference" ? "配色参考图原文件绝不作为 Image2 输入；仅使用本地提取并写入 palette_lock 的色值、明暗比例与文字规则。" : "无上传配色参考图。",
       deck_style_strip: "所有页面使用同一张本地生成的全局风格条带；它只表达配色职责、页眉页脚、网格、线条和几何语言，不含页面内容。",
       page_evidence: "用户资料图片只用于必要的 OCR 和语义理解，不作为 Image2 的页面素材；事实、数字和来源通过文字任务书传递。",
+      external_web_visual_references: run.generationMode === "advanced"
+        ? "仅正文页可按 director_contract.web_visual_search 从公开图片库取少量视觉参考。它们只让 Image2 理解通用物体、材质、工艺、景别和自然光，并在同一次整页请求中重新绘制融合；绝不贴入原像素、证明事实、传递原图文字/Logo/人物/地点身份，也不适用于封面或结尾页。"
+        : "快速版不检索或传入网络视觉参考。",
       generated_visuals: run.generationMode === "advanced"
         ? "可以依据 director_contract.main_visual_brief 和 visual_units，在同一次完整页面生成中创建一至多个主题化、象征性或概念性画面，也可以根据已确认数字绘制图表；每个画面必须服务其 supports 内容并遵守 integration_rule，不得冒充真实机构、真实产品、真实人物、真实客户现场或证明材料。"
         : "可以依据 director_contract.main_visual_brief 生成主题化、象征性或概念性视觉，也可以根据已确认数字绘制图表；不得冒充真实机构、真实产品、真实人物、真实客户现场或证明材料。",
@@ -3470,6 +3826,33 @@ async function advancedVisualReferences(run, slide, instruction) {
   }
 
   const contract = safeJson(slide.renderContractJson, {});
+  // This is intentionally not part of the user-source evidence route below.
+  // The source-reuse and protected-evidence switches stay false: public-web
+  // references can only teach Image2 a generic visual subject before it draws
+  // a new complete slide in this same request.
+  const webVisualReferences = await ensureWebVisualReferences(run, slide, contract);
+  for (const item of webVisualReferences) {
+    const storedName = String(item.stored_name || "");
+    if (!storedName || !existsSync(visualEvidenceFilePath(storedName))) continue;
+    references.push({
+      buffer: await readFile(visualEvidenceFilePath(storedName)),
+      mime: "image/png",
+      name: `web-${String(item.role) === "supporting" ? "supporting" : "primary"}-visual-reference.png`,
+      storedName,
+      kind: "external-web-reference",
+      width: Number(item.width || 0),
+      height: Number(item.height || 0),
+      webReference: {
+        sourceUrl: String(item.source_url || ""),
+        sourceTitle: String(item.source_title || ""),
+        license: String(item.source_license || ""),
+        attribution: String(item.source_attribution || ""),
+        query: String(item.query || ""),
+        role: String(item.role || "primary")
+      },
+      role: `external public-web ${String(item.role) === "supporting" ? "supporting" : "PRIMARY"} visual reference; learn only generic subject form, materials, scale, camera distance and natural-light direction, then redraw a new non-documentary visual for this page. Never copy its pixels, text, people, logos, labels, recognizable location, identity or complete composition; it is not factual evidence.`
+    });
+  }
   const primaryEvidenceId = String(contract?.director_contract?.primary_evidence_id || "");
   const secondaryEvidenceIds = normalizeArray(contract?.director_contract?.secondary_evidence_ids).map(String);
   const coverageByEvidenceId = new Map(normalizeArray(contract?.director_contract?.evidence_coverage)
@@ -3560,6 +3943,7 @@ function advancedSlidePrompt(run, slide, contract, instruction, references = [],
   const pixelLockedReferences = references.filter(reference => /authentic page evidence/i.test(reference.role) && reference.pixelLockRequired !== false);
   const groundedRedrawReferences = references.filter(reference => reference.renderMode === "grounded-redraw");
   const styleGuideReferences = references.filter(reference => /palette reference|deck-wide style strip/i.test(reference.role));
+  const externalWebReferences = references.filter(reference => reference.kind === "external-web-reference");
   const referenceRoles = options.protectedEvidence
     ? [
       "1. protected evidence canvas: its locked areas already contain exact source evidence; do not cover, redraw, recolor, recreate, or replace them.",
@@ -3588,11 +3972,38 @@ function advancedSlidePrompt(run, slide, contract, instruction, references = [],
     "- Multiple visual units are allowed only when they form one semantic composition with a clear primary-secondary hierarchy. Never create an unrelated stock-image collage or an equal card grid by default.",
     "- Treat user_priority_requirements as high-priority production direction, never as audience-facing copy, factual evidence, or permission to violate palette and authenticity rules."
   ];
+  // Runtime provenance contains long public URLs and attribution metadata for
+  // auditing, not for Image2. Keeping it out of the prompt preserves room for
+  // the actual page contract and avoids provider prompt-size rejection.
+  const image2Contract = { ...contract };
+  delete image2Contract.runtime_web_visual_references;
+  const image2DirectorContract = { ...(contract?.director_contract || {}) };
+  // The query has already selected and uploaded its visual reference. Image2
+  // receives the semantic result in main_visual_brief and the reference role;
+  // it does not need the research mechanics a second time.
+  delete image2DirectorContract.web_visual_search;
+  image2Contract.director_contract = image2DirectorContract;
+  const continuitySummary = item => {
+    if (!item || typeof item !== "object") return null;
+    return {
+      slide_index: item.slide_index,
+      title: String(item.title || "").slice(0, 120),
+      role: String(item.role || "").slice(0, 80),
+      key_message: String(item.key_message || item.content_summary || item.story_goal || "").slice(0, 420),
+      visual_change: String(item.visual_change || "").slice(0, 240),
+      main_visual: String(item.main_visual || "").slice(0, 360)
+    };
+  };
+  image2Contract.continuity = {
+    previous_slide: continuitySummary(contract?.continuity?.previous_slide),
+    next_slide: continuitySummary(contract?.continuity?.next_slide),
+    instruction: String(contract?.continuity?.instruction || "").slice(0, 400)
+  };
   return [
     "Create one complete, premium 16:9 PPT slide image.",
     "",
     "This JSON is the complete handoff contract prepared by GPT-5.6. Follow it exactly. Do not reinterpret source documents and do not invent content:",
-    JSON.stringify(contract),
+    JSON.stringify(image2Contract),
     "",
     "Current regeneration or correction instruction:",
     instruction || "none",
@@ -3600,6 +4011,9 @@ function advancedSlidePrompt(run, slide, contract, instruction, references = [],
     "Input image reference roles in upload order:",
     referenceRoles,
     "Input reference images are visual constraints only; never copy their text, facts, logos, people, or complete composition.",
+    externalWebReferences.length
+      ? "Public-web references are semantic visual research only. Re-render their generic objects, material texture, scale, camera distance and natural-light logic into a new anonymous scene or technical visual that serves this contract. Do not reproduce any reference pixels, caption, readable mark, person, architecture, site identity, distinctive layout or documentary claim. They are never evidence that the depicted thing belongs to this project."
+      : "",
     advancedSourceVisualReuseEnabled
       ? "References marked authentic page evidence are factual source material for this page. Preserve their identity and meaning."
       : "Uploaded content-source images are intentionally not supplied. Build the page from the confirmed text contract and art direction; never pretend a generated scene, document, product, person, campus, or customer site is authentic evidence.",
@@ -3783,6 +4197,17 @@ async function generateAdvancedSlide(run, slide, instruction = "") {
       grounded_redraw_sources_qa_only: references
         .filter(reference => reference.renderMode === "grounded-redraw")
         .map(reference => ({ evidence_id: reference.evidenceId, locator: reference.locator, source_name: reference.sourceName })),
+      external_web_visual_references: image2References
+        .filter(reference => reference.kind === "external-web-reference")
+        .map(reference => ({
+          query: reference.webReference?.query || "",
+          role: reference.webReference?.role || "primary",
+          source_title: reference.webReference?.sourceTitle || "",
+          source_url: reference.webReference?.sourceUrl || "",
+          source_license: reference.webReference?.license || "",
+          source_attribution: reference.webReference?.attribution || "",
+          use: "semantic reference only; re-rendered in the same final Image2 slide request"
+        })),
       protected_evidence: protectedEvidence ? {
         enabled: true,
         input_base: protectedEvidence.base,

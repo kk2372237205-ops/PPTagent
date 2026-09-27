@@ -17,6 +17,7 @@ Turn one confirmed page into a delivery-grade communication task. Improve the pa
 - Use the deck-wide style fingerprint as an immutable parent contract.
 - Treat uploaded content images as OCR/understanding inputs only. Do not crop, extract, or reuse them as slide artwork.
 - Treat the palette reference and style strip as visual constraints, never as factual evidence.
+- For a body page, create a small `web_visual_search` brief for public-web visual research. Its results are **not** user-source material: Image2 may use them only to redraw generic objects, materials, processes, camera distance and natural light in the same final slide request.
 
 ## Two Separate Policies (read this before anything else)
 
@@ -64,6 +65,7 @@ software screenshots, or identifiable portraits.
 9. Preserve every exact fact, number, date, proper noun, source locator, and user-locked phrase.
 10. Return explicit icon, authenticity, and fabrication policies.
 11. When a page needs a chart, timeline, process, comparison, or system diagram, define it only from confirmed text facts and relationships.
+12. For every body page that benefits from realistic subject reference, write one to three concise English `web_visual_search.queries`. Search for generic concrete objects, tools, materials, process states or anonymous environments — never people, institutions, brands, logos, signage, documents, screenshots, certificates or named locations. State that the reference is semantic-only and will be redrawn, not pasted or used as proof. Covers and endings leave this field empty.
 
 ## `visual_weight` Area Floors (binding numbers)
 
@@ -183,6 +185,16 @@ Return one object containing:
   },
   "icon_policy": "none|functional-only|limited-semantic",
   "card_policy": "avoid|limited|justified-grid",
+  "web_visual_search": {
+    "queries": [
+      {
+        "query": "concise English concrete object / material / process nouns for public-web research",
+        "role": "primary|supporting",
+        "required_subjects": [""]
+      }
+    ],
+    "selection_rule": "generic, anonymous, no identifiable people, logos, signage, documents or screenshots; semantic reference only, re-rendered in the same final Image2 slide"
+  },
   "authenticity_policy": "",
   "forbidden_fabrication": [],
   "director_notes": ""
@@ -190,5 +202,7 @@ Return one object containing:
 ```
 
 Keep this object concise enough to pass to Image2 as part of the existing page render contract.
+
+`web_visual_search` is an internal research brief, never audience-facing copy. It does not weaken the fabrication boundary: the public image is never embedded, never treated as proof, and must be redrawn as a new generic visual in the only Image2 call for that page.
 
 > **`main_visual_brief` is the field that actually reaches the image model** (up to 1200 characters). Everything the image model needs to know about the illustration — subject in concrete nouns, area percentage, height span, bleed edges, illustration style, text budget, and the legal frame — **must appear in `main_visual_brief` as prose.** A number that only exists in `illustration_share` does not reach the model.
