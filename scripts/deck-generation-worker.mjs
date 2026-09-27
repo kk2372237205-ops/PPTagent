@@ -2774,10 +2774,13 @@ function normalizeDirectorContract(value, page) {
     ? "写实图片作为完整硬边图片框参与阅读路径，可用邻近文字或连线建立关系；不得将图片溶解成背景、长条渐隐图或文字底图。"
     : "";
   const bodyPictureQuantityDirection = bodyPage
-    ? "正文插图数量按已确认内容结构决定：一个具体对象或机制用一个主画面；有两个或三个独立的具体痛点、阶段、案例或应用情境时，为每项设置一个不同的硬边图片框或技术视图（总数二至三个），并紧邻或连线到对应内容块。时间线、系统图和数据页以确认图表为主，只在具名阶段或案例需要时加一至两个上下文图片框；不得用一张无关配图装饰多个独立论点，也不得随机拼贴。"
+    ? "这里的正文插图指可单独替换的照片类硬边图片框，不是图表、时间线、图标或技术图。只要本页有可具体描绘的物体、工艺、环境或应用情境，默认使用至少两张不同插图：一张主视图和一张不同的细节、工序或语境图，不能裁同一场景凑数；两个或三个独立内容块则各有一张。纯事实图表、数据表或完整标注的技术机制图才可少于两张。最多三张插图，不能用一张无关配图装饰多个论点。"
     : "";
   const bodyPictureQuantityIntegration = bodyPage
-    ? "多个独立内容块需要插图时，每个硬边图片框只服务一个具名块；保持一条主阅读路径和一个主视觉锚点，不做无关拼贴。"
+    ? "每张插图都必须是完整硬边照片框，并只服务一个具名内容块；主图与辅助图展示不同主体、细节、工序或语境，保持一条主阅读路径和一个主视觉锚点，不做无关拼贴。"
+    : "";
+  const bodyLayoutVariationDirection = bodyPage
+    ? "正文版式必须在 layout_blueprint.silhouette 中命名并执行合适的轮廓：主图加细节、三联故事带、照片锚点流程、双图对照、全景加证据带、图解加照片嵌图或纵向图片脊柱。相邻正文不得重复“左侧图解或卡片＋右侧一张竖图”。"
     : "";
   const requestedArchetypeRaw = String(source.page_archetype || "");
   const requestedArchetype = requestedArchetypeRaw === "evidence-wall" && !visualEvidence.length
@@ -2825,7 +2828,7 @@ function normalizeDirectorContract(value, page) {
       ? (requestedBrief.startsWith("封面级情绪收束：")
         ? requestedBrief
         : `封面级情绪收束：以 ${requestedBrief} 为基础，使用一个有力量的象征性主题画面，主体占据大部分画面；为一句收束性结论留出大面积空白。不得制作信息图、路线图、数据图、卡片或纪实证明场景。`).slice(0, 1400)
-      : [bodyPictureFrameDirection, bodyPictureQuantityDirection, requestedBrief, webReferenceDirection].filter(Boolean).join(" ").slice(0, 1400),
+      : [bodyPictureFrameDirection, bodyPictureQuantityDirection, bodyLayoutVariationDirection, requestedBrief, webReferenceDirection].filter(Boolean).join(" ").slice(0, 1400),
     visual_weight: visualWeight,
     visual_units: visualUnits.length || effectiveVisualStrategy === "typography"
       ? visualUnits
@@ -2841,6 +2844,7 @@ function normalizeDirectorContract(value, page) {
     integration_rule: [
       bodyPictureFrameIntegration,
       bodyPictureQuantityIntegration,
+      bodyLayoutVariationDirection,
       String(source.integration_rule || "让每个画面单元紧邻或贯穿其所支撑的文字，按本页语义建立一条阅读路径；不得把画面统一塞入固定的底部、右侧或背景图片区。").trim()
     ].filter(Boolean).join(" ").slice(0, 1200),
     primary_evidence_id: primaryEvidenceId,
@@ -2940,10 +2944,10 @@ ${advancedDirectorSkillBundle()}
 - 仅正文页的 director_contract 必须给出 web_visual_search：按本页 structure、main_visual_brief 和 visual_units 写 1–3 条简短英文检索词，供系统到公开图片库寻找“物体、材质、工艺或通用环境”的视觉参考。每条 query 必须是具体名词，不能是抽象气质词、机构名、人名、品牌、校名或事实声明；不得检索肖像、人物、Logo、机构招牌、公文、证书、报告、仪表盘或截图。封面与结尾页 queries 必须为空。
 - 网络图只会作为 Image2 在这一次完整页面生成中的视觉语义参考：它会被重新绘制、融合到新页面，而不是原图贴入、事实证据或第二次生图。把其主体、景别、材料和光线方向同时落实进 main_visual_brief；不要把检索字段当作观众可见文字。
 - 正文页的写实插图必须规划为一张或数张完整可替换的图片框：在 main_visual_brief 与 integration_rule 中写明 16:9、4:3、方形或指定比例的独立矩形区域、完整主体、自然不透明颜色与清晰硬边。严禁渐变蒙版、羽化、透明叠色、蓝色蒙层、向页面背景渐隐或在照片上压正文文字；文字、标签和连线放在图片框外。封面和结尾页不受此限制，继续采用强情绪的整合式主视觉。
-- 正文画面数量必须由已确认的内容结构决定：一个具体对象或机制用一个主画面；有两个或三个彼此独立的具体痛点、阶段、案例或应用情境时，必须规划相应两个或三个不同的硬边图片框或技术视图，各自绑定一个内容块。时间线、系统图和数据页仍以确认图表为主，只在能说明具名阶段或案例时加一至两个图片框；照片类图片框最多三个，不得用一张无关配图代替多个独立论点，也不得随机拼贴。
-- 适合图像表达的正文页优先规划 1-3 个画面单元，高密度页最多 4 个；纯文字论证可以为 0 个。每个 visual_unit 必须明确支撑逐页内容包中的哪条正文、阶段、对比、机制、背景或结果，不能只写“配图”“科技图片”或情绪词。使用多张图片框时，最多为三个不同的具体主体各写一条英文 web_visual_search query。
+- 这里的“正文插图”专指可独立替换的完整照片类硬边图片框，不是流程图、时间线、图表、图标或装饰几何。只要本页有可具体描绘的物体、材料、工艺、环境或应用情境，必须默认规划至少两张不同插图：主视图加一张不同的细节、工序或语境图，不能裁同一场景凑数；有两个或三个彼此独立的具体痛点、阶段、案例或应用情境时，为每项规划一张不同插图。纯事实图表、纯数据表或已完整标注的技术机制图才可少于两张。照片类插图最多三张，不得用一张无关配图代替多个独立论点，也不得随机拼贴。
+- 适合图像表达的正文页优先规划 2-4 个画面单元，高密度页最多 4 个；普通具体内容页至少两个 unit 必须是上述照片类插图，纯文字论证、纯事实图表或完整技术机制图可以减少。每个 visual_unit 必须明确支撑逐页内容包中的哪条正文、阶段、对比、机制、背景或结果，不能只写“配图”“科技图片”或情绪词。使用多张照片类图片框时，最多为三个不同的具体主体各写一条英文 web_visual_search query。
 - 所有画面单元与文字必须在同一次 Image2 请求的一张完整页面图中共同构图。位置由 sequence、cause、contrast、mechanism、context、result 或 evidence 关系决定，不得固定为左文右图、上文下图或统一底部图片区。
-- 多个画面单元必须形成一个主次清楚的语义构图，不得拼贴互不相关的图片，也不得默认改成等权卡片阵列。
+- layout_blueprint.silhouette 必须从主图加细节、三联故事带、照片锚点流程、双图对照、全景加证据带、图解加照片嵌图或纵向图片脊柱中选择并具体说明；相邻正文页不得重复“左侧图解或卡片＋右侧一张竖图”。多个画面单元必须形成一个主次清楚的语义构图，不得拼贴互不相关的图片，也不得默认改成等权卡片阵列。
 - 用户上传资料中的图片只用于 GPT-5.6 读取文字和含义，不作为最终页面素材，不得输出 visual_evidence、protected_evidence_layout 或证据裁片计划。
 - problem-diagnosis 问题诊断页不得提前使用创新思路、技术路线或完整解决方案。证明、专利、合同和报告页应把已确认事实整理成克制的文字与数据叙事，不生成仿真的证书、合同或报告截图。
 - 严肃汇报、比赛和技术页面的通用装饰图标默认设为 none；真实证据不足时使用排版和中性几何，不生成假证据场景。
@@ -4151,13 +4155,14 @@ function advancedSlidePrompt(run, slide, contract, instruction, references = [],
     ? "- Body-page photorealistic visuals must be complete, replaceable picture frames: use an explicit 16:9, 4:3, square, or contract-specified rectangular crop with the full subject inside it, natural opaque colour, and a crisp hard edge against the slide background. A subtle solid border or small corner radius is allowed. Never use gradient masks, feathering, transparency, blue colour washes, image-to-background fades, or body copy over the image pixels. Put titles, labels, data, and connectors in the surrounding layout. A frame may be large or touch an outer edge, but it must remain a distinct complete asset rather than an atmospheric background. Keep technical diagrams and charts in equally clean hard-edged regions."
     : "";
   const bodyPictureQuantityRule = !["cover", "ending"].includes(slide.role)
-    ? "- Scale body-page visual count to actual content structure. One named object or mechanism needs one primary frame or diagram. When editable_content contains two or three independent concrete pain points, cases, stages, or application contexts, generate two or three distinct hard-edged picture frames or technical views, each adjacent or connected to its named block. Do not use one unrelated photo to decorate several independent claims. A timeline, system map, or fact chart remains primary and may use one or two contextual frames only when they clarify named stages or cases. Use no more than three photo-like frames; retain one primary visual anchor and never turn them into an unrelated collage."
+    ? "- A body-page photo insert means a separate complete, replaceable, photo-like hard-edged picture frame; it is not a diagram, timeline node, chart, icon, or decorative geometry. If this page has concrete objects, materials, processes, environments, or application contexts, render at least two distinct photo inserts: one primary view plus a different context, process, or detail view. Do not crop or repeat the same scene to meet the count. For two or three independent concrete cases, stages, pain points, or applications, give each named block its own distinct insert. Only a pure confirmed fact chart/data table or a fully annotated technical mechanism may have fewer than two. Use no more than three photo-like frames, retain one primary visual anchor, and never use one unrelated photo to decorate several independent claims."
     : "";
   const visualCompositionRules = [
     "- Follow director_contract.visual_weight when balancing visible copy and imagery.",
     "- Generate every director_contract.visual_unit as part of this same complete slide image. There is no later image insertion or second visual-generation pass.",
     "- Bind each visual unit to the copy named in supports, and use relationship plus integration_rule to determine placement. Do not collect all visuals into a fixed bottom, right-side, or background media area.",
     "- Multiple visual units are allowed only when they form one semantic composition with a clear primary-secondary hierarchy. Never create an unrelated stock-image collage or an equal card grid by default.",
+    "- Execute director_contract.layout_blueprint.silhouette as a specific composition. Keep the deck-wide identity consistent but make adjacent body-page silhouettes visibly different; never default the deck to a left diagram/cards area plus one tall photo on the right.",
     "- Treat user_priority_requirements as high-priority production direction, never as audience-facing copy, factual evidence, or permission to violate palette and authenticity rules."
   ];
   const buildPrompt = image2Contract => [

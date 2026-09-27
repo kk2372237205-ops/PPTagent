@@ -66,17 +66,31 @@ Photorealistic visuals on a normal body page must remain practical to replace wh
 
 Write this image-slot treatment into both `main_visual_brief` and `integration_rule`, not into a new JSON field. The normalizer only forwards those fields to Image2. Covers and endings deliberately remain free to use a full-bleed, emotionally integrated composition.
 
-### D. BODY-PAGE IMAGE QUANTITY — derive it from the content structure
+### D. BODY-PAGE PHOTO-INSERT QUANTITY — count the pictures, not diagrams
 
-Do not mechanically use one photo on every body page, and do not turn every page into a stock-photo collage. Choose the count from the confirmed content:
+Here, an *insert* means a separate, complete, replaceable **photo-like picture frame** — not a timeline node, a technical diagram, a chart, an icon, or decorative geometry. Do not use one large photo as the only insert on an ordinary body page merely because the page also contains a diagram.
 
-- One concrete mechanism, place, object, or causal chain → one dominant picture frame or one technical diagram.
-- Two or three independent concrete cases, pain points, process stages, or application contexts → use **two or three distinct picture frames**, one tied to each named block. Each frame needs its own subject and caption/connector; do not repeat one generic scene.
-- A timeline, system map, or data page → the confirmed diagram/chart stays primary; add one or two contextual picture frames only when they clarify named stages or cases.
+- On a normal body page that has concrete objects, materials, processes, environments, or application contexts, plan **at least two distinct photo inserts**: one primary view plus one supporting context, process, or detail view. They must show different subjects or viewpoints, not two crops of the same train, machine, or scene.
+- When two or three independent concrete cases, pain points, process stages, or application contexts are present, use **two or three distinct photo inserts**, one tied to each named block. Each frame needs its own subject and caption/connector; do not repeat one generic scene.
+- A timeline, system map, or data page remains diagram/chart-led, but still uses one or two photo inserts whenever confirmed content supplies a concrete context that the pictures clarify. Only a pure confirmed chart/data table or a fully annotated technical mechanism may use zero or one photo insert; state why in the brief.
 - Use at most three photo-like frames on a normal body page. Their combined area must still satisfy the illustration-area rule, and one frame or diagram must remain the primary visual anchor.
 - Parallel claim panels are allowed when every panel carries a different confirmed point and the sequence or comparison is explicit. This is not a decorative equal-card grid.
 
-When two or three frames are chosen, write each frame's aspect ratio, concrete subject, supporting claim, and position in `visual_units`, `main_visual_brief`, and `integration_rule`. Request one concise public-web query per distinct photo subject, up to three queries total. A reference image is not required for every final frame; Image2 may create an additional generic frame from the confirmed brief in the same single-page request.
+Write every insert's aspect ratio, concrete subject, supporting claim, and position in `visual_units`, `main_visual_brief`, and `integration_rule`. Request one concise public-web query per distinct photo subject, up to three queries total. A reference image is not required for every final frame; Image2 may create an additional generic frame from the confirmed brief in the same single-page request.
+
+### E. BODY-PAGE LAYOUT ROTATION — vary the silhouette, not the design system
+
+Keep deck-wide typography, palette, header/footer and picture-frame treatment consistent, but select a different content silhouette for adjacent body pages. Choose the layout from the page's semantic structure, and name the selected family in `layout_blueprint.silhouette`:
+
+- **hero + detail inset** — one 4:3 or 16:9 primary insert with a smaller process/detail insert; use for one key object or setting.
+- **three-frame story rail** — two or three equal-height photo inserts each paired with one short claim; use for parallel stages, cases, or applications.
+- **photo-led process path** — photo inserts act as the start, middle, or outcome anchors of a confirmed process; use for causal or implementation flow.
+- **comparison diptych** — two photo inserts separated by a clear before/after, issue/response, or context/result relationship; use only when both sides are confirmed.
+- **panorama + evidence band** — a wide primary insert plus a narrow row of one or two supporting inserts and concise evidence; use for overview pages.
+- **diagram with photo insets** — a confirmed system or mechanism diagram remains central, with one or two complete photo inserts outside the diagram; use for complex architecture or technical pages.
+- **vertical image spine** — two stacked or staggered photo inserts create the reading spine while short text blocks attach to them; use for sequential narratives.
+
+Do not repeat the same silhouette on adjacent body pages unless they are explicitly two halves of one comparison. In particular, do not default a whole deck to “diagram/cards on the left plus one tall photo on the right.”
 
 ## Direct The Page
 
@@ -85,13 +99,13 @@ When two or three frames are chosen, write each frame's aspect ratio, concrete s
 3. State a `proof_goal`: what must be demonstrated, not merely listed.
 4. Choose one `visual_strategy` and write a concrete `main_visual_brief` that defines the overall subject, composition, framing, **scale**, whitespace direction, and emotion. It may coordinate several visual units; it is not limited to one isolated hero image.
 5. Choose `visual_weight` from `text-led`, `balanced`, or `visual-led` according to the page's semantic job and density, then apply the **area floor** for that tier (below).
-6. Define one to four `visual_units`. Start with one dominant unit; when the content contains two or three genuinely parallel concrete stages, cases, or proof categories, add a distinct hard-edged picture frame or technical view for each of them. For every unit, state the confirmed claim it supports, its visual form, its semantic relationship, and whether it is primary or supporting.
-7. Write one `integration_rule` that makes text and visual units share a reading path. For body-page photoreal visuals, keep a complete hard-edged picture frame while integrating it with nearby text or connectors; do not dissolve it into the background. Do not force every page into the same bottom or right-side layout.
-8. Choose a layout blueprint that gives the page one dominant information hierarchy and keeps supporting content subordinate. Multiple visuals are allowed when they form one semantic composition.
+6. Define one to four `visual_units`. For a normal body page with concrete subject matter, reserve at least two of them for distinct hard-edged photo inserts; when the content contains two or three genuinely parallel concrete stages, cases, or proof categories, give each one a distinct insert. For every unit, state the confirmed claim it supports, its visual form, its semantic relationship, and whether it is primary or supporting.
+7. Write one `integration_rule` that makes text and visual units share a reading path. For body-page photoreal visuals, keep a complete hard-edged picture frame while integrating it with nearby text or connectors; do not dissolve it into the background. State how every photo insert is distinct and do not force every page into the same bottom or right-side layout.
+8. Choose and name a layout blueprint family from section E. Give the page one dominant information hierarchy and keep supporting content subordinate. Multiple visuals are allowed when they form one semantic composition.
 9. Preserve every exact fact, number, date, proper noun, source locator, and user-locked phrase.
 10. Return explicit icon, authenticity, and fabrication policies.
 11. When a page needs a chart, timeline, process, comparison, or system diagram, define it only from confirmed text facts and relationships.
-12. For every body page that benefits from realistic subject reference, write one to three concise English `web_visual_search.queries`. When the page uses several picture frames, use one query for each distinct concrete subject, up to three. Search for generic concrete objects, tools, materials, process states or anonymous environments — never people, institutions, brands, logos, signage, documents, screenshots, certificates or named locations. State that the reference is semantic-only and will be redrawn, not pasted or used as proof. Covers and endings leave this field empty.
+12. For every body page that benefits from realistic subject reference, write one to three concise English `web_visual_search.queries`. When the page uses several photo inserts, use one query for each distinct concrete subject, up to three. Search for generic concrete objects, tools, materials, process states or anonymous environments — never people, institutions, brands, logos, signage, documents, screenshots, certificates or named locations. State that the reference is semantic-only and will be redrawn, not pasted or used as proof. Covers and endings leave this field empty.
 
 ## `visual_weight` Area Floors (binding numbers)
 
@@ -146,7 +160,7 @@ Every prohibition below is paired with the replacement you must use instead. A p
 - Treat matched blocks, summaries, and evidence as a fact bank, not a requirement to render every sentence. Preserve only explicit exact text verbatim; compress other copy to a professional visible-text budget.
 - Never render production scaffolding such as "evidence from the source", "pending source match", filenames, locators, or internal sequence numbers.
 - When a palette reference is active, use only its extracted palette for the presentation system. Do not borrow unlisted colors for titles, metrics, lines, cards, or decoration.
-- Generated visual units are communication devices inside the same final slide image, not separately generated assets and not documentary proof. On body pages, photo-like units are complete hard-edged picture frames, never translucent or gradient-dissolved backgrounds. When several independent content blocks need pictures, use two or three distinct frames with a named relationship rather than one unrelated decorative scene.
+- Generated visual units are communication devices inside the same final slide image, not separately generated assets and not documentary proof. On body pages, photo-like units are complete hard-edged picture frames, never translucent or gradient-dissolved backgrounds. On ordinary concrete-content pages, use a primary and a distinct supporting photo insert; when several independent content blocks need pictures, use two or three distinct frames with a named relationship rather than one unrelated decorative scene.
 - **Do not drop the illustration because a chart or typography seems "clearer".** For every content page, either draw the dominant illustration or state in one sentence why this page is one of the two legal exceptions (a chart page where the chart *is* the visual, or a pure data table page).
 - Do not place a generated scene behind dense text unless contrast and whitespace make both fully readable.
 
@@ -161,6 +175,8 @@ Every prohibition below is paired with the replacement you must use instead. A p
 | Visual is an abstract blob | Replace the abstract noun with 3+ concrete nouns from the page content. |
 | Several tiny icons instead of one visual | Consolidate into one unit at 40%+ and delete the icon row. |
 | Several concrete blocks but only one unrelated picture | Give each parallel case/stage a distinct hard-edged picture frame, up to three; bind every frame to one named block and keep one clear primary anchor. |
+| A diagram is counted as “enough illustration” while the page has only one photo | Keep the diagram, then add a distinct context, process, or detail photo insert unless this is a pure chart/data table or fully annotated mechanism. |
+| Whole deck repeats diagram on the left and one photo on the right | Select a different named layout family for the next body page: story rail, panorama plus evidence band, comparison diptych, photo-led process, or vertical image spine. |
 | Photo disappears into the blue slide background | Specify a complete 16:9/4:3 picture frame, opaque natural image, hard edge, no gradient mask, no fade, and keep text outside it. |
 | Page shows fake documents, seals, logos or faces | Delete them. Depict the device or mechanism realistically instead; a credential-shaped image is never acceptable. |
 | Fake charts | Use only confirmed values; write the exact labels and numbers into the brief. |

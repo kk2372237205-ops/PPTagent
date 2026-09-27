@@ -27,6 +27,22 @@ Use a minimal project-identifying composition with a strong thematic visual. **I
 
 Do not apply a body-page archetype mechanically.
 
+## Body-page layout families
+
+Select one family in addition to the semantic archetype. Preserve the deck's typography, palette and frame treatment, but change the silhouette between adjacent body pages.
+
+| Layout family | Use when | Photo insert treatment |
+| --- | --- | --- |
+| hero + detail inset | One central object, setting, or mechanism has a useful close-up/process detail | One primary frame plus one distinct detail/context frame |
+| three-frame story rail | Two or three parallel cases, stages, applications, or pain points | One complete picture frame per named point |
+| photo-led process path | A confirmed process has clear start/middle/outcome | Two or three frames anchor the named process steps |
+| comparison diptych | A confirmed contrast, before/after, issue/response, or context/result exists | Two frames clearly assigned to the two sides |
+| panorama + evidence band | An overview page needs a broad setting plus compact supporting proof | One wide frame plus one or two smaller distinct inserts |
+| diagram with photo insets | A system/technical diagram must stay primary but has concrete context | One or two photo inserts outside the diagram, never fused into it |
+| vertical image spine | A sequential narrative has steps that benefit from rhythmic reading | Two stacked or staggered frames with short text attached |
+
+An ordinary body page with concrete material/context should use two distinct photo inserts. A pure chart/data table or a fully annotated technical mechanism is the narrow exception. “Left diagram/cards + one tall right photo” is not a default family and must not repeat on adjacent pages.
+
 ## Chart pages
 
 A chart page's `visual_strategy` is `fact-based-chart` and its illustration area is the chart's own area (45–70%). **Do not add a decorative illustration to a chart page** — on these pages the chart is the illustration. Never invent legends, values, or decorative data points.
