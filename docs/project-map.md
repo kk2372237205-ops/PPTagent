@@ -29,7 +29,7 @@
 ## 二、顶层全景图（16 个目录 + 22 个根文件）
 
 > 数字核对时间：2026-09-14。目录 16 个、根文件 22 个、`lib` 26 个文件、
-> `scripts` 29 个、`components\employee` 21 个、`app\employee\styles` 9 个、
+> `scripts` 29 个、`components\employee` 23 个、`app\employee\styles` 9 个、
 > `docs` 8 个（含本文件）、`skills` 递归 17 个、`app\api` 下 74 个 `route.ts`。
 
 ```
@@ -37,7 +37,7 @@ D:\PPTagent
 │
 ├─ 【界面层】
 │   ├─ app\                     Next.js 页面与 74 条接口  ← 3 文件 + api/ + employee/
-│   ├─ components\              前端界面代码（2 个入口 + employee/ 21 个模块）
+│   ├─ components\              前端界面代码（2 个入口 + employee/ 23 个模块）
 │   └─ public\                  浏览器直接访问的静态文件（品牌图、插件）
 │
 ├─ 【业务层】
@@ -223,7 +223,7 @@ app\api\
 | `components\employee-app.tsx` | 422 | ⭐ **员工工作台外壳**（改造前 3753 行，现在只剩骨架 + 常量 + `DesignStudio`） |
 | `components\README.md` | — | 目录说明，改代码前先读 |
 
-### 4.2 `components\employee\`（21 个模块，2026-09-14 拆出来的）
+### 4.2 `components\employee\`（23 个模块：17 个 .tsx 面板 + 5 个 .ts + README）
 
 这是本项目模块化改造的核心成果。**每一块可以单独派人改，互不影响。**
 
@@ -471,7 +471,7 @@ public\
 | --- | --- | --- |
 | **① 客户端（客户侧）** | `app\page.tsx` + `app\globals.css` + `components\client-app.tsx` + `app\api\auth|me|settings|sessions|consultations|services` | 客户能看到的全部功能 |
 | **② 员工端外壳** | `app\employee\page.tsx` + `app\employee\employee.css` + `app\employee\styles\` + `components\employee-app.tsx` | 员工端的入口与样式 |
-| **③ 员工端界面模块** | `components\employee\`（21 个文件） | 拆出来的 16 个界面块 |
+| **③ 员工端界面模块** | `components\employee\`（23 个文件） | 拆出来的 17 个界面块 |
 | **④ 员工端主干** | `lib\employee-auth.ts` + `employee-api.ts` + `employee-api-types.ts` + `employee-permissions.ts` + `use-smart-studio-runs.ts` | 权限、接口、类型、状态编排 |
 | **⑤ 生成 PPT 一条链路** | `app\api\...\deck-generation\` + `components\employee\deck-*.tsx` + `lib\employee-deck-*.ts` + `scripts\deck-generation-worker.mjs` + `scripts\deck-source-parser.mjs` + `skills\deck-generation\` | **改生成效果要同时想到这 6 处** |
 | **⑥ 美化 PPT 一条链路** | `app\api\...\ppt-polish\` + `components\employee\polish-*.tsx` + `scripts\ppt-polish-worker.mjs` + `lib\ppt-polish-worker-health.ts` | 同上，5 处 |
@@ -596,7 +596,8 @@ git reset --hard HEAD          # 丢弃当前未提交的改动
 
 ## 十、当前目录结构与改进建议的对应关系（改造已完成的部分）
 
-作为对照，20 轮改造前后的变化：
+作为对照，20 轮改造前后的变化（**下表是 2026-09-14 的数字，其中"现在"一列已是历史**；
+2026-09-26 拆 UI 后 `components\employee\` 为 23 个文件，见 §4.2）：
 
 | 目录 | 改造前 | 现在 |
 | --- | --- | --- |

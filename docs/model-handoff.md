@@ -21,7 +21,7 @@
 | 你要改什么 | 读这些 |
 | --- | --- |
 | **不确定某个模式有哪些文件** | ⭐ **`docs/feature-file-map.md`**（功能 → 文件对照表：界面 / 接口 / 脚本 / 提示词 / 数据表 / 产物 / 共享层） |
-| 员工端任何界面 | `components/employee/README.md`（21 个模块索引表），再看对应的单个 `.tsx` |
+| 员工端任何界面 | `components/employee/README.md`（23 个模块索引表），再看对应的单个 `.tsx` |
 | 生成 PPT | `skills/README.md` + `skills/deck-generation/` + `scripts/README.md` |
 | **画面/插图质量（写实、面积、风格）** | ⭐ **`PPTskills汇总/README.md`** → 再看 `03-插图手册` 与 `01-风格库` 第 1.5 节 |
 | **为什么插图以前画不好** | `PPTskills汇总/05-根因诊断-为什么插图画不好.md`（带行号证据，通读，这是本话题的地基） |
@@ -50,7 +50,7 @@
 - `app/`：Next.js 页面和服务端接口（74 条路由）。
 - `components/employee-app.tsx`：员工工作台**外壳**（原 3753 行，现 424 行，只剩骨架、常量与 4 处 design-agent 调用）。
   > 注：用 PowerShell `Get-Content | Measure-Object -Line` 数它会得到 422，因为文件里有孤立 CR 换行会被合行。以 read 工具的 424 为准。
-- `components/employee/*.tsx`：**16 个业务面板**（另有 4 个纯类型文件和 1 个 README，目录合计 21 个文件），每块一个文件，可以分别派人改。清单见 `components/employee/README.md`。
+- `components/employee/*.tsx`：**17 个业务面板**（另有 5 个 `.ts`：4 个纯类型 + 1 个共用小工具 `tools-ai-shared.ts`，再加 1 个 README，目录合计 **23 个文件**），每块一个文件，可以分别派人改。清单见 `components/employee/README.md`。
 - `app/employee/employee.css`：样式**入口**，只有 `@import` 列表。
 - `app/employee/styles/*.css`：按模块拆开的 9 个样式层，顺序由入口文件固定。
 - `lib/employee-auth.ts`：员工会话、学校隔离、角色和功能权限（**权限只能改这里**）。
@@ -134,7 +134,7 @@ git diff --stat main...HEAD   # 22 个文件，+4053 / -404
 | 指标 | 改造前 | 现在 |
 | --- | --- | --- |
 | `components/employee-app.tsx` | 3753 行 | **422 行** |
-| 员工端结构 | 1 个巨型文件 | 16 个组件 + 11 个主干模块 + 9 个样式层 |
+| 员工端结构 | 1 个巨型文件 | 16 个组件 + 11 个主干模块 + 9 个样式层（**这是 2026-09-14 的数字**；2026-09-26 拆 UI 后为 17 个 .tsx 面板 + 5 个 .ts，目录合计 23 个文件） |
 | 组件内手写 `fetch("/api/…")` | 60 处 | 4 处 |
 | `employee.css` | 3426 行单文件 | 11 行入口 + `styles/` 9 层 |
 | `AGENTS.md` | 87,965 字节（超预算会被截断） | 19,015 字节（可完整读入） |

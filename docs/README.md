@@ -44,7 +44,7 @@
 
 ## 代码模块怎么找
 
-员工端已经从单文件拆成 21 个模块文件。**改任何员工端代码前先看 `components/employee/README.md`**，
+员工端已经从单文件拆成 23 个模块文件（17 个 .tsx 面板 + 5 个 .ts 类型/工具 + README）。**改任何员工端代码前先看 `components/employee/README.md`**，
 里面有"哪个文件负责什么、对应哪些接口"的索引表，以及派活的注意事项。
 更完整的目录结构与协作方式见 `docs/project-map.md`。
 
