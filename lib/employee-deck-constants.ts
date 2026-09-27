@@ -1,37 +1,42 @@
 /**
  * 生成 PPT 的配色风格与统一元素常量（主干层）
  *
- * 职责：集中定义风格包清单、高级版版式语言清单和"统一元素"默认勾选项。
+ * 职责：向界面导出风格包清单、高级版版式语言清单和"统一元素"默认勾选项。
  * 谁可以改：主干层；改完必须跑 `npm run verify`。
- * 依赖：无。
- * 被谁用：`components/employee-app.tsx`、`components/employee/deck-generation-form.tsx` 等。
- * 验证方式：`npm run verify`。
+ * 依赖：`lib/employee-deck-packs.mjs`（**全项目唯一真源**）。
+ * 被谁用：`components/employee-app.tsx`、`components/employee/deck-generation-form.tsx`、
+ *         `components/employee/deck-run-panels.tsx`、`components/employee/polish-ppt-planner.tsx`、
+ *         `components/employee/polish-inline-run.tsx`、`app/api/employee/services/[id]/**` 的 4 个接口路由。
+ * 验证方式：`npm run verify`（含 `scripts/check-style-packs.mjs` 的一致性校验）。
  *
- * ⚠️ 同步要求：这些 id 必须和 `scripts/workers/deck-generation/deck-generation-worker.mjs` 里的
- * `stylePackName()` / `advancedLayoutName()` 白名单保持一致，否则后台会认不出风格包。
- * 新增或改名风格包时，两处必须同时改。
+ * ⚠️ 2026-09-26 起，风格包清单不再在本文件里定义，改为从 `employee-deck-packs.mjs` 重新导出。
+ * 原因：同一份 id 列表曾在 8 处重复（本文件 2 份、4 个接口路由各 1 份、两个 worker 各 1 份），
+ * 改一处漏一处就会出现"界面能选、后台认不出"。
+ * 现在只有 `lib/employee-deck-packs.mjs` 一个来源，Markdown 定义由检查脚本保证同步。
  */
 
-export const deckStylePacks = [
-  { id: "blue-gold-tech", label: "蓝金科技" },
-  { id: "white-green-tech", label: "白绿科技" },
-  { id: "black-gold-business", label: "黑金商务" },
-  { id: "blue-purple-ai", label: "蓝紫 AI" },
-  { id: "red-white-government", label: "红白政企" },
-  { id: "minimal-academic", label: "极简学术" },
-  { id: "vivid-roadshow", label: "活力路演" }
-];
+import {
+  DECK_DEFAULT_LAYOUT_LABEL,
+  DECK_DEFAULT_STYLE_PACK_ID,
+  DECK_LAYOUT_PACKS,
+  DECK_STYLE_PACKS,
+  DECK_STYLE_PACK_IDS
+} from "./employee-deck-packs.mjs";
 
-/** 高级版可用"版式语言"（只描述信息组织方式，不含配色） */
-export const deckAdvancedLayoutPacks = [
-  { id: "blue-gold-tech", label: "图文叙事版式（推荐）" },
-  { id: "white-green-tech", label: "清晰技术说明版式" },
-  { id: "black-gold-business", label: "结论先行商务版式" },
-  { id: "blue-purple-ai", label: "系统关系图解版式" },
-  { id: "red-white-government", label: "庄重层级汇报版式" },
-  { id: "minimal-academic", label: "极简学术论证版式" },
-  { id: "vivid-roadshow", label: "活力路演叙事版式" }
-];
+/** 内置配色模式可选的风格包（id + 界面显示名） */
+export const deckStylePacks = DECK_STYLE_PACKS;
+
+/** 参考图配色模式可选的"版式语言"（只描述信息组织方式，不含配色） */
+export const deckAdvancedLayoutPacks = DECK_LAYOUT_PACKS;
+
+/** 合法风格包 id 集合，接口层做参数校验用 */
+export const deckStylePackIds = new Set(DECK_STYLE_PACK_IDS);
+
+/** 默认风格包 id。表单初始值与接口缺省值都用它，不要再写死 "blue-gold-tech"。 */
+export const deckDefaultStylePackId = DECK_DEFAULT_STYLE_PACK_ID;
+
+/** 默认版式语言中文名。参考图配色模式找不到对应条目时的兜底文案。 */
+export const deckDefaultLayoutLabel = DECK_DEFAULT_LAYOUT_LABEL;
 
 /**
  * "统一元素"默认勾选项。

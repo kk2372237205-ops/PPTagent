@@ -2,10 +2,13 @@
 
 > 当前状态核对日期：2026-09-14
 >
-> ⚠️ **2026-09-22 补充**：本文档**尚未同步「画面质量与写实化」那一话题**（分支 `codex/illustration-and-style-fix`，10 个提交，未合并 main）。
-> 那一话题只改了提示词（`skills/`）和 AI 调用网络层（`scripts/`），**架构与界面零改动**，所以本文档的目录结构、接口数量、数据模型描述**仍然准确**。
+> ⚠️ **2026-09-22 补充**：本文档**尚未完整同步「画面质量与写实化」那一话题**（分支 `codex/illustration-and-style-fix`，未合并 main）。
+> 那一话题只改了提示词（`skills/`）、AI 调用网络层（`scripts/workers/`）和风格包清单的存放位置，**架构与界面零改动**，所以本文档的目录结构、接口数量、数据模型描述**仍然准确**。
 > 但以下内容本文档里没有，读之前请先看 **`docs/model-handoff.md` 的「上一个话题做到哪了（2026-09-22）」**：
 > 画面写实化方向、参考图配色的生效方式、四个已定不可重议的产品决策、`allowH2` 网络层事实、以及本话题踩过的坑。
+>
+> ⚠️ **2026-09-26 补充（风格包真源收敛）**：风格包 id 清单从 8 处重复定义收敛为**唯一真源 `lib/employee-deck-packs.mjs`**，同时由 7 个精简为 4 个（删掉零使用的 `blue-purple-ai`、`red-white-government`、`vivid-roadshow`）。`npm run verify:check` 的第一项现在是 `node scripts/check-style-packs.mjs`，会逐 id 校验 `.mjs` 与两份 Markdown 是否一致、并阻止已删 id 复活。详见 `docs/feature-file-map.md` 第 10 节。
+
 >
 > 这是项目功能状态的唯一当前入口。内容以源码、配置结构、数据库模型和本机验证为依据；文档中写“已实现”不等于第三方服务已经配置，也不等于每条业务链路都在本机端到端跑通。
 
@@ -35,7 +38,7 @@ PPTagent/WZLCF 是一套 PPT 定制交付系统，包含两类界面：
 - `node_modules` 已恢复，Prisma Client 已生成。
 - Python `3.10.11`，当前可以导入 OpenCV `5.0.0`。
 - `prisma/dev.db` 和本地上传目录仍在，不能当作可随意清理的缓存。
-- `npm run verify:check` 通过（= `tsc --noEmit` + `eslint . --max-warnings 0` + `prisma validate`），`npm run verify:build` 通过（= `next build --webpack`，74 条接口路由 + `/employee`）。
+- `npm run verify:check` 通过（= `node scripts/check-style-packs.mjs` + `tsc --noEmit` + `eslint . --max-warnings 0` + `prisma validate`），`npm run verify:build` 通过（= `next build --webpack`，74 条接口路由 + `/employee`）。
   > 2026-09-26 更新：eslint 基线从 11 条收紧到 **0 条**（历史 11 条全部来自 `scripts/workers/design-agent/design-agent-worker.mjs`，已清理 31 个零引用声明）。下面第 3 轮、第 5 轮记录里提到的 `--max-warnings 11` 是**当时**的基线，保留为历史记录。
 - 本机 PowerShell 执行策略禁止直接运行 `npm`/`npx` 脚本；需要时可改用 `node node_modules/<工具>/bin/...` 直调，或先执行 `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`。
 - Git 已初始化（2026-09-14）：基线提交 `8e2f313`，标签 `baseline`，提交 183 个文件，仓库体积约 3.29 MB。`.env`、`prisma/dev.db`、`uploads/`、构建缓存均未纳入版本控制。

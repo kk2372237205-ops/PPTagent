@@ -1,6 +1,6 @@
 # Advanced Layout Profiles
 
-These profiles are used only by advanced deck generation when an uploaded palette reference controls all color. The legacy IDs are compatibility keys; they do not imply any color.
+These profiles are used only by advanced deck generation when an uploaded palette reference controls all color. The IDs are compatibility keys shared with `lib/employee-deck-packs.mjs` (`DECK_LAYOUT_PACKS`); they do not imply any color. `scripts/check-style-packs.mjs` compares both files section by section, so change the `.mjs` first and sync this file after.
 
 ## Shared Rules
 
@@ -16,7 +16,7 @@ A layout profile decides **information organization, area and rhythm only** — 
   **不要**扫描线、光轨、数据粒子、星点、半透明玻璃卡片、发光边缘——它们削弱严谨感。
 - 写实**不等于**放开配色：背景、文字、线条、几何和强调色仍只服从参考图配色合同。
 
-> 详细画面体系（RS-1 ～ RS-5）见 `illustration-system.md` 与 `PPTskills汇总/01-风格库-Style-Library.md` 第 1.5 节。
+> 详细画面体系（RS-1 ～ RS-5）见同目录 `illustration-system.md`（它会随本文件一起注入）。根目录 `PPTskills汇总/` 只是维护者资料，模型无需也无法读取。
 
 ### 版式规则
 
@@ -60,26 +60,6 @@ A layout profile decides **information organization, area and rhythm only** — 
 - Avoid weak mood imagery that does not explain the business point — instead draw the business mechanism itself as a diagram with named parts.
 - Avoid repeated pill, badge and button shapes used as the main composition — instead give the page one dominant diagram and let the shapes stay subordinate.
 
-## blue-purple-ai: System Relationship
-
-- Use for architecture, intelligent systems, data flows, and interconnected capabilities.
-- **Illustration area: 50%–70%** (the system map *is* the illustration on this profile).
-- **Bleed: no bleed on system maps** (they need clear margins and labels); 55%+ with bottom bleed on architecture overview pages.
-- Prefer one central system relationship with clear inputs, transformations, and outputs, with named components and directional connectors.
-- Generated technical imagery may support the system map but must remain subordinate to the confirmed logic.
-- Avoid generic neural-network decoration and repeated feature icons — instead name the real components and draw the actual data flow between them.
-- Avoid glowing edges, particle fields and code rain; use uniform strokes and flat fills from `image_language`.
-
-## red-white-government: Formal Hierarchy
-
-- Use for institutional, government, school, and formal reporting.
-- **Illustration area: 35%–50%** on body pages; 40%–55% on the cover.
-- **Bleed: no bleed on body pages** (formal pages keep a clear frame and stable margins); the cover may bleed on the bottom edge only.
-- Prefer stable hierarchy, restrained alignment, clear evidence order, and deliberate emphasis.
-- Use generated visuals when they clarify context, progression, or mechanism — as a clearly illustrative diagram, never as a simulation of an official document.
-- Avoid theatrical poster composition and fabricated documentary proof — instead draw a process or progression diagram using only confirmed facts.
-- Avoid fake emblems, seals, ribbons or medals; the replacement is plain geometry and typography.
-
 ## minimal-academic: Academic Argument
 
 - Use for research, validation, literature, and analytical explanation.
@@ -89,16 +69,6 @@ A layout profile decides **information organization, area and rhythm only** — 
 - Keep labels and values traceable to confirmed facts.
 - Avoid decorative scenes that compete with the argument — but **do not remove the visual entirely on a chart page**: the chart is the illustration, and it must occupy 45%+ with direct labels rather than a legend box.
 - Never add a decorative illustration to a chart page; a chart page's `visual_strategy` is `fact-based-chart` and its illustration share is the chart's own area.
-
-## vivid-roadshow: Dynamic Storytelling
-
-- Use for roadshows, project stories, market narratives, and growth plans.
-- **Illustration area: 55%–75%** on body pages; 80%–100% on the cover and section openers.
-- **Bleed: at least two edges on every page**; full bleed on the cover.
-- Prefer visual-led sequences, contextual scenes, progression, before-after logic, and memorable metrics.
-- Vary visual scale and placement according to the story rather than repeating a template, while keeping adjacent pages within ±25% illustration area of each other.
-- Avoid empty spectacle, generic arrows, and unsupported growth imagery — instead draw the concrete subject of each story beat (the object, the place, the action) and label the real stages.
-- Avoid more than three illustrations per page. Use one when the story has a single concrete subject; use two or three complete hard-edged frames only when they correspond to distinct parallel story beats.
 
 ## Deck Rhythm (applies across profiles)
 

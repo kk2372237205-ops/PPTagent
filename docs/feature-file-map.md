@@ -33,13 +33,14 @@
 | **接口（11 条）** | `app/api/employee/services/[id]/deck-generation/runs/route.ts`<br>`…/runs/[runId]/{confirm,replan,pages,settings,images,pdf,ppt}/route.ts`<br>`…/runs/[runId]/slides/[slideId]/{image,regenerate}/route.ts`<br>`…/runs/[runId]/visual-evidence/[evidenceId]/image/route.ts` |
 | **后台执行脚本** | ⭐ `scripts/workers/deck-generation/deck-generation-worker.mjs`（**242 KB，全项目最大的一个文件**） |
 | **资料解析** | `scripts/workers/deck-generation/deck-source-parser.mjs`（PDF/Word/Excel/PPTX/文本，保留来源页码） |
-| **提示词规则** | `skills/deck-generation/**`（14 份，含子目录 `advanced-single-slide-director/`） |
+| **提示词规则** | `skills/deck-generation/**`（14 份，含子目录 `advanced-single-slide-director/`）；读取清单看 `skills/README.md` |
+| **风格包真源（新）** | ⭐ `lib/employee-deck-packs.mjs`（4 个风格包 + 4 个版式语言 id，界面/接口/两个 worker 全部 import 它，见第十一节） |
 | **共享代码** | `lib/employee-deck-shared.ts`、`lib/employee-deck-constants.ts`、`lib/employee-api.ts`（`deck` 分组） |
 | **数据表** | `DeckGenerationRun` / `Source` / `Evidence` / `VisualEvidence` / `PagePlan` / `Slide` / `ImageCall` |
 | **产物落盘** | `uploads/employee-workspace/deck-generation/{sources,themes,evidence}/` + `images/`（成图） |
 
 **两个容易踩的点**：
-- `skills/deck-generation/style-packs.md` **只在「内置配色」模式被读取**；「参考图配色」模式读的是 `advanced-layout-profiles.md`。改一个不影响另一个。
+- `skills/deck-generation/style-packs.md` **只在「内置配色」模式被读取**；「参考图配色」模式读的是 `advanced-layout-profiles.md`。改一个不影响另一个。`illustration-system.md` 是**两条链路都读**的。
 - `normalizePlan`（worker 内）是**严格白名单**，往逐页方案 JSON 里加新字段不会进图片提示词。
 
 ---
@@ -54,7 +55,9 @@
 | **接口（7 条）** | `app/api/employee/services/[id]/ppt-polish/runs/route.ts`<br>`…/runs/[runId]/{confirm,retry,pdf,ppt}/route.ts`<br>`…/runs/[runId]/slides/[slideIndex]/{image,regenerate}/route.ts` |
 | **后台执行脚本** | ⭐ `scripts/workers/ppt-polish/ppt-polish-worker.mjs`（33.6 KB） |
 | **心跳检查** | `lib/ppt-polish-worker-health.ts` |
-| **提示词规则** | ⚠️ **`skills/deck-generation/**`（本话题起与生成 PPT 共用）** + 自身硬编码字符串 |
+| **提示词规则** | ⚠️ **只读 `skills/deck-generation/` 的 2 份**：`style-packs.md`、`illustration-system.md`（其余 12 份不读）+ 自身硬编码字符串 |
+| **风格包真源（新）** | ⭐ `lib/employee-deck-packs.mjs`（中文名映射，不再自带副本，见第十一节） |
+| **接口校验** | `app/api/employee/services/[id]/ppt-polish/runs/route.ts` 用 `deckStylePackIds` 校验 `stylePack` |
 | **产物落盘** | `uploads/employee-workspace/ppt-polish-runs/*.json`（任务状态）+ `images/`（成图） |
 
 **三个与生成 PPT 不同的地方**：
@@ -152,8 +155,37 @@
 **同样不拆的还有**：`scripts/workers/design-agent/design-agent-skills.mjs` **不能**搬到 `skills/image-generation/`。
 它 7 个常量里 6 个是**拆图 / 抠图 / 重建**规则，只有 1 个是单页渲染规则；而且**普通生图根本不用任何 skills**。搬过去会造成概念混淆。
 
-> 2026-09-26 已完成且**已验证**的拆分：UI 按模式拆（`ai-assistant-panel` / `image-tools-panel`）、`scripts/` 按模式分目录。
-> 这两项的验证方式是 43 条路径引用全部存在 + 真实启动确认 worker 按新路径拉起，**不是只跑 verify**。
+---
+
+## 十一、风格包清单：一处真源 + 一道自动闸门（2026-09-26）
+
+**问题**：同一份风格包 id 列表曾在 **8 处**重复定义——`lib/employee-deck-constants.ts`、4 个接口路由（`deck-generation/runs`、`runs/[runId]/settings`、`runs/[runId]/replan`、`ppt-polish/runs`）、`deck-generation-worker.mjs` 里的 2 个映射表、`ppt-polish-worker.mjs` 里的 1 个。改一处漏一处就是"界面上能选、后台认不出"。
+
+**现在**：
+
+| 角色 | 文件 | 说明 |
+| --- | --- | --- |
+| ⭐ **唯一真源** | `lib/employee-deck-packs.mjs` | 4 个风格包（`DECK_STYLE_PACKS`）+ 4 个版式语言（`DECK_LAYOUT_PACKS`）。做 `.mjs` 是因为它是**唯一能同时被 TypeScript 和 Node worker import** 的格式 |
+| 界面入口 | `lib/employee-deck-constants.ts` | 只做重新导出（`deckStylePacks` / `deckAdvancedLayoutPacks` / `deckStylePackIds` / `deckDefaultStylePackId` / `deckDefaultLayoutLabel`） |
+| 接口校验与缺省值 | 4 个 `route.ts` | `import { deckStylePackIds, deckDefaultStylePackId }`，不再各留一份 `new Set([...])`，也不再写死 `|| "blue-gold-tech"` |
+| 表单初始值 | `deck-generation-form.tsx`、`polish-ppt-planner.tsx`、`employee-app.tsx` | 用 `deckDefaultStylePackId`，不写字面量 |
+| 提示词中文名 | 2 个 worker | `import { DECK_STYLE_PACK_NAMES, DECK_LAYOUT_PACK_NAMES }`，兜底文案用 `DECK_DEFAULT_STYLE_PACK_LABEL` / `DECK_DEFAULT_LAYOUT_PROMPT_LABEL` |
+| 规则文字 | `skills/deck-generation/style-packs.md`（4 段）+ `advanced-layout-profiles.md`（4 段） | 提示词实际注入的内容 |
+| ⭐ **自动闸门** | `scripts/check-style-packs.mjs` | 已接入 `npm run verify:check` 的**第一项** |
+
+**一个必须区分开的细节**：版式语言的界面名和提示词名**不是同一个字符串**。界面上第一个档位显示"图文叙事版式（推荐）"，但写进提示词必须是"图文叙事版式"——"（推荐）"是给员工看的，喂给模型就是噪音。所以 `DECK_LAYOUT_PACKS` 每条都带 `label`（界面）和 `promptLabel`（提示词）两个字段，`DECK_LAYOUT_PACK_NAMES` 取的是 `promptLabel`。
+
+闸门检查四件事：① 两份 Markdown 的小节 id 与 `.mjs` **完全一致**（多一个少一个都失败）；② 每个风格包都有配对的版式语言；③ **已删除的 id 不得在 `app/` `components/` `lib/` `scripts/` `skills/` 里复活**；④ **消费者文件里不得再出现任何风格包 id 字面量**（`lib/employee-deck-packs.mjs`、检查脚本和两份 Markdown 之外一律失败，整行注释不计）。`docs/` 与归档文档豁免，因为它们要记录历史。
+
+**顺带做了减法**：风格包由 7 个精简为 4 个，删掉 `blue-purple-ai`（蓝紫 AI）、`red-white-government`（红白政企）、`vivid-roadshow`（活力路演）。依据是数据库 24 次历史生成任务的真实使用分布：`blue-gold-tech` 22 次、`black-gold-business` 4 次、`minimal-academic` 4 次、`white-green-tech` 1 次，**被删的 3 个是 0 次**。保留的 4 个是仅剩的有真实使用记录的包。
+
+**以后新增 / 删除风格包只要改两处**（参考图配色模式还要改第三处）：
+`lib/employee-deck-packs.mjs` → `skills/deck-generation/style-packs.md` → （参考图配色）`skills/deck-generation/advanced-layout-profiles.md`。
+界面、接口、后台执行脚本都不用动——它们只 import 真源。改完跑 `npm run verify:check`，漏改会自动失败并告诉你该改哪个文件。
+
+> 2026-09-26 已完成且**已验证**的拆分：UI 按模式拆（`ai-assistant-panel` / `image-tools-panel`）、`scripts/` 按模式分目录、风格包清单收敛为单真源。
+> 前两项的验证方式是 43 条路径引用全部存在 + 真实启动确认 worker 按新路径拉起，**不是只跑 verify**；
+> 风格包收敛的验证方式是 `scripts/check-style-packs.mjs` 正反两个方向都试过（正常通过、故意塞回一个已删 id 就失败）+ 两个 worker 的具名 import 在真实 Node 下能加载。
 > 未做的：`design-agent-worker.mjs` 清掉 31 个零引用声明、eslint 基线收紧到 0。
 
 **下一步优先级（高于继续整理目录）**：把资源投入真实功能与出图验证——快速版、美化 PPT、生图三个模式的实跑效果，比目录整齐更能改善产品。

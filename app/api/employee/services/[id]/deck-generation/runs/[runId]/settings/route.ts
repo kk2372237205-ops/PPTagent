@@ -1,19 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { authorizeEmployeeService } from "@/lib/employee-auth";
+import { deckStylePackIds } from "@/lib/employee-deck-constants";
 import { deckSourceRoot, deckThemeRoot, saveFile } from "@/lib/workspace-storage";
 
 export const runtime = "nodejs";
-
-const allowedStylePacks = new Set([
-  "blue-gold-tech",
-  "white-green-tech",
-  "black-gold-business",
-  "blue-purple-ai",
-  "red-white-government",
-  "minimal-academic",
-  "vivid-roadshow"
-]);
 
 const deckRunInclude = {
   slides: { orderBy: { slideIndex: "asc" as const } },
@@ -53,7 +44,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
 
   if (!projectName) return NextResponse.json({ error: "请填写项目名称" }, { status: 400 });
   if (!brief) return NextResponse.json({ error: "请填写项目简介" }, { status: 400 });
-  if (!allowedStylePacks.has(stylePack)) return NextResponse.json({ error: "风格包无效" }, { status: 400 });
+  if (!deckStylePackIds.has(stylePack)) return NextResponse.json({ error: "风格包无效" }, { status: 400 });
   if (referenceText.length > 50_000) return NextResponse.json({ error: "粘贴的补充要求不能超过 5 万字" }, { status: 400 });
   if (referenceFiles.length > 30) return NextResponse.json({ error: "一次最多新增 30 份内容资料" }, { status: 400 });
 

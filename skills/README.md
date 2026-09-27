@@ -18,7 +18,7 @@
 | 文件 | 生成 PPT | 美化 PPT | 说明 |
 | --- | --- | --- | --- |
 | `SKILL.md` | ✅ | — | 总规则 |
-| `style-packs.md` | ✅（仅内置配色模式） | ✅ | 7 个风格包的配色与版式定义 |
+| `style-packs.md` | ✅（仅内置配色模式） | ✅ | 4 个风格包的配色与版式定义（id 清单真源在 `lib/employee-deck-packs.mjs`） |
 | `advanced-layout-profiles.md` | ✅（仅参考图配色模式） | — | 无配色的版式语言 |
 | `visual-identity.md` | ✅ | — | 整套图的视觉身份（含 `image_language` 插图体系） |
 | `visual-storyboard.md` | ✅ | — | 页间连贯性与叙事节奏 |
@@ -68,7 +68,7 @@ function readSkill(name) {
 
 - `SKILL.md`：总规则：目标、输入、输出阶段、硬性页面结构、质量标准、快速版与高级版差异。
 
-- `style-packs.md`：7 个风格包的配色、版式、母题、字体气质与禁止项；含**渲染路线**（默认真实写实）一节。
+- `style-packs.md`：4 个风格包的配色、版式、母题、字体气质与禁止项；含**渲染路线**（默认真实写实）一节。段落集合由 `scripts/check-style-packs.mjs` 与 `lib/employee-deck-packs.mjs` 逐 id 校验。
 
 - `advanced-layout-profiles.md`：只供高级版的参考图配色模式读取；定义无颜色的信息组织、图文关系、插图面积、出血与页面节奏。
 

@@ -4,6 +4,7 @@ import { mkdir, readdir, readFile, writeFile } from "fs/promises";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { authorizeEmployeeService } from "@/lib/employee-auth";
+import { deckDefaultStylePackId, deckStylePackIds } from "@/lib/employee-deck-constants";
 import { pptPolishWorkerHealth } from "@/lib/ppt-polish-worker-health";
 import { workPresentationMaxBytes, workPresentationMaxLabel } from "@/lib/upload-limits";
 import { documentRoot, ensureWorkspaceDirectories, saveFile, workspaceRoot } from "@/lib/workspace-storage";
@@ -11,15 +12,6 @@ import { documentRoot, ensureWorkspaceDirectories, saveFile, workspaceRoot } fro
 export const runtime = "nodejs";
 
 const polishRunRoot = path.join(workspaceRoot, "ppt-polish-runs");
-const allowedStylePacks = new Set([
-  "blue-gold-tech",
-  "white-green-tech",
-  "black-gold-business",
-  "blue-purple-ai",
-  "red-white-government",
-  "minimal-academic",
-  "vivid-roadshow"
-]);
 
 type PolishRun = {
   id: string;
@@ -67,11 +59,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
   const form = await request.formData();
   const sourceMode = String(form.get("sourceMode") || "current") === "upload" ? "upload" : "current";
-  const stylePack = String(form.get("stylePack") || "blue-gold-tech");
+  const stylePack = String(form.get("stylePack") || deckDefaultStylePackId);
   const note = cleanText(String(form.get("note") || ""), 3000);
   const options = normalizeOptions(String(form.get("options") || "{}"));
   const pageNotes = normalizePageNotes(String(form.get("pageNotes") || "[]"));
-  if (!allowedStylePacks.has(stylePack)) return NextResponse.json({ error: "目标风格无效" }, { status: 400 });
+  if (!deckStylePackIds.has(stylePack)) return NextResponse.json({ error: "目标风格无效" }, { status: 400 });
   if (!note && pageNotes.length === 0) return NextResponse.json({ error: "请填写整套修改方向或逐页修改想法" }, { status: 400 });
 
   await ensurePolishDirectories();

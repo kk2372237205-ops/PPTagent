@@ -55,7 +55,7 @@
 ```text
 RS-1 industrial-field-documentary        ← 画面体系：现场纪实，真实材质与自然光
 × 暗海军蓝 + 金色强调（配色合同）         ← 配色
-× L-16 型版式：下方通栏大图 + 5-7 条标注  ← 版式（面积份额见 skills/advanced-layout-profiles.md）
+× L-16 型版式：下方通栏大图 + 5-7 条标注  ← 版式（面积份额见 skills/deck-generation/advanced-layout-profiles.md）
 × "the visual occupies 68% of the canvas, bleeding off left, right and bottom"
 × "never cartoon, flat vector or clip art"
 ```

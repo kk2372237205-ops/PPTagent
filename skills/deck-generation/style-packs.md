@@ -2,7 +2,9 @@
 
 风格包给用户看起来是简单按钮，给模型时必须展开成完整约束。
 
-本文件只用于“内置配色”模式，同时规定颜色与版式。生成 PPT 高级版选择“参考图配色”时不得读取本文件，必须改用 `advanced-layout-profiles.md`；旧风格包 ID 只作为历史任务兼容键，不能向模型泄漏蓝金、白绿、黑金、蓝紫或红白等颜色含义。
+本文件只用于“内置配色”模式，同时规定颜色与版式。生成 PPT 高级版选择“参考图配色”时不得读取本文件，必须改用 `advanced-layout-profiles.md`；风格包 ID 在参考图配色模式下只作为版式语言的兼容键，不能向模型泄漏蓝金、白绿、黑金等颜色含义。
+
+本文件的小节集合必须与 `lib/employee-deck-packs.mjs` 的 `DECK_STYLE_PACKS` 完全一致；`npm run verify:check` 里的 `scripts/check-style-packs.mjs` 会逐 ID 比对，缺一个就报错。新增或删除风格包时先改 `.mjs`，再同步本文件。
 
 ## 渲染路线（所有风格包共用，先读这一条）
 
@@ -56,22 +58,6 @@
 - typography：稳重、高端、克制。
 - forbidden：不要卡通插画、不要绿色环保风、不要廉价渐变。
 
-## blue-purple-ai：蓝紫 AI
-
-- palette：深蓝、靛紫、电子蓝、冷白。
-- layout：中心主视觉、模块化卡片、环形数据结构。
-- motifs：神经网络、星点、算法网格、半透明玻璃。
-- typography：未来感但保持商务可读。
-- forbidden：不要过度霓虹、不要游戏 UI、不要花哨按钮。
-
-## red-white-government：红白政企
-
-- palette：红色、白色、深灰、少量金色。
-- layout：端正、清晰、标题庄重、信息块稳定。
-- motifs：飘带、简洁几何、政策宣传质感。
-- typography：庄重、可信、适合政企汇报。
-- forbidden：不要赛博风、不要过度卡通、不要娱乐化。
-
 ## minimal-academic：极简学术
 
 - palette：白色、浅灰、黑色、单一强调色。
@@ -79,11 +65,3 @@
 - motifs：细线、标注、简洁图解、论文式结构。
 - typography：克制、清楚、阅读优先。
 - forbidden：不要复杂背景、不要强烈光效、不要密集装饰。
-
-## vivid-roadshow：活力路演
-
-- palette：蓝色、青色、橙色点缀、白色。
-- layout：强节奏、商业故事线、图文并重、醒目关键数字。
-- motifs：增长箭头、市场地图、产品场景、动势线条。
-- typography：有冲击力但不幼稚。
-- forbidden：不要沉闷政务风、不要学术论文感、不要过暗。

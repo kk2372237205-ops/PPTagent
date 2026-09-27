@@ -3,6 +3,7 @@ import { mkdir, readdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import sharp from "sharp";
 import JSZip from "jszip";
+import { DECK_DEFAULT_STYLE_PACK_LABEL, DECK_STYLE_PACK_NAMES } from "../../../lib/employee-deck-packs.mjs";
 import {
   aiImageConfig,
   createServiceFetch,
@@ -17,7 +18,8 @@ const workspaceRoot = path.join(root, "uploads", "employee-workspace");
 const documentRoot = path.join(workspaceRoot, "documents");
 const imageRoot = path.join(workspaceRoot, "images");
 const polishRunRoot = path.join(workspaceRoot, "ppt-polish-runs");
-// 风格包定义的唯一真源：skills/deck-generation/style-packs.md（与 deck-generation-worker 读取同一份文件）
+// 风格包"规则文字"的唯一真源：skills/deck-generation/style-packs.md（与 deck-generation-worker 读取同一份文件）
+// 风格包"id 清单"的唯一真源：lib/employee-deck-packs.mjs（本文件只 import，不再自带副本）
 const skillRoot = path.join(root, "skills", "deck-generation");
 const workerHeartbeatPath = path.join(root, ".next-dev", "ppt-polish-worker-heartbeat.json");
 const pollMs = Math.max(1500, Number(process.env.PPT_POLISH_POLL_MS || 3000));
@@ -170,16 +172,9 @@ async function openAiImage(prompt) {
   throw new Error("图片中转服务没有返回图片内容");
 }
 
+// 风格包 id → 中文名，清单来自 lib/employee-deck-packs.mjs（全项目唯一真源）。
 function stylePackName(id) {
-  return ({
-    "blue-gold-tech": "蓝金科技",
-    "white-green-tech": "白绿科技",
-    "black-gold-business": "黑金商务",
-    "blue-purple-ai": "蓝紫 AI",
-    "red-white-government": "红白政企",
-    "minimal-academic": "极简学术",
-    "vivid-roadshow": "活力路演"
-  })[id] || id || "蓝金科技";
+  return DECK_STYLE_PACK_NAMES[id] || id || DECK_DEFAULT_STYLE_PACK_LABEL;
 }
 
 /**

@@ -615,14 +615,15 @@ Vary only: layout silhouette, illustration size and placement, content density.
 | SP-01 Swiss | 无 | 新增 |
 | SP-02 Consulting | 近似 `minimal-academic` | 补插图体系 |
 | SP-03 Keynote | 无 | 新增 |
-| SP-04 Technical Blueprint | 近似 `blue-purple-ai` | 换成蓝图语言，去掉神经网络 |
+| SP-04 Technical Blueprint | 无（原拟对应 `blue-purple-ai`，该包已删除） | 换成蓝图语言，去掉神经网络 |
 | SP-05 Dark Tech | 近似 `blue-gold-tech` | 去霓虹 + 去渐变 |
 | SP-06 Editorial | 无 | 新增 |
 | SP-07 Bauhaus | 无 | 新增 |
-| SP-08 Government | 对应 `red-white-government` | 现代化 + 禁伪造印章 |
+| SP-08 Government | 无（原拟对应 `red-white-government`，该包已删除） | 现代化 + 禁伪造印章 |
 | SP-09 Academic | 对应 `minimal-academic` | 补图表与标注规范 |
-| SP-10 Roadshow | 对应 `vivid-roadshow` | 禁 clip-art 与假照片 |
+| SP-10 Roadshow | 无（原拟对应 `vivid-roadshow`，该包已删除） | 禁 clip-art 与假照片 |
 | SP-11 Riso | 无 | 新增 |
 | SP-12 Soft Clay | 无 | 新增 |
 
-**关键差异**：现有 7 个风格包**全部没有 `illustration_system`**，且 `forbidden` 里只写了"不要卡通""不要霓虹"这类模糊词，没有写死线宽、色数、是否渐变。这就是同一套风格包在不同页面出来的插图质量波动很大的原因。
+**关键差异**：现有 4 个风格包（2026-09-26 由 7 个精简而来，见 `lib/employee-deck-packs.mjs`）**全部没有 `illustration_system`**，且 `forbidden` 里只写了"不要卡通""不要霓虹"这类模糊词，没有写死线宽、色数、是否渐变。这就是同一套风格包在不同页面出来的插图质量波动很大的原因。真正补上这一层的是 `skills/deck-generation/illustration-system.md`。
+

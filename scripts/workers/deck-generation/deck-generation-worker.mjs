@@ -8,6 +8,12 @@ import { PrismaClient } from "@prisma/client";
 import { FormData } from "undici";
 import { buildEvidenceChunks, parseDeckSourceFile } from "./deck-source-parser.mjs";
 import {
+  DECK_DEFAULT_LAYOUT_PROMPT_LABEL,
+  DECK_DEFAULT_STYLE_PACK_LABEL,
+  DECK_LAYOUT_PACK_NAMES,
+  DECK_STYLE_PACK_NAMES
+} from "../../../lib/employee-deck-packs.mjs";
+import {
   aiImageConfig,
   aiTextConfig,
   createServiceFetch,
@@ -1190,28 +1196,14 @@ async function requestImageWithReferencesOnce(prompt, references, options = {}) 
   return { buffer: await imageBufferFromResult(attempt.result), transport };
 }
 
+// 风格包 id → 中文名。清单来自 lib/employee-deck-packs.mjs（全项目唯一真源），
+// 这里不再自带一份副本，否则界面上删掉的风格包会在提示词里复活。
 function stylePackName(id) {
-  return ({
-    "blue-gold-tech": "蓝金科技",
-    "white-green-tech": "白绿科技",
-    "black-gold-business": "黑金商务",
-    "blue-purple-ai": "蓝紫 AI",
-    "red-white-government": "红白政企",
-    "minimal-academic": "极简学术",
-    "vivid-roadshow": "活力路演"
-  })[id] || id || "蓝金科技";
+  return DECK_STYLE_PACK_NAMES[id] || id || DECK_DEFAULT_STYLE_PACK_LABEL;
 }
 
 function advancedLayoutName(id) {
-  return ({
-    "blue-gold-tech": "图文叙事版式",
-    "white-green-tech": "清晰技术说明版式",
-    "black-gold-business": "结论先行商务版式",
-    "blue-purple-ai": "系统关系图解版式",
-    "red-white-government": "庄重层级汇报版式",
-    "minimal-academic": "极简学术论证版式",
-    "vivid-roadshow": "活力路演叙事版式"
-  })[id] || "图文叙事版式";
+  return DECK_LAYOUT_PACK_NAMES[id] || DECK_DEFAULT_LAYOUT_PROMPT_LABEL;
 }
 
 function runStyleDirection(run) {

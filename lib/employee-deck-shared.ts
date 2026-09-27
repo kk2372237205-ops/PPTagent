@@ -9,7 +9,7 @@
  * 验证方式：`npm run verify`。
  */
 
-import { deckAdvancedLayoutPacks, deckStylePacks } from "@/lib/employee-deck-constants";
+import { deckAdvancedLayoutPacks, deckDefaultLayoutLabel, deckStylePacks } from "@/lib/employee-deck-constants";
 import type {
   DeckGenerationPagePlan,
   DeckGenerationRun,
@@ -71,7 +71,7 @@ export function formatDeckFileSize(bytes: number) {
 /** 面板上显示的"当前风格"说明：参考图配色模式显示版式语言，否则显示风格包名 */
 export function deckRunStyleLabel(run: Pick<DeckGenerationRun, "generationMode" | "paletteMode" | "stylePack">) {
   if (run.generationMode === "advanced" && run.paletteMode === "reference") {
-    const layout = deckAdvancedLayoutPacks.find(item => item.id === run.stylePack)?.label || "图文叙事版式";
+    const layout = deckAdvancedLayoutPacks.find(item => item.id === run.stylePack)?.label || deckDefaultLayoutLabel;
     return `参考图配色 · ${layout}`;
   }
   return deckStylePacks.find(item => item.id === run.stylePack)?.label || run.stylePack;

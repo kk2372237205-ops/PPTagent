@@ -326,8 +326,9 @@ node scripts/employee-visual-test.mjs
 - `main` 只保存已经完成验证、可以随时恢复和部署的稳定版本；禁止直接在 `main` 上开发新功能。
 - 每次开始一个新功能或独立修复，必须先从最新 `main` 创建一个 `codex/<功能名>` 分支，再开始修改。
 - 开发过程只提交并推送当前功能分支，不得提前把未验证代码推入 `main`。
-- 功能分支至少通过与改动风险相匹配的检查；**统一使用 `npm run verify`**（= `tsc --noEmit` + `eslint . --max-warnings 0` + `prisma validate` + `next build --webpack`）。涉及界面时还要完成对应视觉与交互验收。
+- 功能分支至少通过与改动风险相匹配的检查；**统一使用 `npm run verify`**（= `node scripts/check-style-packs.mjs` + `tsc --noEmit` + `eslint . --max-warnings 0` + `prisma validate` + `next build --webpack`）。涉及界面时还要完成对应视觉与交互验收。
 - `npm run verify:check` 只跑静态检查，改代码过程中随时可用；`npm run verify:build` 只跑生产构建，交付前必跑。
+- **风格包 id 只有一处真源：`lib/employee-deck-packs.mjs`**（2026-09-26 收敛，此前散在 8 处）。新增/删除风格包只改它 + `skills/deck-generation/style-packs.md`（参考图配色模式再加 `advanced-layout-profiles.md`）；`scripts/check-style-packs.mjs` 会逐 id 校验并阻止已删 id 复活，**不要在任何地方再抄一份 id 列表**。
 - **eslint 警告基线是 0**（2026-09-26 收紧，历史 11 条已清理）。`--max-warnings 0` 会拦住任何新增警告——这是刻意的，包括未使用的 import 和删代码留下的孤儿函数。
 - 功能确认稳定后再合并到 `main` 并推送；合并后保留功能分支作为开发记录，除非项目 owner 明确要求删除。
 - `.env`、API Key、`prisma/dev.db`、`uploads/`、`.codex-tmp/`、构建缓存和本地生成文件禁止提交或上传。

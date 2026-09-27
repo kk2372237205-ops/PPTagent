@@ -16,7 +16,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, FileText, Upload, WandSparkles, X } from "lucide-react";
 import { employeeApi } from "@/lib/employee-api";
 import type { Service } from "@/lib/employee-api-types";
-import { deckStylePacks } from "@/lib/employee-deck-constants";
+import { deckDefaultStylePackId, deckStylePacks } from "@/lib/employee-deck-constants";
 import { workPresentationMaxBytes, workPresentationMaxLabel } from "@/lib/upload-limits";
 import type { PolishPageNote, PptPolishRun } from "./polish-types";
 
@@ -41,7 +41,7 @@ export function PolishPptPlanner({ service, note, setNote, notify, initialRun, o
   onRunsLoaded?: (runs: PptPolishRun[]) => void;
 }) {
   const [sourceMode, setSourceMode] = useState<"current" | "upload">(initialRun?.sourceMode || (service.workDocument ? "current" : "upload"));
-  const [stylePack, setStylePack] = useState(initialRun?.stylePack || "blue-gold-tech");
+  const [stylePack, setStylePack] = useState(initialRun?.stylePack || deckDefaultStylePackId);
   const [selectedFileName, setSelectedFileName] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);

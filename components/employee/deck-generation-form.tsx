@@ -18,7 +18,7 @@ import type { CSSProperties, DragEvent } from "react";
 import { Check, FileText, ImagePlus, LoaderCircle, Sparkles, Upload, X } from "lucide-react";
 import { employeeApi } from "@/lib/employee-api";
 import type { DeckGenerationRun, Service } from "@/lib/employee-api-types";
-import { deckAdvancedLayoutPacks, deckStylePacks, defaultDeckUnityOptions } from "@/lib/employee-deck-constants";
+import { deckAdvancedLayoutPacks, deckDefaultStylePackId, deckStylePacks, defaultDeckUnityOptions } from "@/lib/employee-deck-constants";
 
 function formatDeckFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -35,7 +35,7 @@ export function DeckGenerationForm({ service, notify, onCreated }: {
   const [projectName, setProjectName] = useState(service.title);
   const [projectType, setProjectType] = useState("");
   const [pageCount, setPageCount] = useState(12);
-  const [stylePack, setStylePack] = useState("blue-gold-tech");
+  const [stylePack, setStylePack] = useState(deckDefaultStylePackId);
   const [brief, setBrief] = useState("");
   const [referenceText, setReferenceText] = useState("");
   const [outlineText, setOutlineText] = useState("");
