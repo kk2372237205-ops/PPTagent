@@ -29,7 +29,7 @@
     "components:gsam2:load-check": "node scripts/check-grounded-sam2.mjs --load",
     "visual:employee": "node scripts/employee-visual-test.mjs",
     "visual:themes": "node scripts/theme-visual-test.mjs",
-    "verify:check": "tsc --noEmit && eslint . --max-warnings 11 && prisma validate",
+    "verify:check": "tsc --noEmit && eslint . --max-warnings 0 && prisma validate",
     "verify:build": "next build --webpack",
     "verify": "npm run verify:check && npm run verify:build"
   },

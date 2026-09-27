@@ -325,9 +325,9 @@ node scripts/employee-visual-test.mjs
 - `main` 只保存已经完成验证、可以随时恢复和部署的稳定版本；禁止直接在 `main` 上开发新功能。
 - 每次开始一个新功能或独立修复，必须先从最新 `main` 创建一个 `codex/<功能名>` 分支，再开始修改。
 - 开发过程只提交并推送当前功能分支，不得提前把未验证代码推入 `main`。
-- 功能分支至少通过与改动风险相匹配的检查；**统一使用 `npm run verify`**（= `tsc --noEmit` + `eslint . --max-warnings 11` + `prisma validate` + `next build --webpack`）。涉及界面时还要完成对应视觉与交互验收。
+- 功能分支至少通过与改动风险相匹配的检查；**统一使用 `npm run verify`**（= `tsc --noEmit` + `eslint . --max-warnings 0` + `prisma validate` + `next build --webpack`）。涉及界面时还要完成对应视觉与交互验收。
 - `npm run verify:check` 只跑静态检查，改代码过程中随时可用；`npm run verify:build` 只跑生产构建，交付前必跑。
-- eslint 的 11 条历史警告（全部在 `scripts/design-agent-worker.mjs`）是基线；`--max-warnings 11` 会拦住任何新增警告。
+- **eslint 警告基线是 0**（2026-09-26 收紧，历史 11 条已清理）。`--max-warnings 0` 会拦住任何新增警告——这是刻意的，包括未使用的 import 和删代码留下的孤儿函数。
 - 功能确认稳定后再合并到 `main` 并推送；合并后保留功能分支作为开发记录，除非项目 owner 明确要求删除。
 - `.env`、API Key、`prisma/dev.db`、`uploads/`、`.codex-tmp/`、构建缓存和本地生成文件禁止提交或上传。
 - 项目 owner 不需要操作 Git 命令。以后只需说明要开发的功能，Codex 负责创建分支、验证、提交、推送，并在准备合并 `main` 时说明验证结果。
@@ -336,6 +336,7 @@ node scripts/employee-visual-test.mjs
 
 - 仓库已于 2026-09-14 初始化：基线提交 `8e2f313`，标签 `baseline`，183 个受控文件，仓库体积约 3.29 MB。
 - 基线状态：`npm run verify` 全绿（tsc 通过、eslint 0 error / 11 warning、prisma validate 通过、webpack 生产构建通过）。
+  > 2026-09-26：eslint 基线已收紧到 **0 warning**（清理了 `scripts/design-agent-worker.mjs` 里 31 个零引用声明）。上面这条是当天的历史记录。
 - 未纳入版本控制（按 `.gitignore`）：`.env`、`prisma/dev.db`、`uploads/`（约 6.4 GB 业务与创作文件）、`node_modules/`、`.next*`、`.npm-cache/`、`.artifacts/`、`tmp/`、`__pycache__/`。
 - **重要**：`uploads/` 不在 Git 里，因此没有版本回退保护；它包含客户资料、工作文稿和生成结果，必须单独做备份（外置硬盘或对象存储），不能依赖 Git 恢复。
 - 本机 PowerShell 执行策略禁止直接运行 `npm`/`npx`：如需手工执行，可用 `node node_modules/<工具>/bin/...` 直调，或临时 `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`。

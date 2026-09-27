@@ -160,7 +160,7 @@ git diff --stat main...HEAD   # 22 个文件，+4053 / -404
 1. **`npm run verify` 会改写 `next-env.d.ts`**（把 `.next-dev` 指向 `.next`）。每次跑完 `git restore next-env.d.ts`，否则工作区永远不干净。这是 Next 自动生成的，不是人的改动。
 2. **`deck-generation-worker.mjs` 是 CRLF/LF 混用**（约 3991 CRLF + 110 纯 LF）。直接编辑会把 110 行行尾一起改掉，产生纯空白 diff 噪音。**比对差异用 `git diff --ignore-cr-at-eol`**；插入单行时用字节级写入（latin1 往返）保留原行尾。
 3. **PowerShell 传多行 commit message 会失败**——含引号时 `git commit -m $msg` 会把后半段当成 pathspec。**写成文件用 `git commit -F 文件`**，用完删掉。
-4. **`--max-warnings 11` 会抓出"删代码留下的孤儿函数"**。本话题它抓到两次（`imageMimeType` 变成未使用）。删掉调用点后一定要重跑验证。
+4. **`--max-warnings 0` 会抓出"删代码留下的孤儿函数"**。本话题它抓到两次（`imageMimeType` 变成未使用）。删掉调用点后一定要重跑验证。
 5. **`Select-String -Path` 遇到 `[id]` 这种路径会当通配符**，静默找不到文件。用 read/glob 工具，别用 PowerShell 路径。
 
 ### 覆盖陷阱（最容易白干）
@@ -178,12 +178,15 @@ git diff --stat main...HEAD   # 22 个文件，+4053 / -404
 ## 常用验证
 
 ```powershell
-npm run verify          # tsc + eslint(--max-warnings 11) + prisma validate + next build
+npm run verify          # tsc + eslint(--max-warnings 0) + prisma validate + next build
 npm run verify:check    # 只跑静态检查，改代码过程中随时可用
 npm run verify:build    # 只跑生产构建，交付前必跑
 ```
 
-`--max-warnings 11` 是基线（11 条历史警告都在 `scripts/design-agent-worker.mjs`），**任何新增警告都会让这条命令失败**——包括未使用的 import。这是刻意的。
+**eslint 警告基线是 0**（2026-09-26 从 11 收紧）。**任何新增警告都会让这条命令失败**——包括未使用的 import，也包括"删了调用点留下的孤儿函数"。这是刻意的。同一天清掉了 `scripts/design-agent-worker.mjs` 里 31 个零引用声明（文件从 1695 行降到 1282 行）。
+
+> 注意：该文件里还留着 **5 处前任作者特意标注"为后续工作流保留"的旧代码**（`buildSmartExplodeRun`、`decomposeMaster`、`generateCleanBackground`、`smartCleanPrompt`、`legacyProcessRun`），各自带 `eslint-disable-next-line` 注释。
+> **它们是有意保留的，不是垃圾。** 要删必须单独确认。
 
 本机 PowerShell 默认禁止跑 `npm` 脚本，需要先：
 `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`

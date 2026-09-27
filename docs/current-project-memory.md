@@ -35,7 +35,8 @@ PPTagent/WZLCF 是一套 PPT 定制交付系统，包含两类界面：
 - `node_modules` 已恢复，Prisma Client 已生成。
 - Python `3.10.11`，当前可以导入 OpenCV `5.0.0`。
 - `prisma/dev.db` 和本地上传目录仍在，不能当作可随意清理的缓存。
-- `npm run verify:check` 通过（= `tsc --noEmit` + `eslint . --max-warnings 11` + `prisma validate`），`npm run verify:build` 通过（= `next build --webpack`，74 条接口路由 + `/employee`）。
+- `npm run verify:check` 通过（= `tsc --noEmit` + `eslint . --max-warnings 0` + `prisma validate`），`npm run verify:build` 通过（= `next build --webpack`，74 条接口路由 + `/employee`）。
+  > 2026-09-26 更新：eslint 基线从 11 条收紧到 **0 条**（历史 11 条全部来自 `scripts/design-agent-worker.mjs`，已清理 31 个零引用声明）。下面第 3 轮、第 5 轮记录里提到的 `--max-warnings 11` 是**当时**的基线，保留为历史记录。
 - 本机 PowerShell 执行策略禁止直接运行 `npm`/`npx` 脚本；需要时可改用 `node node_modules/<工具>/bin/...` 直调，或先执行 `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`。
 - Git 已初始化（2026-09-14）：基线提交 `8e2f313`，标签 `baseline`，提交 183 个文件，仓库体积约 3.29 MB。`.env`、`prisma/dev.db`、`uploads/`、构建缓存均未纳入版本控制。
 - 模块化改造第 2 轮（2026-09-14）已完成 P1 清死代码：提交 `968ccc5`。`components/employee-app.tsx` 从 3753 行降到 3539 行（净删除 217 行、改写 3 行）。删除内容为不可达的 `SmartStudio` 组件（182 行，`setWorkspaceMode("smart")` 在全仓没有任何调用点，且它没有任何 CSS 规则）、`DesignStudio` 内 `{false && mentorTool === "deck" && …}` 死分支（3408 字符）、该分支专用的 7 个 `deck*` state 与 `createDeckFromMentor()`，以及 `workspaceMode` 联合类型里的 `"smart"`。业务代码路径未改动。

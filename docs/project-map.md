@@ -505,12 +505,14 @@ npm run dev
 ### 9.2 改完任何东西：一条命令定生死
 
 ```powershell
-npm run verify        # tsc + eslint(--max-warnings 11) + prisma validate + next build
+npm run verify        # tsc + eslint(--max-warnings 0) + prisma validate + next build
 npm run verify:check  # 只跑前三项，秒级，改代码过程中随时跑
 npm run verify:build  # 只跑生产构建，交付前必跑
 ```
 
-**为什么要 `--max-warnings 11`**：这 11 条是历史基线（全在 `scripts\design-agent-worker.mjs`）。这个数字写死的意思是——**你可以不清理旧账，但不许添新账**。它会拦住未使用的 import 这类小问题，这正是它能防止代码腐坏的原因。
+**为什么是 `--max-warnings 0`**：2026-09-26 之前基线是 11 条（全在 `scripts\design-agent-worker.mjs`），那天把 31 个零引用声明清掉后收紧到 **0**。数字写死的意思是——**不许添新账**。它会拦住未使用的 import 和删代码留下的孤儿函数，这正是它能防止代码腐坏的原因。
+
+> ⚠️ `scripts\design-agent-worker.mjs` 里仍有 **5 处前任作者特意标注"为后续工作流保留"** 的旧代码，各带 `eslint-disable-next-line`。**它们是有意保留的，不是垃圾。**
 
 ### 9.3 版本控制：你的"后悔药"
 

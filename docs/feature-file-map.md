@@ -89,7 +89,7 @@
 | **提示词** | ⚠️ `scripts/design-agent-skills.mjs`（**写成 JS 字符串，不在 `skills/` 目录里**，与其它模式不一致） |
 | **外部技能文件** | ~~`抠图准备工作skill/`~~ 已于 2026-09-26 删除（只被死代码引用，运行时从不读取）。`scripts/design-agent-worker.mjs` 里还留着一个指向它的路径常量，属于死代码 |
 
-**注意**：`design-agent-worker.mjs` **同时服务本模式与生图**，并且含有大量死代码——`--max-warnings 11` 的 11 条历史警告全部来自这个文件。
+**注意**：`design-agent-worker.mjs` **同时服务本模式与生图**；2026-09-26 已清掉 **31 个零引用声明**（文件从 1695 行降到 1282 行），现在 eslint 警告为 **0**。文件里仍保留 ~~5~~ 处**前任作者特意标注"为后续工作流保留"**的旧代码（图片炸开 / 拆图重建那条路，如 `buildSmartExplodeRun`、`decomposeMaster`、`generateCleanBackground`、`smartCleanPrompt`、`legacyProcessRun`），它们各自带着 `eslint-disable-next-line` 注释，**不是遗漏，不要当成垃圾清掉**。
 
 ---
 
