@@ -11,7 +11,8 @@ import {
   DECK_DEFAULT_LAYOUT_PROMPT_LABEL,
   DECK_DEFAULT_STYLE_PACK_LABEL,
   DECK_LAYOUT_PACK_NAMES,
-  DECK_STYLE_PACK_NAMES
+  DECK_STYLE_PACK_NAMES,
+  DECK_STYLE_PACK_PALETTES
 } from "../../../lib/employee-deck-packs.mjs";
 import {
   aiImageConfig,
@@ -55,6 +56,10 @@ const protectedEvidenceMasksEnabled = false;
 // Wikimedia Commons.
 const advancedWebVisualReferencesEnabled = process.env.DECK_ADVANCED_WEB_VISUAL_REFERENCES !== "0";
 const advancedWebVisualReferenceTimeoutMs = Math.max(8_000, Number(process.env.DECK_ADVANCED_WEB_VISUAL_REFERENCE_TIMEOUT_MS || 25_000));
+// Public visual research must never hold a page indefinitely. When this total
+// page budget expires, Image2 still receives the deck style strip and the page
+// text contract, just without a public-image semantic reference.
+const advancedWebVisualReferencePageBudgetMs = 5 * 60_000;
 const maxAdvancedWebVisualReferences = 3;
 const advancedVisualTimeoutMs = Math.max(120000, Number(process.env.DECK_ADVANCED_VISUAL_TIMEOUT_MS || 180000));
 // The final advanced plan is the only GPT call that must consider every confirmed page together.
@@ -153,10 +158,28 @@ function readSkill(name) {
   return readFileSync(path.join(skillRoot, name), "utf8").trim();
 }
 
-function skillBundle(options = {}) {
+function escapeRegExp(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function selectedPackSkill(fileName, stylePack) {
+  const skill = readSkill(fileName);
+  const heading = new RegExp(`^##\\s+${escapeRegExp(stylePack)}\\s*[：:].*$`, "m");
+  const match = heading.exec(skill);
+  if (!match) return skill;
+  const firstPack = skill.search(/^##\s+[a-z0-9-]+\s*[：:]/m);
+  const nextPack = skill.slice(match.index + match[0].length).search(/^##\s+[a-z0-9-]+\s*[：:]/m);
+  const sectionEnd = nextPack < 0 ? skill.length : match.index + match[0].length + nextPack;
+  return [
+    skill.slice(0, firstPack < 0 ? 0 : firstPack).trim(),
+    skill.slice(match.index, sectionEnd).trim()
+  ].filter(Boolean).join("\n\n");
+}
+
+function skillBundle(run, options = {}) {
   return [
     readSkill("SKILL.md"),
-    ...(options.colorNeutral ? [readSkill("advanced-layout-profiles.md")] : [readSkill("style-packs.md")]),
+    selectedPackSkill(options.colorNeutral ? "advanced-layout-profiles.md" : "style-packs.md", run.stylePack),
     readSkill("visual-identity.md"),
     readSkill("visual-storyboard.md"),
     readSkill("slide-image-specs.md"),
@@ -1216,6 +1239,36 @@ function runStyleDirection(run) {
   return stylePackName(run.stylePack);
 }
 
+function builtInPaletteContract(run) {
+  const palette = DECK_STYLE_PACK_PALETTES[run.stylePack];
+  if (!palette) {
+    throw new Error(`内置配色风格包不存在固定色值：${run.stylePack || "未选择"}`);
+  }
+  return { ...palette };
+}
+
+function paletteContractForRun(run) {
+  return JSON.stringify(run.paletteMode === "reference"
+    ? safeJson(run.paletteContractJson, {})
+    : builtInPaletteContract(run));
+}
+
+function lockedVisualIdentity(run, value) {
+  const identity = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  if (run.paletteMode === "reference") return identity;
+  const { colors, color_system: colorSystem, color_usage: colorUsage, palette: ignoredPalette, ...neutralIdentity } = identity;
+  void colors;
+  void colorSystem;
+  void colorUsage;
+  void ignoredPalette;
+  return {
+    ...neutralIdentity,
+    style_name: `${stylePackName(run.stylePack)}（固定内置配色）`,
+    palette: builtInPaletteContract(run),
+    palette_rule: "Use only the fixed built-in palette. Do not infer colours from the project topic or introduce extra brand colours."
+  };
+}
+
 function normalizeArray(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -1370,7 +1423,7 @@ function normalizePlan(plan, run) {
   }
   return {
     outline: normalizeOutline(plan, run, slides),
-    visual_identity: plan.visual_identity || {},
+    visual_identity: lockedVisualIdentity(run, plan.visual_identity),
     visual_storyboard: normalizeStoryboard(plan, slides),
     slide_image_specs: { slides }
   };
@@ -1411,7 +1464,7 @@ function isSafeCommonsImageUrl(value) {
   }
 }
 
-function windowsWebReferenceFallback(url) {
+function windowsWebReferenceFallback(url, timeoutMs = advancedWebVisualReferenceTimeoutMs) {
   if (!windowsWebReferenceFallbackEnabled || !isSafeCommonsImageUrl(url)) return Promise.resolve(null);
   // On this Windows deployment, the system web stack can use the configured
   // enterprise route while Node/Undici may have no direct route to Commons.
@@ -1421,7 +1474,7 @@ function windowsWebReferenceFallback(url) {
     "$ErrorActionPreference = 'Stop'",
     "$uri = $env:WZLCF_WEB_REFERENCE_URL",
     "if ([string]::IsNullOrWhiteSpace($uri)) { throw 'missing visual reference URL' }",
-    "$response = Invoke-WebRequest -UseBasicParsing -Uri $uri -TimeoutSec 25 -Headers @{ 'User-Agent' = 'WZLCF-Presentation-Studio/1.0 visual-reference-research' }",
+    `$response = Invoke-WebRequest -UseBasicParsing -Uri $uri -TimeoutSec ${Math.max(1, Math.ceil(timeoutMs / 1000))} -Headers @{ 'User-Agent' = 'WZLCF-Presentation-Studio/1.0 visual-reference-research' }`,
     "$content = $response.Content",
     "if ($content -is [byte[]]) { $bytes = $content } else { $bytes = [System.Text.Encoding]::UTF8.GetBytes([string]$content) }",
     "[Console]::Out.Write(([string]$response.StatusCode) + '|' + [Convert]::ToBase64String($bytes))"
@@ -1430,7 +1483,7 @@ function windowsWebReferenceFallback(url) {
   return new Promise(resolve => {
     execFile("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded], {
       windowsHide: true,
-      timeout: advancedWebVisualReferenceTimeoutMs + 5_000,
+      timeout: Math.max(1_000, timeoutMs + 500),
       maxBuffer: 24 * 1024 * 1024,
       env: { ...process.env, WZLCF_WEB_REFERENCE_URL: url }
     }, (error, stdout) => {
@@ -1457,17 +1510,24 @@ function windowsWebReferenceFallback(url) {
   });
 }
 
-async function commonsVisualFetch(url, init = {}) {
+async function commonsVisualFetch(url, init = {}, timeoutMs = advancedWebVisualReferenceTimeoutMs) {
+  const startedAt = Date.now();
+  const requestTimeout = Math.max(1_000, timeoutMs);
   let directError = null;
   if (!commonsDirectRouteUnavailable) {
     try {
-      return await commonsVisualRequest(url, init, advancedWebVisualReferenceTimeoutMs);
+      return await commonsVisualRequest(url, init, requestTimeout);
     } catch (error) {
       directError = error;
       commonsDirectRouteUnavailable = true;
     }
   }
-  const fallback = await windowsWebReferenceFallback(url);
+  const remainingMs = Math.max(0, requestTimeout - (Date.now() - startedAt));
+  if (remainingMs < 1_000) {
+    if (directError) throw directError;
+    throw new Error("Wikimedia Commons visual reference request exceeded its page research budget.");
+  }
+  const fallback = await windowsWebReferenceFallback(url, remainingMs);
   if (fallback) return fallback;
   if (directError) throw directError;
   throw new Error("Wikimedia Commons 直连路由当前不可用，Windows 系统网络回退也没有返回内容。");
@@ -1527,7 +1587,7 @@ function runtimeWebVisualReferences(contract) {
   }).slice(0, maxAdvancedWebVisualReferences);
 }
 
-async function searchCommonsVisualCandidates(query) {
+async function searchCommonsVisualCandidates(query, timeoutMs) {
   const params = new URLSearchParams({
     action: "query",
     generator: "search",
@@ -1545,7 +1605,7 @@ async function searchCommonsVisualCandidates(query) {
   try {
     const response = await commonsVisualFetch(`https://commons.wikimedia.org/w/api.php?${params.toString()}`, {
       headers: { Accept: "application/json", "User-Agent": "WZLCF-Presentation-Studio/1.0 visual-reference-research" }
-    });
+    }, timeoutMs);
     if (!response.ok) return [];
     const result = safeJson(await response.text(), {});
     const pages = Array.isArray(result?.query?.pages)
@@ -1578,11 +1638,11 @@ async function searchCommonsVisualCandidates(query) {
   }
 }
 
-async function downloadCommonsVisualReference(candidate) {
+async function downloadCommonsVisualReference(candidate, timeoutMs) {
   try {
     const response = await commonsVisualFetch(candidate.sourceUrl, {
       headers: { Accept: "image/avif,image/webp,image/apng,image/png,image/jpeg;q=0.9,*/*;q=0.6", "User-Agent": "WZLCF-Presentation-Studio/1.0 visual-reference-research" }
-    });
+    }, timeoutMs);
     if (!response.ok) return null;
     const declaredLength = Number(response.headers.get("content-length") || 0);
     if (declaredLength > 12 * 1024 * 1024) return null;
@@ -1617,15 +1677,21 @@ async function ensureWebVisualReferences(run, slide, contract) {
 
   const saved = [];
   const usedUrls = new Set();
+  const deadline = Date.now() + advancedWebVisualReferencePageBudgetMs;
+  const remainingMs = () => Math.min(advancedWebVisualReferenceTimeoutMs, deadline - Date.now());
   for (const search of plan.queries) {
-    if (saved.length >= maxAdvancedWebVisualReferences) break;
+    if (saved.length >= maxAdvancedWebVisualReferences || remainingMs() < 1_000) break;
     let candidate = null;
     let download = null;
     for (const term of commonsSearchTerms(search)) {
-      const candidates = await searchCommonsVisualCandidates(term);
+      const searchTimeoutMs = remainingMs();
+      if (searchTimeoutMs < 1_000) break;
+      const candidates = await searchCommonsVisualCandidates(term, searchTimeoutMs);
       for (const item of candidates) {
+        const downloadTimeoutMs = remainingMs();
+        if (downloadTimeoutMs < 1_000) break;
         if (usedUrls.has(item.sourceUrl)) continue;
-        const fetched = await downloadCommonsVisualReference(item);
+        const fetched = await downloadCommonsVisualReference(item, downloadTimeoutMs);
         usedUrls.add(item.sourceUrl);
         if (!fetched) continue;
         candidate = item;
@@ -1649,6 +1715,9 @@ async function ensureWebVisualReferences(run, slide, contract) {
       width: download.width,
       height: download.height
     });
+  }
+  if (remainingMs() < 1_000 && saved.length < maxAdvancedWebVisualReferences) {
+    console.warn(`[deck-generation] slide ${slide.slideIndex} public visual research reached the 5-minute limit; rendering with ${saved.length ? "the references already found" : "only the style strip and text contract"}.`);
   }
   if (!saved.length) return existing;
   const updatedContract = {
@@ -2903,7 +2972,7 @@ async function planAdvancedRun(run, expectedUpdatedAt = null) {
     orderBy: { pageIndex: "asc" }
   });
   const pagePayload = pages.map(pagePlanPayload);
-  const prompt = `${skillBundle({ colorNeutral: run.paletteMode === "reference" })}
+  const prompt = `${skillBundle(run, { colorNeutral: run.paletteMode === "reference" })}
 
 --- 高级版单页导演 ---
 
@@ -2915,7 +2984,7 @@ ${advancedDirectorSkillBundle()}
 用途：${run.projectType || "未填写"}
 版式语言：${runStyleDirection(run)}
 用户整套高优先级要求：${run.referenceText || "无"}
-主题配色合同：${run.paletteContractJson}
+主题配色合同：${paletteContractForRun(run)}
 统一元素选项：${run.unityOptionsJson}
 逐页内容包：${JSON.stringify(pagePayload)}
 
@@ -3059,7 +3128,7 @@ async function matchAdvancedRun(run) {
 }
 
 function planPrompt(run, sourceContext = "") {
-  return `${skillBundle({ colorNeutral: run.paletteMode === "reference" })}
+  return `${skillBundle(run, { colorNeutral: run.paletteMode === "reference" })}
 
 你是 WZLCF 的 PPT 图组导演。请根据下面输入，先生成方案，不要生成图片。
 
@@ -3077,7 +3146,7 @@ ${run.referenceText || "无"}
 ${sourceContext || "无上传资料"}
 
 主题配色合同：
-${run.paletteContractJson || "{}"}
+${paletteContractForRun(run)}
 
 
 请返回 JSON object，结构必须是：
@@ -3100,6 +3169,7 @@ ${run.paletteContractJson || "{}"}
 - 不能编造资料中没有的数字、日期、人物、荣誉和结论。资料不足时宁可减少事实，也不能猜测。
 - 每页内容必须服务于明确结论，避免只有大标题、几个空泛卡片和大量无意义留白。
 - 使用配色参考图时只吸收色彩职责和气质，不照抄参考图的版式和内容。
+- 内置配色时，主题配色合同是固定色值的硬约束，不得根据项目主题、行业联想或“科技感”自行改成别的颜色。
 - 必须体现组图连续性和风格统一。`;
 }
 
@@ -3384,6 +3454,7 @@ async function processPptRun(run) {
 
 function buildStyleFingerprint(run, plan) {
   const identity = plan.visual_identity && typeof plan.visual_identity === "object" ? plan.visual_identity : {};
+  const paletteContract = run.paletteMode === "reference" ? safeJson(run.paletteContractJson, {}) : builtInPaletteContract(run);
   return {
     version: "wzlcf-style-contract-v1",
     project: run.projectName,
@@ -3394,7 +3465,7 @@ function buildStyleFingerprint(run, plan) {
       palette_source: run.paletteMode === "reference" ? "uploaded-reference-image" : "built-in-style-pack"
     },
     style_pack: runStyleDirection(run),
-    palette_contract: safeJson(run.paletteContractJson, {}),
+    palette_contract: paletteContract,
     unity_options: safeJson(run.unityOptionsJson, {}),
     palette: identity.palette || identity.colors || {},
     typography: identity.typography || identity.type_system || {},
@@ -3406,9 +3477,9 @@ function buildStyleFingerprint(run, plan) {
     spacing_and_grid: identity.spacing || identity.grid || {},
     locked_system: {
       rule: "所有页面必须共享同一配色职责、字体层级、页眉页脚位置、安全边距、网格、图片处理和几何语言；单页导演不得覆盖这些字段。",
-      ...(run.paletteMode === "reference" ? {
-        palette_enforcement: "只允许 palette_contract 中列出的颜色承担页面背景、文字、线条、几何和强调职责。不得从版式包、内容证据或模型偏好新增金、黄、橙、红、绿、紫等未列颜色。"
-      } : {}),
+      palette_enforcement: run.paletteMode === "reference"
+        ? "只允许 palette_contract 中列出的颜色承担页面背景、文字、线条、几何和强调职责。不得从版式包、内容证据或模型偏好新增金、黄、橙、红、绿、紫等未列颜色。"
+        : "内置配色的固定色值是硬约束。不得从项目主题、行业联想、写实插图或模型偏好新增未列颜色。",
       generic_icon_default: "zero for serious reports and competitions",
       equal_weight_card_grid_default: "forbidden unless page semantics require peer-level modules"
     },
@@ -3576,11 +3647,13 @@ function pageRenderContract(run, slide, planSlide, pagePlan, fingerprint, allSli
       unprotected_area: "完整页面由 Image2 根据文字任务书构图。真实机构名称、Logo、校名招牌、产品型号、证书、合同、报告截图和新闻页面不得由模型虚构。",
       previous_slide: "只有用户点击更贴近上一页时才额外输入上一页成图，只对齐视觉语言。"
     },
-    palette_lock: run.paletteMode === "reference" ? {
-      mode: "exact-reference-palette",
+    palette_lock: {
+      mode: run.paletteMode === "reference" ? "exact-reference-palette" : "exact-built-in-palette",
       allowed_presentation_colors: allowedPalette,
-      rule: "页面背景、文字、线条、几何和强调色只能使用 allowed_presentation_colors；证据照片保留自身颜色，但不得从证据中抽取新颜色用于页面系统。禁止任何未列金色、黄色、橙色、红色、绿色或紫色强调。"
-    } : { mode: "built-in-style-pack" },
+      rule: run.paletteMode === "reference"
+        ? "页面背景、文字、线条、几何和强调色只能使用 allowed_presentation_colors；证据照片保留自身颜色，但不得从证据中抽取新颜色用于页面系统。禁止任何未列金色、黄色、橙色、红色、绿色或紫色强调。"
+        : "页面背景、文字、线条、几何和强调色只能使用 allowed_presentation_colors；不得根据项目主题、行业联想或模型偏好新增颜色。"
+    },
     render_rules: [
       "只生成一张完整 16:9 PPT 页面图片。",
       "标题和重要内容距离四边至少 6%，不得裁切。",
@@ -3601,7 +3674,9 @@ function pageRenderContract(run, slide, planSlide, pagePlan, fingerprint, allSli
         ? "本页是整份 PPT 的结尾：必须封面级强视觉、重情绪、少文字。除 immutable_content 中明确逐字锁定的内容外，只呈现一句收束性结论和最多一条短支撑语；禁止把路线、指标、证据、行动清单或正文段落堆入结尾页。"
         : "封面少文字、强视觉；正文页必须有清楚的信息层级。",
       `正文可见文字服从预算：最多约 ${visibleTextBudget.max_body_characters} 个中文字符、${visibleTextBudget.max_supporting_blocks} 个辅助内容区；先压缩 polish/direction 内容，不得缩成难读小字。`,
-      ...(run.paletteMode === "reference" ? [`参考图色板为硬约束：页面系统只允许 ${allowedPalette.join(", ")}。未列颜色不得用于标题、数字、线条、卡片或装饰，尤其不得自行添加金色、黄色、橙色或紫色。`] : []),
+      run.paletteMode === "reference"
+        ? `参考图色板为硬约束：页面系统只允许 ${allowedPalette.join(", ")}。未列颜色不得用于标题、数字、线条、卡片或装饰，尤其不得自行添加金色、黄色、橙色或紫色。`
+        : `内置色板为硬约束：页面系统只允许 ${allowedPalette.join(", ")}。不得根据主题自行添加其它颜色。`,
       `页码只能是统一页脚或角落的小号辅助信息，若出现必须准确写成 ${slide.slideIndex}/${allSlides.length}，不能成为标题旁的大号装饰。`,
       "只能渲染 immutable_content 和 editable_content 中提供的受众可见内容；不得把 JSON 字段名、证据文件名、来源位置、页面角色、内部说明或“资料中的明确证据/现场照片/待匹配资料”等制作备注画到页面上。",
       "除非 exact_visible_text 明确要求，不得自行添加 1)、2)、5)、6) 等步骤编号、页面内序号或重复标题；页码只能使用规定的小号 n/N 格式。"
@@ -3708,8 +3783,51 @@ async function openAiVisionBufferJson(raw, instruction, options = {}) {
   return openAiVisionBuffersJson([raw], instruction, options);
 }
 
+const maxQuickImagePromptBytes = 30_000;
+
+function compactQuickSlideSpec(value) {
+  const spec = value && typeof value === "object" ? value : {};
+  return {
+    title: compactPromptText(spec.title, 300),
+    role: compactPromptText(spec.role, 80),
+    content_summary: compactPromptText(spec.content_summary, 1800),
+    composition: compactPromptText(spec.composition, 1200),
+    main_visual: compactPromptText(spec.main_visual, 900),
+    text_density: compactPromptText(spec.text_density, 80),
+    white_space: compactPromptText(spec.white_space, 300),
+    must_include: compactPromptTextList(spec.must_include, { maxItems: 10, maxItemBytes: 300 }),
+    must_avoid: compactPromptTextList(spec.must_avoid, { maxItems: 8, maxItemBytes: 220 })
+  };
+}
+
+function compactQuickContinuity(value) {
+  const slide = value && typeof value === "object" ? value : {};
+  return {
+    slide_index: slide.slide_index,
+    title: compactPromptText(slide.title, 180),
+    role: compactPromptText(slide.role, 80),
+    composition: compactPromptText(slide.composition, 360),
+    main_visual: compactPromptText(slide.main_visual, 320)
+  };
+}
+
+function compactQuickVisualIdentity(run, value) {
+  const identity = lockedVisualIdentity(run, value);
+  return {
+    style_name: compactPromptText(identity.style_name, 180),
+    palette: { allowed_presentation_colors: run.paletteMode === "reference" ? requireReferencePalette(run, identity) : collectHexColors(builtInPaletteContract(run)) },
+    palette_rule: compactPromptText(identity.palette_rule, 280),
+    typography: compactPromptText(JSON.stringify(identity.typography || identity.type_system || {}), 500),
+    background: compactPromptText(JSON.stringify(identity.background || identity.background_system || {}), 500),
+    header_footer: compactPromptText(JSON.stringify(identity.header_footer || identity.headerFooter || {}), 360),
+    cards_and_shapes: compactPromptText(JSON.stringify(identity.card_system || identity.cards || identity.geometry || {}), 500),
+    motifs: compactPromptTextList(identity.motifs || identity.decorative_elements, { maxItems: 6, maxItemBytes: 140 }),
+    image_language: compactPromptText(JSON.stringify(identity.image_language || identity.imagery || {}), 500)
+  };
+}
+
 function slidePrompt(run, slide, instruction = "") {
-  const identity = safeJson(run.visualIdentityJson, {});
+  const identity = lockedVisualIdentity(run, safeJson(run.visualIdentityJson, {}));
   const storyboard = safeJson(run.visualStoryboardJson, {});
   const allSpecs = safeJson(run.slideImageSpecsJson, {});
   const spec = safeJson(slide.specJson, {});
@@ -3718,43 +3836,41 @@ function slidePrompt(run, slide, instruction = "") {
   // 参考图配色：配色是本地从参考图里算出来的色值，只以文字形式随提示词发给模型，
   // 参考图原文件不作为 Image2 的页面输入（两条链路一致）。
   // 抽取逻辑与高级版 pageRenderContract 的 palette_lock.allowed_presentation_colors 保持一致。
-  const allowedPalette = requireReferencePalette(run, identity);
-  const finalSlideRule = run.generationMode === "advanced" && slide.role === "ending"
-    ? "- This is the advanced-mode final slide: make it a cover-level, emotionally conclusive close. Keep it sparse: one memorable closing statement and at most one short support line unless the slide explicitly locks exact text. Use one dominant symbolic thematic visual with generous whitespace. Never turn it into a roadmap, metric, evidence, card, chart, process, or body-content page."
-    : "- If this is the final slide or Role is ending, it must be a minimal emotional closing page like a cover: sparse content, strong closure, strong memory point, one headline-level takeaway, optional short subtitle, and no dense cards, charts, feature lists, process diagrams, or new arguments.";
-  return `Create one complete, premium 16:9 PPT slide image.
+  const allowedPalette = run.paletteMode === "reference"
+    ? requireReferencePalette(run, identity)
+    : collectHexColors(builtInPaletteContract(run));
+  const paletteSource = run.paletteMode === "reference" ? "extracted from the user's reference image" : "the selected built-in style pack";
+  const prompt = `Create one complete, premium 16:9 PPT slide image.
 
 Project: ${run.projectName}
 Use case: ${run.projectType || "presentation"}
 Style pack: ${stylePackName(run.stylePack)}
 Slide ${slide.slideIndex}/${run.pageCount}: ${slide.title}
 Role: ${slide.role}
-${allowedPalette.length ? `
-Palette lock is exact. The theme palette was extracted from the user's reference image, and these are the only colors allowed on this page:
+Palette lock is exact. The theme palette is ${paletteSource}, and these are the only colors allowed on this page:
 ${allowedPalette.join(", ")}
 Use them for backgrounds, surfaces, text, lines, geometry and accents. Never introduce a color outside
 this list — especially no gold, yellow, orange, red, green or purple accent that is not listed.
-` : ""}
 Visual identity for the whole deck:
-${JSON.stringify(identity)}
+${JSON.stringify(compactQuickVisualIdentity(run, identity))}
 
 Storyboard for continuity:
-${JSON.stringify(storyboard)}
+${JSON.stringify({ rhythm: compactPromptText(storyboard.rhythm, 220), current_slide: compactQuickContinuity(storyboard.slides?.[slide.slideIndex - 1]) })}
 
 Current slide spec:
-${JSON.stringify(spec)}
+${JSON.stringify(compactQuickSlideSpec(spec))}
 
 Previous slide summary:
-${previous ? JSON.stringify(previous) : "start"}
+${previous ? JSON.stringify(compactQuickContinuity(previous)) : "start"}
 
 Next slide summary:
-${next ? JSON.stringify(next) : "end"}
+${next ? JSON.stringify(compactQuickContinuity(next)) : "end"}
 
 Regeneration instruction:
-${instruction || slide.lastInstruction || "none"}
+${compactPromptText(instruction || slide.lastInstruction || "none", 700)}
 
-Illustration rules (authoritative):
-${readSkill("illustration-system.md") || "(插图规则文件缺失：请至少保证每页有一个占画面 35% 以上、且在缩略图下可辨认的具体画面主体。)"}
+Quick illustration rules (authoritative):
+${readSkill("quick-slide-rendering.md")}
 
 Hard requirements:
 - Output a full 16:9 PPT page, not a poster, not an isolated illustration.
@@ -3768,10 +3884,14 @@ Hard requirements:
 - If a page number is needed, make it a tiny consistent footer or corner detail only, never the main title element.
 - Keep every important title, chart, icon, and bottom banner inside a safe area at least 6% away from all edges. Nothing important may touch or be cut off by the canvas edge.
 - If the regeneration instruction says closer to the previous slide, only align header/footer, palette, background texture, card chrome, and decorative rhythm; never copy the previous slide's content, main visual, chart data, or full layout.
-${finalSlideRule}
+- If this is the final slide or Role is ending, it must be a minimal emotional closing page like a cover: sparse content, strong closure, strong memory point, one headline-level takeaway, optional short subtitle, and no dense cards, charts, feature lists, process diagrams, or new arguments.
 - Avoid gibberish blocks, watermarks, model signatures, random logos, copyrighted marks, and unrelated characters.
 - Prefer concise designed text over long paragraphs. If space is tight, cut text — never shrink the illustration to make room for more text.
 - No browser UI, no chat UI, no screenshot frame unless the slide spec explicitly asks for it.`;
+  if (Buffer.byteLength(prompt, "utf8") > maxQuickImagePromptBytes) {
+    throw new Error("快速版页面制作说明超过 Image2 安全字节预算；请缩短本页可见文字后重新生成。本次未调用 Image2。");
+  }
+  return prompt;
 }
 
 async function generateSlide(run, slide, instruction = "") {
