@@ -4255,9 +4255,9 @@ function advancedSlidePrompt(run, slide, contract, instruction, references = [],
   const evidenceWallRule = String(contract?.director_contract?.page_archetype || "").toLowerCase() === "evidence-wall"
     ? "- This is an evidence wall. The complete evidence-wall body zone is already locked and final. Render only a clean title/subtitle above it and at most one concise conclusion/footer below it. Do not create cards, labels, icons, connectors, text, or decoration behind, between, beside, or over the locked evidence body."
     : "";
-  const paletteRule = run.generationMode === "advanced" && run.paletteMode === "reference"
+  const paletteRule = run.paletteMode === "reference"
     ? "- Palette lock is exact. Use only palette_lock.allowed_presentation_colors for presentation backgrounds, text, lines, geometry, and accents. Evidence photos may retain their own colors, but never borrow gold, yellow, orange, red, green, purple, or any other unlisted color for slide chrome or emphasis."
-    : "- Follow the global style fingerprint palette.";
+    : "- Palette lock is exact. Use only palette_lock.allowed_presentation_colors for presentation backgrounds, text, lines, geometry, and accents. Do not derive colours from the project subject, industry, style name, public-web visual references, or model preference. Any unlisted blue, gold, yellow, orange, red, green, or purple slide chrome is a failure.";
   const roleRule = slide.role === "ending"
     ? "- This is the final slide: make it a cover-level, emotionally conclusive close. Keep it sparse: one memorable closing statement and at most one short support line unless immutable exact text requires more. Use one dominant symbolic thematic visual with generous whitespace. Never turn it into a roadmap, metric, evidence, card, chart, process, or body-content page."
     : slide.role === "cover"
