@@ -37,7 +37,19 @@ const deckSourceRoot = path.join(workspaceRoot, "deck-generation", "sources");
 const deckThemeRoot = path.join(workspaceRoot, "deck-generation", "themes");
 const deckEvidenceRoot = path.join(workspaceRoot, "deck-generation", "evidence");
 const skillRoot = path.join(root, "skills", "deck-generation");
-const pollMs = Math.max(1200, Number(process.env.DECK_GENERATION_POLL_MS || 2500));
+// 轮询间隔：一轮只做"派发"，很便宜，所以默认收紧到 1.2 秒，
+// 让状态切换（解析完成 → 出方案 → 可确认 → 开始出图）少等一会。
+const pollMs = Math.max(600, Number(process.env.DECK_GENERATION_POLL_MS || 1200));
+// 任务级并发（默认关闭，保持既有串行行为不变）。
+// 打开后：一个任务在画图时，另一个任务照样能解析资料、出方案，不再排队等别人画完。
+// 实测串行时的浪费：确认后 336 秒才开始画第一页（前一个任务还在画），上传解析也等过 215 秒。
+const parallelRunsEnabled = process.env.DECK_PARALLEL_RUNS === "1";
+// 同时推进的任务数上限（只有打开任务级并发时才生效）。
+const parallelRunLimit = Math.max(1, Math.min(8, Number(process.env.DECK_PARALLEL_RUN_LIMIT || 3)));
+// 全局图片闸门：所有任务加起来，同时进行的 Image2 调用不超过这个数。
+// 串行时不需要它（一个任务的并发上限就是全局上限）；并行时必须要有，
+// 否则 3 个任务同时出图就是 9 张图一起打中转站，会撞容量错误。
+const globalImageConcurrency = Math.max(1, Math.min(12, Number(process.env.DECK_GLOBAL_IMAGE_CONCURRENCY || 5)));
 const deckGenerationConcurrency = Math.min(4, Math.max(1, Number(process.env.DECK_GENERATION_CONCURRENCY || 2)));
 // Image2 requests are expensive and the relay queues aggressively when too many
 // page renders arrive together. Three is the stable default; deployments that
@@ -80,12 +92,29 @@ const textRequest = createServiceFetch(textService);
 const advancedTextRequest = createServiceFetch(advancedTextService);
 const imageRequest = createServiceFetch(imageService);
 const externalRequest = createServiceFetch({ serviceName: "Codia", proxyUrl: process.env.CODIA_PROXY_URL || "" });
-const commonsVisualRequest = createServiceFetch({
-  serviceName: "Wikimedia Commons visual reference",
-  proxyUrl: process.env.DECK_ADVANCED_WEB_VISUAL_REFERENCE_PROXY_URL || ""
-});
-const windowsWebReferenceFallbackEnabled = process.platform === "win32" && process.env.DECK_ADVANCED_WEB_VISUAL_REFERENCE_WINDOWS_FALLBACK !== "0";
-let commonsDirectRouteUnavailable = false;
+// Image2 的全局闸门。
+//
+// 为什么需要：processAdvancedGeneratingRun 里的并发上限是「每个任务」3 张；
+// 串行调度时全局最多也就是 3 张，没问题；一旦允许多个任务同时出图，
+// 就会变成 6 张、9 张一起打到中转站，触发容量错误（No available compatible accounts）。
+// 所以这里限制的是「全局同时进行的 Image2 调用数」，所有任务共用一个信号量。
+function createImageSemaphore(limit) {
+  let active = 0;
+  const waiters = [];
+  return async function withImageSlot(task) {
+    if (active >= limit) await new Promise(resolve => waiters.push(resolve));
+    active += 1;
+    try {
+      return await task();
+    } finally {
+      active -= 1;
+      const next = waiters.shift();
+      if (next) next();
+    }
+  };
+}
+// 串行模式下不设闸门（保持既有行为一字不差）；并行模式下按全局上限收敛。
+const imageSlot = parallelRunsEnabled ? createImageSemaphore(globalImageConcurrency) : async task => task();
 const codiaBaseUrl = trimSlash(process.env.CODIA_BASE_URL || "https://openapi.codia.ai");
 
 function loadEnv() {
@@ -290,7 +319,8 @@ async function openAiImage(prompt, timeoutMs = 300000) {
   // 于是中转站一旦出现连接级抖动（例如 HTTP/2 拒绝流 NGHTTP2_REFUSED_STREAM、
   // socket 重置、502/503）就直接把整页判失败，只能由用户手动点"重新生成本页"。
   // transientAiFailure 已排除超时，所以不会因为等太久而重复计费。
-  return withTransientRetry(() => requestImageOnce(prompt, timeoutMs), [1200, 3000, 6000]);
+  // 每次尝试单独占一个全局名额：重试不应该长期占着名额不干活。
+  return withTransientRetry(() => imageSlot(() => requestImageOnce(prompt, timeoutMs)), [1200, 3000, 6000]);
 }
 
 async function requestImageOnce(prompt, timeoutMs = 300000) {
@@ -1172,7 +1202,7 @@ async function restoreProtectedEvidence(output, input, regions, postprocess = nu
 
 async function openAiImageWithReferences(prompt, references, options = {}) {
   // 与 openAiImage 同样加瞬态重试：参考图链路（/images/edits）在并发下更容易被中转站拒绝流。
-  return withTransientRetry(() => requestImageWithReferencesOnce(prompt, references, options), [1200, 3000, 6000]);
+  return withTransientRetry(() => imageSlot(() => requestImageWithReferencesOnce(prompt, references, options)), [1200, 3000, 6000]);
 }
 
 async function requestImageWithReferencesOnce(prompt, references, options = {}) {
@@ -4623,7 +4653,102 @@ async function processAdvancedGeneratingRun(run) {
     }
   });
 }
+/**
+ * 并行调度器（DECK_PARALLEL_RUNS=1 时才用）。
+ *
+ * 串行版 tick() 的每个分支处理完就 return，而且要把整波出图 await 完才轮到下一个任务；
+ * 于是「别的任务在画图」会阻塞「这个任务解析资料 / 出方案 / 开始画图」。
+ * 这里改成：每一类任务各自认领、立刻返回，真正的工作在后台跑。
+ * inFlight 保证同一个任务不会被重复认领；同一页重复计费由 claimImageCall 的事务认领兜底。
+ */
+const inFlight = new Map();
+
+function launchTask(key, task, onError) {
+  if (inFlight.has(key)) return;
+  const promise = task()
+    .catch(error => onError(error))
+    .finally(() => { inFlight.delete(key); });
+  inFlight.set(key, promise);
+}
+
+async function markRunFailed(run, error) {
+  await db.deckGenerationRun.update({
+    where: { id: run.id },
+    data: { status: "failed", error: error instanceof Error ? error.message : String(error) }
+  }).catch(() => {});
+}
+
+async function tickParallel() {
+  await ensureDirs();
+
+  const sourceRun = await db.deckGenerationRun.findFirst({
+    where: { status: "sources_queued" },
+    orderBy: { createdAt: "asc" }
+  });
+  if (sourceRun) launchTask(`sources:${sourceRun.id}`, () => processSourcesRun(sourceRun), error => markRunFailed(sourceRun, error));
+
+  const matching = await db.deckGenerationRun.findFirst({
+    where: { status: "matching_queued" },
+    orderBy: { createdAt: "asc" }
+  });
+  if (matching) launchTask(`matching:${matching.id}`, () => matchAdvancedRun(matching), error => markRunFailed(matching, error));
+
+  const planning = await db.deckGenerationRun.findFirst({
+    where: { status: "queued" },
+    orderBy: { createdAt: "asc" }
+  });
+  if (planning) launchTask(`planning:${planning.id}`, () => planRun(planning), error => markRunFailed(planning, error));
+
+  // 出图：允许多个任务同时推进，全局张数由 imageSlot 闸门控制。
+  const generating = await db.deckGenerationRun.findMany({
+    where: { status: "generating" },
+    orderBy: { confirmedAt: "asc" },
+    take: parallelRunLimit
+  });
+  for (const run of generating) {
+    launchTask(
+      `generating:${run.id}`,
+      () => (run.generationMode === "advanced" ? processAdvancedGeneratingRun(run) : processGeneratingRun(run)),
+      error => markRunFailed(run, error)
+    );
+  }
+
+  // PDF 与 PPT 转换保持一次一个：它们要跑 Codia 与本地文件组装，
+  // 并发收益小、互相争抢临时文件的风险大。
+  const pdf = await db.deckGenerationRun.findFirst({
+    where: { status: "pdf_queued" },
+    orderBy: { finishedAt: "asc" }
+  });
+  if (pdf) {
+    launchTask(`pdf:${pdf.id}`, () => completePdf(pdf), async error => {
+      await db.deckGenerationRun.update({
+        where: { id: pdf.id },
+        data: { status: "review_ready", error: error instanceof Error ? error.message : String(error) }
+      }).catch(() => {});
+    });
+  }
+
+  const ppt = await db.deckGenerationRun.findFirst({
+    where: { status: { in: ["ppt_queued", "ppt_processing"] } },
+    orderBy: { finishedAt: "asc" }
+  });
+  if (ppt) {
+    launchTask(`ppt:${ppt.id}`, () => processPptRun(ppt), async error => {
+      const rawError = error instanceof Error ? error.message : String(error);
+      const quotaFailure = /insufficient|balance|quota|credit|payment|http 402|http 403|余额|额度/i.test(rawError);
+      const networkFailure = /fetch failed|enotfound|econn|etimedout|socket|tls|certificate|network/i.test(rawError);
+      const userMessage = quotaFailure
+        ? "Codia 账户额度不足，或当前 API Key/套餐无权执行 PDF 转 PPT。充值或修复权限后，可直接点击「重试生成 PPT」；预览图和 PDF 不会丢失。"
+        : networkFailure
+          ? `Codia 网络连接失败：本次没有收到 402/403 响应，因此不能判断为额度问题。请检查 CODIA_BASE_URL、CODIA_PROXY_URL 或网络后点击「重试生成 PPT」。预览图和 PDF 已保留。原始错误：${rawError}`
+          : rawError;
+      await db.deckGenerationRun.update({ where: { id: ppt.id }, data: { status: "failed", error: userMessage } }).catch(() => {});
+    });
+  }
+}
+
 async function tick() {
+
   await ensureDirs();
   const sourceRun = await db.deckGenerationRun.findFirst({
     where: { status: "sources_queued" },
@@ -4749,7 +4874,7 @@ if (!skipTick) {
   console.log(runOnce ? "Deck generation worker started in one-shot mode." : "Deck generation worker started.");
   while (true) {
     try {
-      await tick();
+      await (parallelRunsEnabled ? tickParallel() : tick());
     } catch (error) {
       console.error("Deck generation worker tick failed:", error);
     }
