@@ -772,7 +772,7 @@ async function tickParallel() {
   const runs = (await listRuns()).filter(item => activeStatuses.has(item.status) && canProcessRun(item));
   const selected = runs.slice(0, parallelRunLimit);
   if (!selected.length) {
-    await writeWorkerHeartbeat("idle");
+    await writeWorkerHeartbeat(parallelRunsEnabled ? "parallel-idle" : "idle");
     return;
   }
   for (const run of selected) launchRun(run);
@@ -799,6 +799,11 @@ function canProcessRun(run) {
 }
 
 console.log(`PPT polish worker polling ${polishRunRoot}`);
+console.log(
+  parallelRunsEnabled
+    ? `PPT polish parallel mode ON: 最多同时推进 ${parallelRunLimit} 个任务，全局最多 ${globalImageConcurrency} 张图同时生成。`
+    : "PPT polish parallel mode OFF: 一次只处理一个任务（设 PPT_POLISH_PARALLEL_RUNS=1 打开）。"
+);
 await writeWorkerHeartbeat("started");
 startWorkerHeartbeat();
 for (;;) {

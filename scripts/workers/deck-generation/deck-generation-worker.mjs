@@ -4896,6 +4896,11 @@ const skipTick = process.env.DECK_GENERATION_SKIP_TICK === "1";
 const runOnce = process.env.DECK_GENERATION_RUN_ONCE === "1";
 if (!skipTick) {
   console.log(runOnce ? "Deck generation worker started in one-shot mode." : "Deck generation worker started.");
+  console.log(
+    parallelRunsEnabled
+      ? `Deck generation parallel mode ON: 最多同时推进 ${parallelRunLimit} 个任务，全局最多 ${globalImageConcurrency} 张图同时生成。`
+      : "Deck generation parallel mode OFF: 一次只处理一个任务（设 DECK_PARALLEL_RUNS=1 打开）。"
+  );
   while (true) {
     try {
       await (parallelRunsEnabled ? tickParallel() : tick());
