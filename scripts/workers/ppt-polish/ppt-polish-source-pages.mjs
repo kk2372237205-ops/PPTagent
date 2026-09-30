@@ -42,6 +42,24 @@ async function run(command, args) {
   });
 }
 
+/**
+ * pdftoppm 缺失时说人话。
+ *
+ * 2026-09-30 踩过：报错原文是 `spawn pdftoppm ENOENT`，看不出要装什么、也不知道去哪配。
+ * 根因往往是"谁启动了服务"——不同终端/不同 AI 工具的 PATH 不一样，
+ * 于是同一个项目的同一段代码，换个窗口启动就突然不行了。
+ */
+function pdfToPpmMissingMessage(command, error) {
+  if (error && error.code === "ENOENT") {
+    return new Error(
+      `找不到 PDF 转图片工具 ${command}（PPT 转 PNG 需要 Poppler 的 pdftoppm）。` +
+      "请在 .env 里把 PDFTOPPM_PATH 设成 pdftoppm.exe 的绝对路径后重启后台脚本；" +
+      "或在美化表单里关闭「PPT转PNG」开关，跳过这一步。"
+    );
+  }
+  return error;
+}
+
 function pageNumberFromFileName(fileName) {
   return Number(String(fileName).match(/-(\d+)\.png$/i)?.[1] || 0);
 }
@@ -50,7 +68,11 @@ async function renderPdfToPages(pdfPath, pageDirectory) {
   await mkdir(pageDirectory, { recursive: true });
   const pagePrefix = path.join(pageDirectory, "page");
   const pdfToPpm = process.env.PDFTOPPM_PATH || "pdftoppm";
-  await run(pdfToPpm, ["-png", "-scale-to-x", "1920", "-scale-to-y", "-1", pdfPath, pagePrefix]);
+  try {
+    await run(pdfToPpm, ["-png", "-scale-to-x", "1920", "-scale-to-y", "-1", pdfPath, pagePrefix]);
+  } catch (error) {
+    throw pdfToPpmMissingMessage(pdfToPpm, error);
+  }
   const files = (await readdir(pageDirectory))
     .filter(fileName => /^page-\d+\.png$/i.test(fileName))
     .sort((a, b) => pageNumberFromFileName(a) - pageNumberFromFileName(b));

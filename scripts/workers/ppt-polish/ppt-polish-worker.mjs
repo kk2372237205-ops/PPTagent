@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "fs";
 import { mkdir, readdir, readFile, writeFile } from "fs/promises";
 import { createHmac } from "crypto";
+import { spawnSync } from "child_process";
 import path from "path";
 import sharp from "sharp";
 import JSZip from "jszip";
@@ -804,6 +805,18 @@ console.log(
     ? `PPT polish parallel mode ON: 最多同时推进 ${parallelRunLimit} 个任务，全局最多 ${globalImageConcurrency} 张图同时生成。`
     : "PPT polish parallel mode OFF: 一次只处理一个任务（设 PPT_POLISH_PARALLEL_RUNS=1 打开）。"
 );
+// PPT 转 PNG 依赖外部程序 pdftoppm。启动时就把结果打出来：
+// 这个报错以前只在任务跑到一半时才出现，而且原文是 "spawn pdftoppm ENOENT"，很难定位。
+{
+  const pdfToPpm = process.env.PDFTOPPM_PATH || "pdftoppm";
+  const probe = spawnSync(pdfToPpm, ["-v"], { stdio: "ignore", windowsHide: true });
+  const available = !probe.error && probe.status === 0;
+  console.log(
+    available
+      ? `PPT 转 PNG: 可用（${pdfToPpm}）`
+      : `PPT 转 PNG: 不可用 —— 找不到 ${pdfToPpm}。请在 .env 里把 PDFTOPPM_PATH 设为 pdftoppm.exe 的绝对路径后重启本脚本。`
+  );
+}
 await writeWorkerHeartbeat("started");
 startWorkerHeartbeat();
 for (;;) {
