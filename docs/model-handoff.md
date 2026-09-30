@@ -114,7 +114,7 @@ git diff --stat main...HEAD   # 22 个文件，+4053 / -404
 | **参考图配色 ≠ 参考图当素材** | 参考图配色只以**本地提取出的色值清单**（文字硬约束）生效，**两条链路都不把参考图原文件交给 Image2**。曾经有 `palette-reference.md` 写着"必须把原图作为 Image2 输入"，就是它导致误改，已改写并加了警告。 |
 | **用户资料图片不作页面素材** | `advancedSourceVisualReuseEnabled` / `protectedEvidenceMasksEnabled` 保持 `false`。owner 实测过让用户图片进渲染，会与后续加工互相干扰。**不要因为 owner 要求"写实"就去打开这两个开关。** |
 | **画面默认走写实** | owner 明确否决"卡通风/扁平矢量"。写实指的是**画面质感**（真实材质、自然光、诚实纹理），靠提示词实现。真实性红线只针对**凭证**：证书、合同、检测报告、盖章文件、机构招牌、logo、仿真截图、可辨认真人。 |
-| **快速版不加交付安全检查** | owner 决定不加（Q5），快速版保持"便宜"定位，不调用 `auditDeckConsistency`。 |
+| **交付安全检查已删除（两个版本都没有）** | 快速版原本就没加（Q5 决定）。**2026-09-30 起高级版也删掉了**：`auditDeckConsistency`、`normalizeDeckAudit`、`buildDeckContactSheet`、`openAiVisionBufferJson` 与 `skills/deck-generation/quality-audit.md` 全部移除，`skillBundle()` 里也不再注入该文件。全部页面完成后不再有任何额外模型调用。`deckQualityStatus` 字段保留但固定写 `disabled`。要恢复看 git 历史（`1eeeb2f` 及更早）。 |
 
 ### 完全没验证的部分（接手须知）
 

@@ -40,7 +40,6 @@
 | `outline-control.md` | ✅ | — | 高级版大纲与确认规则 |
 | `content-density.md` | ✅ | — | 信息密度与插图主导页例外 |
 | `palette-reference.md` | ✅ | — | 参考图配色的色值提取规则 |
-| `quality-audit.md` | ✅ | — | 高级版交付安全检查 |
 | `advanced-single-slide-director/**`（3 个） | ✅（仅高级版） | — | 单页导演 Skill |
 | `advanced-single-slide-director/agents/openai.yaml` | ❌ | ❌ | **全仓无代码读取**，是外部 agent 清单格式的遗留元数据 |
 
@@ -100,7 +99,7 @@ function readSkill(name) {
 
 - `palette-reference.md`：参考图配色的色值职责提取。
 
-- `quality-audit.md`：高级版整套完成后的静默交付安全检查；不做逐页质检或自动重绘。
+- ~~`quality-audit.md`~~：**已于 2026-09-30 删除**（连同它描述的"后台交付安全检查"）。防伪造公文、公章、机构招牌、logo 与真人肖像的要求仍在 `illustration-system.md`。
 
 - `regeneration-controls.md`：重新生成本页、更贴近上一页等局部重生。
 

@@ -404,7 +404,6 @@ skills\
     ├─ outline-control.md                 高级版大纲解析与两次确认
     ├─ content-density.md                 正文页信息密度
     ├─ palette-reference.md               参考图只取颜色关系（不把原图交给 Image2）
-    ├─ quality-audit.md                   整套完成后的交付安全检查
     ├─ regeneration-controls.md           单页返工规则
     └─ advanced-single-slide-director\    高级版单页导演 Skill
         ├─ SKILL.md

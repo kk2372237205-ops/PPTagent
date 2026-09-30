@@ -188,8 +188,7 @@ function skillBundle(run, options = {}) {
     readSkill("source-grounding.md"),
     readSkill("outline-control.md"),
     readSkill("content-density.md"),
-    readSkill("palette-reference.md"),
-    readSkill("quality-audit.md")
+    readSkill("palette-reference.md")
   ].join("\n\n---\n\n");
 }
 
@@ -3779,10 +3778,6 @@ async function openAiVisionBuffersJson(rawImages, instruction, options = {}) {
   }
 }
 
-async function openAiVisionBufferJson(raw, instruction, options = {}) {
-  return openAiVisionBuffersJson([raw], instruction, options);
-}
-
 const maxQuickImagePromptBytes = 30_000;
 
 function compactQuickSlideSpec(value) {
@@ -4553,83 +4548,6 @@ async function generateAdvancedSlide(run, slide, instruction = "") {
   }
 }
 
-function xmlText(value) {
-  return String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-async function buildDeckContactSheet(slides) {
-  const columns = Math.min(4, Math.max(1, slides.length));
-  const tileWidth = 480;
-  const imageHeight = 270;
-  const labelHeight = 34;
-  const rows = Math.ceil(slides.length / columns);
-  const composites = [];
-  for (let index = 0; index < slides.length; index += 1) {
-    const slide = slides[index];
-    const raw = await readFile(path.join(imageRoot, path.basename(slide.storedName)));
-    const thumb = await sharp(raw).resize(tileWidth, imageHeight, { fit: "cover" }).png().toBuffer();
-    const left = (index % columns) * tileWidth;
-    const top = Math.floor(index / columns) * (imageHeight + labelHeight);
-    const label = Buffer.from(
-      '<svg width="' + tileWidth + '" height="' + labelHeight + '" xmlns="http://www.w3.org/2000/svg">' +
-      '<rect width="100%" height="100%" fill="#11161b"/>' +
-      '<text x="14" y="23" fill="#f4efe6" font-family="Arial" font-size="16">Slide ' +
-      String(slide.slideIndex).padStart(2, "0") + ' · ' + xmlText(slide.title).slice(0, 54) +
-      '</text></svg>'
-    );
-    composites.push({ input: thumb, left, top });
-    composites.push({ input: label, left, top: top + imageHeight });
-  }
-  return sharp({
-    create: {
-      width: columns * tileWidth,
-      height: rows * (imageHeight + labelHeight),
-      channels: 4,
-      background: "#11161b"
-    }
-  }).composite(composites).png().toBuffer();
-}
-
-function normalizeDeckAudit(result) {
-  const requested = String(result?.status || "").toLowerCase();
-  const status = requested === "pass" ? "pass" : requested === "manual_review" ? "manual_review" : "revise";
-  return {
-    version: "wzlcf-deck-audit-v1",
-    status,
-    score: Math.max(0, Math.min(100, Number(result?.score || 0))),
-    checks: result?.checks && typeof result.checks === "object" ? result.checks : {},
-    outlier_slides: normalizeArray(result?.outlier_slides).slice(0, 12).map(item => ({
-      slide_index: Number(item?.slide_index || 0),
-      severity: ["critical", "high", "medium", "low"].includes(String(item?.severity)) ? String(item.severity) : "medium",
-      issues: cleanStringList(item?.issues, 12),
-      correction_instruction: String(item?.correction_instruction || "").slice(0, 4000)
-    })).filter(item => Number.isInteger(item.slide_index) && item.slide_index > 0),
-    summary: String(result?.summary || "").slice(0, 2400),
-    checked_at: new Date().toISOString()
-  };
-}
-
-async function auditDeckConsistency(run, slides) {
-  const sheet = await buildDeckContactSheet(slides);
-  const summary = slides.map(slide => ({
-    slide_index: slide.slideIndex,
-    title: slide.title,
-    role: slide.role
-  }));
-  const instruction = [
-    "你是 GPT-5.6，只负责一次安静的 PPT 交付安全检查。图片已经生成，不得提出审美返工，也不得要求重新调用 Image2。",
-    "页面目录：",
-    JSON.stringify(summary),
-    "",
-    "只寻找会让文件无法交付的致命异常：空白或损坏页面、大面积乱码或正文完全不可读、明显伪造的可识别学校/机构招牌与 logo、伪造证书合同报告或产品标签、与页面标题直接冲突的画面、严重裁切导致核心内容消失。",
-    "配色、布局变化、文字多少、普通审美偏差、图标或卡片使用不理想都不属于本检查范围，不要标记。封面与结尾允许明显不同于正文页。",
-    "只有确认存在上述致命异常时才返回 manual_review，并只列出 critical 页面；其他情况一律 pass。不要给 Image2 修正指令。",
-    "只返回 JSON object：",
-    '{"status":"pass|manual_review","score":0,"checks":{"delivery_safety":""},"outlier_slides":[{"slide_index":1,"severity":"critical","issues":[],"correction_instruction":""}],"summary":""}'
-  ].join("\n");
-  return normalizeDeckAudit(await openAiVisionBufferJson(sheet, instruction, advancedTextOptions()));
-}
-
 async function processAdvancedGeneratingRun(run) {
   const slides = await db.deckGenerationSlide.findMany({
     where: { runId: run.id },
@@ -4685,45 +4603,23 @@ async function processAdvancedGeneratingRun(run) {
     return;
   }
 
-  const freshRun = await db.deckGenerationRun.findUnique({ where: { id: run.id } });
-  if (!freshRun) return;
-  const attempt = freshRun.deckQualityAttempts + 1;
-  const reviewRun = await db.deckGenerationRun.update({
+  // 交付安全检查已按 owner 要求删除（2026-09-30）。
+  // 原实现：全部页面完成后把所有页拼成一张缩略图，再调用一次 GPT-5.6 视觉检查。
+  // 删除理由：它只在通过时静默、不产生任何界面可见结果，却要占用串行的后台脚本
+  // 30–90 秒并多花一次视觉调用；发现异常时也只是提示，不修不重绘。
+  // 需要恢复的话看 git 历史（提交 1eeeb2f 及更早）。
+  await db.deckGenerationRun.update({
     where: { id: run.id },
-    data: { status: "review_ready", deckQualityStatus: "checking", finishedAt: new Date(), error: null }
-  });
-  let report;
-  try {
-    report = await auditDeckConsistency(freshRun, slides);
-  } catch (error) {
-    report = {
-      version: "wzlcf-deck-audit-v1",
-      status: "pass",
-      score: 0,
-      checks: { delivery_safety: "后台安全检查本次不可用，页面仍按 Image2 成图正常交付。" },
-      outlier_slides: [],
-      summary: "",
-      audit_error: error instanceof Error ? error.message : String(error),
-      checked_at: new Date().toISOString()
-    };
-  }
-  const criticalOutliers = report.outlier_slides.filter(outlier => outlier.severity === "critical");
-  const finalStatus = criticalOutliers.length ? "manual_review" : "pass";
-  const finalReport = {
-    ...report,
-    status: finalStatus,
-    outlier_slides: criticalOutliers
-  };
-  const criticalMessage = criticalOutliers.length
-    ? `后台安全检查发现第 ${criticalOutliers.map(item => item.slide_index).join("、")} 页存在严重异常，请先查看这些页面。`
-    : null;
-  await db.deckGenerationRun.updateMany({
-    where: { id: run.id, status: "review_ready", updatedAt: reviewRun.updatedAt },
     data: {
-      deckQualityStatus: finalStatus,
-      deckQualityReportJson: JSON.stringify(finalReport),
-      deckQualityAttempts: attempt,
-      error: criticalMessage
+      status: "review_ready",
+      deckQualityStatus: "disabled",
+      deckQualityReportJson: JSON.stringify({
+        version: "wzlcf-deck-audit-removed",
+        status: "disabled",
+        summary: "交付安全检查已于 2026-09-30 按 owner 要求删除，页面按 Image2 成图直接进入预览。"
+      }),
+      finishedAt: new Date(),
+      error: null
     }
   });
 }
