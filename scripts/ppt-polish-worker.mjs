@@ -14,6 +14,8 @@ import { createPptPolishSourcePages } from "./ppt-polish-source-pages.mjs";
 
 const root = process.cwd();
 loadEnv();
+const polishVisualRulesPath = path.join(root, "skills", "ppt-polish", "visual-redraw-system.md");
+const polishVisualRules = readPolishVisualRules();
 
 const workspaceRoot = path.join(root, "uploads", "employee-workspace");
 const documentRoot = path.join(workspaceRoot, "documents");
@@ -73,6 +75,14 @@ async function codiaRequest(url, init = {}, timeoutMs = 300000) {
 
 function nowName(extension) {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}.${extension}`;
+}
+
+function readPolishVisualRules() {
+  try {
+    return readFileSync(polishVisualRulesPath, "utf8").replace(/\r?\n/g, "\n").trim().slice(0, 5000);
+  } catch {
+    return "Rebuild one complete 16:9 presentation page. Preserve supplied facts and reading order. Match only the selected target style. Keep cover and ending pages emotionally strong with limited text, and keep content pages readable.";
+  }
 }
 
 function sourceFileToken(runId, expiresAt = Date.now() + 10 * 60 * 1000) {
@@ -324,6 +334,8 @@ function slideRole(run, slide) {
 function visualSystemPrompt(run, slide) {
   const role = slideRole(run, slide);
   const base = [
+    "PPT polish rules loaded from skills/ppt-polish/visual-redraw-system.md:",
+    polishVisualRules,
     "Global visual system lock:",
     `- Apply this selected target style only: ${stylePackDirection(run.stylePack)}. Do not borrow colors, motifs, or background treatment from another style pack.`,
     "- Keep background texture, header micro-labels, footer rhythm, page numbers, card radius, detail intensity, and spacing language consistent with adjacent pages.",

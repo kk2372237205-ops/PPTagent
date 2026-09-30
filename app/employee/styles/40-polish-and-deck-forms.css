@@ -40,6 +40,17 @@
   grid-template-columns:minmax(180px,.7fr) minmax(0,1.3fr);
 }
 
+.employee-root .polish-planner .polish-source-snapshot-note {
+  display:grid;
+  gap:4px;
+  padding:10px 12px;
+  border:1px solid rgba(111, 157, 188, .35);
+  border-radius:10px;
+  background:rgba(75, 119, 150, .10);
+}
+.employee-root .polish-planner .polish-source-snapshot-note b { color:#dbeef7; font-size:12px; }
+.employee-root .polish-planner .polish-source-snapshot-note span { color:#9fb8c7; font-size:11px; line-height:1.55; }
+
 .employee-root .polish-inline-run .polish-source-page-strip {
   display:grid;
   grid-template-columns:repeat(4,minmax(0,1fr));

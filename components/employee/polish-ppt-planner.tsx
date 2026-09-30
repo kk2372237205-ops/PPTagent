@@ -150,8 +150,9 @@ export function PolishPptPlanner({ service, note, setNote, notify, initialRun, o
       <input ref={fileRef} hidden type="file" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation" onChange={event => { acceptPpt(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }}/>
       {sourceMode === "current" && service.workDocument ? <FileText/> : <Upload/>}
       <b>{sourceMode === "current" && service.workDocument ? service.workDocument.originalName : selectedFileName || "拖入需要美化的 PPT"}</b>
-      <span>{sourceMode === "current" && service.workDocument ? "确认后先在本地固化为有序页面图，不会自动交给 Image2。" : "支持点击选择或直接拖拽 PPTX；确认后先本地固化页面图。"}</span>
+      <span>{sourceMode === "current" && service.workDocument ? "确认后自动在本地固化整份 PPT 的有序页面图，不会自动交给 Image2。" : "支持点击选择或直接拖拽 PPTX；确认后自动在本地固化整份页面图。"}</span>
     </div>
+    <aside className="polish-source-snapshot-note"><b>原稿页图片集：默认开启</b><span>确认后，系统将整份 PPTX 本地转换为按页 PNG，供你核对原稿和后续处理使用。此步骤不上传 Image2。</span></aside>
     <label>整套修改方向<textarea value={note} onChange={event => setNote(event.target.value)} placeholder="例如：更像发布会、减少文字、强化科技感、统一页眉页脚和图标风格。"/></label>
     <div className="polish-option-grid">
       <label><input type="checkbox" checked={options.keepText} onChange={() => toggleOption("keepText")}/>保留原文字</label>
@@ -162,7 +163,7 @@ export function PolishPptPlanner({ service, note, setNote, notify, initialRun, o
       <label><input type="checkbox" checked={options.cardStyle} onChange={() => toggleOption("cardStyle")}/>卡片样式统一</label>
       <label><input type="checkbox" checked={options.decorativeElements} onChange={() => toggleOption("decorativeElements")}/>装饰元素统一</label>
       <label><input type="checkbox" checked={options.reduceText} onChange={() => toggleOption("reduceText")}/>减少文字密度</label>
-      <label title="试验功能；必须由服务端明确开启，且 AI 重绘后仍需人工核对中文、logo、照片和图表。"><input type="checkbox" checked={options.sourcePageReference} onChange={() => toggleOption("sourcePageReference")}/>试验：以原稿页作视觉依据</label>
+      <label title="试验功能；必须由服务端明确开启，才会把单页原稿上传给 Image2。AI 重绘后仍需人工核对中文、logo、照片和图表。"><input type="checkbox" checked={options.sourcePageReference} onChange={() => toggleOption("sourcePageReference")}/>试验：用原稿页指导 Image2 重绘</label>
     </div>
     <section className="polish-page-notes">
       <header><div><b>逐页修改想法</b><span>{pageNotes.length} 条页级要求</span></div></header>
