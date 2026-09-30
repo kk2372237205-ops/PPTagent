@@ -75,7 +75,7 @@ export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onC
     </div>
     {run.error && <div className="design-error">{run.error}</div>}
     {workerBlocked && <div className="design-error">{workerWarning}</div>}
-    <section className="deck-plan-review inline polish-plan-review">
+    {run.status !== "source_ready" && <section className="deck-plan-review inline polish-plan-review">
       <article>
         <span>美化方案</span>
         <h3>{styleLabel}</h3>
@@ -84,9 +84,9 @@ export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onC
       </article>
       <article>
         <span>逐页修改清单</span>
-        {run.pageNotes?.length ? <ol>{run.pageNotes.map(item => <li key={item.id}><b>第 {item.pages} 页</b><small>{item.note}</small></li>)}</ol> : <p>暂无单页特殊要求，将按整套修改方向统一处理。</p>}
+        {run.pageNotes?.length ? <ol>{run.pageNotes.map(item => <li key={item.id}><b>第 {item.pages} 页</b><small>{item.note}</small></li>)}</ol> : <p>确认后可从页面缩略图中点选并填写要求。</p>}
       </article>
-    </section>
+    </section>}
     {(sourcePages.length > 0 || run.status === "source_ready") && <section className={`deck-plan-review inline polish-source-pages ${selectingSourcePages ? "is-selecting" : ""}`}>
       <article>
         <span>{selectingSourcePages ? "点选需要修改的页面" : "原稿页面已固化"}</span>

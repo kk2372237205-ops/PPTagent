@@ -73,8 +73,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   const options = normalizeOptions(String(form.get("options") || "{}"));
   const pageNotes = normalizePageNotes(String(form.get("pageNotes") || "[]"));
   if (!allowedStylePacks.has(stylePack)) return NextResponse.json({ error: "目标风格无效" }, { status: 400 });
-  if (!note && pageNotes.length === 0 && options.convertSourcePages === false) return NextResponse.json({ error: "关闭 PPT转PNG 时，请填写整套修改方向。" }, { status: 400 });
-
   await ensurePolishDirectories();
   let sourceName = "";
   let sourceStoredName = "";

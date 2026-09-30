@@ -385,7 +385,7 @@ function DesignStudio({ service, employee, refresh, notify, back, openEditor }: 
         <button className={mentorTool === "polish" ? "active" : ""} onClick={() => setMentorTool("polish")}><WandSparkles/><span><b>美化 PPT</b><small>逐页重绘方案</small></span></button>
         <button onClick={() => setMentorTool("image")}><ImagePlus/><span><b>生图</b><small>生成 16:9 PNG</small></span></button>
       </div>
-      <PolishPptPlanner key={polishDraftRun?.id || "new-polish-plan"} service={service} note={polishRequirement} setNote={setPolishRequirement} notify={notify} initialRun={polishDraftRun} onRunCreated={run => { setPolishDraftRun(null); setPolishRun(run); }} onRunsLoaded={syncPolishRuns}/>
+      <PolishPptPlanner key={polishDraftRun?.id || "new-polish-plan"} service={service} notify={notify} initialRun={polishDraftRun} onRunCreated={run => { setPolishDraftRun(null); setPolishRun(run); }} onRunsLoaded={syncPolishRuns}/>
     </section>}
     {previewImage && <ExplodeImagePreview image={previewImage} onClose={() => setPreviewImage(null)}/>}
   </main>;
@@ -410,7 +410,6 @@ async function responseJson(response: Response): Promise<Record<string, any>> {
   if (!text.trim()) return { error: `服务暂时没有返回内容（HTTP ${response.status}），请刷新或重启开发服务后重试。` };
   try { return JSON.parse(text); } catch { return { error: `服务返回了无法识别的内容（HTTP ${response.status}）。` }; }
 }
-
 
 
 

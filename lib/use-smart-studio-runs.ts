@@ -36,6 +36,8 @@ export function useSmartStudioRuns(service: Service, notify: (text: string) => v
   const [historyLoaded, setHistoryLoaded] = useState<HistoryLoaded>({ image: false, deck: false, polish: false });
   const [initialHistorySelected, setInitialHistorySelected] = useState(false);
   const deckLoadSequence = useRef(0);
+  const activePolishRunId = activePolishRun?.id;
+  const activePolishRunStatus = activePolishRun?.status;
   // focusHistoryTop 操作的是组件里的历史列表 DOM，用 ref 承接，避免在渲染期间写 ref
   const focusHistoryRef = useRef<(() => void) | undefined>(undefined);
   useEffect(() => { focusHistoryRef.current = focusHistoryTop; }, [focusHistoryTop]);
@@ -76,6 +78,16 @@ export function useSmartStudioRuns(service: Service, notify: (text: string) => v
     setPolishWorkerWarning(result.workerHealth?.ok === false ? (result.workerHealth.message || "PPT 美化 Worker 未运行/已停止") : "");
     syncPolishRuns((result.runs || []) as PptPolishRun[]);
   }, [notify, service.id, syncPolishRuns]);
+
+  /**
+   * 美化任务确认后先由后台把 PPT 固化成 PNG。这个阶段不在表单组件内，
+   * 因此必须由任务主状态持续刷新；否则页面已转换完成，界面仍会停在“待确认”。
+   */
+  useEffect(() => {
+    if (!activePolishRunId || !["confirmed", "planning", "generating", "pdf_queued", "ppt_queued", "ppt_processing"].includes(activePolishRunStatus || "")) return;
+    const timer = window.setInterval(() => void loadPolishRuns(), 1800);
+    return () => window.clearInterval(timer);
+  }, [activePolishRunId, activePolishRunStatus, loadPolishRuns]);
 
   /** 作废仍在飞行中的"生成 PPT 列表"响应，避免慢响应覆盖刚创建的任务 */
   const invalidateDeckLoad = useCallback(() => {

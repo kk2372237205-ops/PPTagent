@@ -1,8 +1,8 @@
 /**
  * 美化 PPT 方案表单（可复用 UI 组件）
  *
- * 职责：一次美化任务的填写入口——来源（当前文稿或上传 PPTX）、目标风格、整套修改方向、
- *       勾选要求与逐页修改要求。提交后先生成"待确认方案"，用户确认才会逐页重绘。
+ * 职责：一次美化任务的填写入口——来源（当前文稿或上传 PPTX）、目标风格与保护要求。
+ *       提交后先生成"待确认方案"；确认后固化 PNG 页面，再逐页填写修改要求。
  * 谁可以改：本组件单独维护；改动不要顺手改生成 PPT 或生图链路。
  * 依赖：`@/lib/employee-api`、`@/lib/employee-api-types`、`@/lib/employee-deck-constants`、
  *       `./polish-types`、`lucide-react`。
@@ -13,12 +13,12 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FileText, Upload, WandSparkles, X } from "lucide-react";
+import { FileText, Upload, WandSparkles } from "lucide-react";
 import { employeeApi } from "@/lib/employee-api";
 import type { Service } from "@/lib/employee-api-types";
 import { deckStylePacks } from "@/lib/employee-deck-constants";
 import { workPresentationMaxBytes, workPresentationMaxLabel } from "@/lib/upload-limits";
-import type { PolishPageNote, PptPolishRun } from "./polish-types";
+import type { PptPolishRun } from "./polish-types";
 
 /**
  * 接口返回应当是 JSON，但开发热更新期间偶尔会返回空的 500 响应。
@@ -31,10 +31,8 @@ async function responseJson(response: Response): Promise<Record<string, any>> {
   try { return JSON.parse(text); } catch { return { error: `服务返回了无法识别的内容（HTTP ${response.status}）。` }; }
 }
 
-export function PolishPptPlanner({ service, note, setNote, notify, initialRun, onRunCreated, onRunsLoaded }: {
+export function PolishPptPlanner({ service, notify, initialRun, onRunCreated, onRunsLoaded }: {
   service: Service;
-  note: string;
-  setNote: (value: string) => void;
   notify: (text: string) => void;
   initialRun?: PptPolishRun | null;
   onRunCreated?: (run: PptPolishRun) => void;
@@ -47,9 +45,6 @@ export function PolishPptPlanner({ service, note, setNote, notify, initialRun, o
   const [dragging, setDragging] = useState(false);
   const [polishRuns, setPolishRuns] = useState<PptPolishRun[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [pageNotes, setPageNotes] = useState<PolishPageNote[]>(() => initialRun
-    ? initialRun.pageNotes.map(item => ({ ...item }))
-    : []);
   const [options, setOptions] = useState({
     keepText: true,
     keepNumbers: true,
@@ -106,9 +101,7 @@ export function PolishPptPlanner({ service, note, setNote, notify, initialRun, o
     const form = new FormData();
     form.append("sourceMode", sourceMode);
     form.append("stylePack", stylePack);
-    form.append("note", note);
     form.append("options", JSON.stringify(options));
-    form.append("pageNotes", JSON.stringify(pageNotes));
     if (sourceMode === "upload" && selectedFile) form.append("file", selectedFile);
     setSubmitting(true);
     try {
@@ -141,7 +134,6 @@ export function PolishPptPlanner({ service, note, setNote, notify, initialRun, o
       <span>{sourceMode === "current" && service.workDocument ? "确认后按所选流程处理当前 PPTX。" : "支持点击选择或直接拖拽 PPTX。"}</span>
     </div>
     <aside className={`polish-source-snapshot-note ${options.convertSourcePages ? "is-on" : "is-off"}`}><div><b>PPT转PNG</b><span>系统将整份 PPTX 本地转换为按页 PNG</span></div><button type="button" className="polish-switch" role="switch" aria-checked={options.convertSourcePages} title="关闭后跳过 PPT 转 PNG，供后续直接提供页面图片集的流程使用。" onClick={() => toggleOption("convertSourcePages")}><i/><em>{options.convertSourcePages ? "开启" : "关闭"}</em></button></aside>
-    <label>整套修改方向<textarea value={note} onChange={event => setNote(event.target.value)} placeholder="例如：更像发布会、减少文字、强化科技感、统一页眉页脚和图标风格。"/></label>
     <div className="polish-option-grid">
       <label><input type="checkbox" checked={options.keepText} onChange={() => toggleOption("keepText")}/>保留原文字</label>
       <label><input type="checkbox" checked={options.keepNumbers} onChange={() => toggleOption("keepNumbers")}/>保留数字信息</label>
@@ -152,11 +144,6 @@ export function PolishPptPlanner({ service, note, setNote, notify, initialRun, o
       <label><input type="checkbox" checked={options.decorativeElements} onChange={() => toggleOption("decorativeElements")}/>装饰元素统一</label>
       <label><input type="checkbox" checked={options.reduceText} onChange={() => toggleOption("reduceText")}/>减少文字密度</label>
     </div>
-    <section className="polish-page-notes">
-      <header><div><b>逐页修改想法</b><span>{options.convertSourcePages ? "转换完成后，点击页面缩略图添加" : "关闭 PPT转PNG 后不能点选页面"}</span></div></header>
-      {!pageNotes.length && <p className="polish-page-note-hint">先确认方案并完成页面转换，再选择具体页面填写修改要求。</p>}
-      <div className="polish-page-note-list">{pageNotes.map(item => <article key={item.id}><b>第 {item.pages} 页</b><p>{item.note}</p><button type="button" onClick={() => setPageNotes(current => current.filter(noteItem => noteItem.id !== item.id))}><X/></button></article>)}</div>
-    </section>
     <button type="button" disabled={submitting} onClick={submitPolishPlan}><WandSparkles/>{submitting ? "提交中..." : "生成美化方案"}</button>
   </section>;
 }
