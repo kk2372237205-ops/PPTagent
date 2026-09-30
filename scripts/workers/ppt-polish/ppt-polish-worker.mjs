@@ -23,13 +23,40 @@ const imageRoot = path.join(workspaceRoot, "images");
 const polishRunRoot = path.join(workspaceRoot, "ppt-polish-runs");
 // 只共享风格包定义（用户可见选项的唯一含义）；画面工程规则不共享，见下方说明。
 const workerHeartbeatPath = path.join(root, ".next-dev", "ppt-polish-worker-heartbeat.json");
-const pollMs = Math.max(1500, Number(process.env.PPT_POLISH_POLL_MS || 3000));
+const pollMs = Math.max(600, Number(process.env.PPT_POLISH_POLL_MS || 1200));
 const staleGeneratingMs = Math.max(60_000, Number(process.env.PPT_POLISH_STALE_GENERATING_MS || 60_000));
 const polishConcurrency = Math.min(4, Math.max(1, Number(process.env.PPT_POLISH_CONCURRENCY || 2)));
+// 任务级并发（默认关闭，保持既有串行行为）。
+// 打开后：一个任务在逐页重绘时，第二个任务也能同时开始，不再排队等前一个跑完。
+const parallelRunsEnabled = process.env.PPT_POLISH_PARALLEL_RUNS === "1";
+const parallelRunLimit = Math.max(1, Math.min(6, Number(process.env.PPT_POLISH_PARALLEL_RUN_LIMIT || 2)));
+// 全局图片闸门：所有任务加起来，同时在跑的 Image2 调用不超过这个数。
+// 每个任务自己的并发上限是 polishConcurrency；并行后总张数会翻倍，必须再有一道全局上限。
+const globalImageConcurrency = Math.max(1, Math.min(8, Number(process.env.PPT_POLISH_GLOBAL_IMAGE_CONCURRENCY || 3)));
 const imageService = aiImageConfig();
 const imageRequest = createServiceFetch(imageService);
 const externalRequest = createServiceFetch({ serviceName: "Codia", proxyUrl: process.env.CODIA_PROXY_URL || "" });
 const codiaBaseUrl = trimSlash(process.env.CODIA_BASE_URL || "https://openapi.codia.ai");
+// Image2 的全局闸门（与生成 PPT 那边同一套做法）。
+// 为什么需要：processGenerating 的并发上限是「每个任务」polishConcurrency 张；
+// 串行调度时全局最多就是这么多，一旦允许多个任务同时出图就会成倍打到中转站。
+function createImageSemaphore(limit) {
+  let active = 0;
+  const waiters = [];
+  return async function withImageSlot(task) {
+    if (active >= limit) await new Promise(resolve => waiters.push(resolve));
+    active += 1;
+    try {
+      return await task();
+    } finally {
+      active -= 1;
+      const next = waiters.shift();
+      if (next) next();
+    }
+  };
+}
+// 串行模式下不设闸门（保持既有行为一字不差）；并行模式下按全局上限收敛。
+const imageSlot = parallelRunsEnabled ? createImageSemaphore(globalImageConcurrency) : async task => task();
 let workerHeartbeatState = "starting";
 let workerHeartbeatTimer;
 
@@ -173,6 +200,11 @@ function readableExternalFailure(error) {
 }
 
 async function openAiImage(prompt) {
+  // 所有美化出图都从这里走，所以全局闸门挂在这一处即可。
+  return imageSlot(() => requestOpenAiImage(prompt));
+}
+
+async function requestOpenAiImage(prompt) {
   requireImageService(imageService);
   const response = await imageRequest(`${imageService.baseUrl}/images/generations`, {
     method: "POST",
@@ -716,6 +748,37 @@ async function processRun(run) {
   }
 }
 
+/**
+ * 并行调度器（PPT_POLISH_PARALLEL_RUNS=1 时才用）。
+ *
+ * 串行版 tick() 一次只挑一个任务，而且要 await 完整个 processRun（可能几十页）才轮到下一个；
+ * 于是「第一个任务没画完，第二个任务根本不会开始」。
+ * 这里改成：每轮挑最多 parallelRunLimit 个任务，各自在后台跑；
+ * inFlight 保证同一个任务不会被重复认领（同一页的重复计费由 staleGeneratingMs 与
+ * run 文件里的 slides 状态兜底）。
+ */
+const inFlight = new Map();
+
+function launchRun(run) {
+  if (inFlight.has(run.id)) return;
+  const promise = processRun(run)
+    .catch(error => { console.error(`PPT polish run ${run.id} failed:`, error); })
+    .finally(() => { inFlight.delete(run.id); });
+  inFlight.set(run.id, promise);
+}
+
+async function tickParallel() {
+  const activeStatuses = new Set(["confirmed", "planning", "generating", "pdf_queued", "ppt_queued", "ppt_processing"]);
+  const runs = (await listRuns()).filter(item => activeStatuses.has(item.status) && canProcessRun(item));
+  const selected = runs.slice(0, parallelRunLimit);
+  if (!selected.length) {
+    await writeWorkerHeartbeat("idle");
+    return;
+  }
+  for (const run of selected) launchRun(run);
+  await writeWorkerHeartbeat(`parallel:${inFlight.size}/${parallelRunLimit}`);
+}
+
 async function tick() {
   const activeStatuses = new Set(["confirmed", "planning", "generating", "pdf_queued", "ppt_queued", "ppt_processing"]);
   const runs = await listRuns();
@@ -740,7 +803,7 @@ await writeWorkerHeartbeat("started");
 startWorkerHeartbeat();
 for (;;) {
   try {
-    await tick();
+    await (parallelRunsEnabled ? tickParallel() : tick());
   } catch (error) {
     console.error("PPT polish worker tick failed:", error);
   }

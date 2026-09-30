@@ -3955,6 +3955,17 @@ async function processGeneratingRun(run) {
     where: { runId: run.id },
     orderBy: { slideIndex: "asc" }
   });
+  // 重启恢复：同 processAdvancedGeneratingRun，见那里的说明。
+  const quickStaleBefore = Date.now() - (advancedImageTimeoutMs + 60_000);
+  const quickStaleSlides = slides.filter(slide => slide.status === "generating" && new Date(slide.updatedAt).getTime() < quickStaleBefore);
+  if (quickStaleSlides.length) {
+    console.warn(`Recovering ${quickStaleSlides.length} stale generating slide(s) for run ${run.id}`);
+    await Promise.all(quickStaleSlides.map(slide => db.deckGenerationSlide.update({
+      where: { id: slide.id },
+      data: { status: "queued", error: "" }
+    })));
+    for (const slide of quickStaleSlides) slide.status = "queued";
+  }
   const activeCount = slides.filter(slide => slide.status === "generating").length;
   const slots = Math.max(0, deckGenerationConcurrency - activeCount);
   const queued = slides.filter(slide => ["waiting", "queued"].includes(slide.status)).slice(0, slots);
@@ -4590,6 +4601,19 @@ async function processAdvancedGeneratingRun(run) {
       data: { status: "completed", qualityStatus: "not_applicable", error: null, pendingImageCallKey: "" }
     })));
     return;
+  }
+  // 重启恢复：进程被杀时留在 generating 的页面，之前会永久占着并发名额
+  //（activeCount 只统计 generating，永远不会减少），于是整个任务再也画不下去。
+  // 判据用"单页超时 + 1 分钟"：活着的调用不可能超过超时时间，所以超过它的必然是孤儿。
+  const staleBefore = Date.now() - (advancedImageTimeoutMs + 60_000);
+  const staleSlides = slides.filter(slide => slide.status === "generating" && new Date(slide.updatedAt).getTime() < staleBefore);
+  if (staleSlides.length) {
+    console.warn(`Recovering ${staleSlides.length} stale generating slide(s) for run ${run.id}`);
+    await Promise.all(staleSlides.map(slide => db.deckGenerationSlide.update({
+      where: { id: slide.id },
+      data: { status: "queued", error: "" }
+    })));
+    for (const slide of staleSlides) slide.status = "queued";
   }
   const activeCount = slides.filter(slide => slide.status === "generating").length;
   const slots = Math.max(0, advancedDeckGenerationConcurrency - activeCount);

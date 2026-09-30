@@ -183,6 +183,8 @@ git diff --stat main...HEAD   # 22 个文件，+4053 / -404
 14. **为什么必须有全局闸门**：`processAdvancedGeneratingRun` 的并发上限是**每个任务** 3 张。串行时全局最多 3 张，没问题；并行后会变成 6、9 张一起打中转站 → 容量错误。所以并行模式下两个 Image2 入口（`openAiImage`、`openAiImageWithReferences`）都过 `imageSlot` 信号量。
 15. **并行的安全前提已经存在**：同一页重复调用会重复计费，但 `claimImageCall` 用事务把 `reserved` 改成 `requesting`，天然防重；`tickParallel` 另外用 `inFlight` 表防止同一个任务被重复认领。
 16. **启用前必须做的验证**：同时提交两个任务（各 3–4 页），观察 ① 第二个任务是否不再等第一个画完 ② 单页耗时是否没有明显恶化 ③ 有没有出现 `No available compatible accounts`。**没有做过这个双任务实测就不要合并到 main。**
+17. **美化 PPT 是另一个进程，也要单独打开**：`PPT_POLISH_PARALLEL_RUNS=1`（配 `PPT_POLISH_PARALLEL_RUN_LIMIT`、`PPT_POLISH_GLOBAL_IMAGE_CONCURRENCY`）。两个 worker 各自持有一个全局闸门，所以**最坏情况的中转站并发是两者相加**（例如 4+3=7）；如果开始出现容量错误，先降这两个数字。
+18. **重启恢复（2026-09-30 补上）**：后台脚本被杀时，留在 `generating` 的页面之前会**永久占着并发名额**（`activeCount` 只统计 `generating`，永不减少），整个任务再也画不下去。现在两个出图函数（`processGeneratingRun`、`processAdvancedGeneratingRun`）都会把「超过单页超时 + 1 分钟还没更新」的 `generating` 页重置为 `queued`。所以**中途重启是安全的**，但重启后要等一个超时周期（默认 10 分钟）才会被回收。
 
 ## 常用验证
 
