@@ -130,16 +130,6 @@ export function PolishPptPlanner({ service, notify, initialRun, onRunCreated, on
       <span>{sourceMode === "current" && service.workDocument ? "确认后按所选流程处理当前 PPTX。" : "支持点击选择或直接拖拽 PPTX。"}</span>
     </div>
     <aside className={`polish-source-snapshot-note ${options.convertSourcePages ? "is-on" : "is-off"}`}><div><b>PPT转PNG</b><span>系统将整份 PPTX 本地转换为按页 PNG</span></div><button type="button" className="polish-switch" role="switch" aria-checked={options.convertSourcePages} title="关闭后跳过 PPT 转 PNG，供后续直接提供页面图片集的流程使用。" onClick={() => toggleOption("convertSourcePages")}><i/><em>{options.convertSourcePages ? "开启" : "关闭"}</em></button></aside>
-    <div className="polish-option-grid">
-      <label><input type="checkbox" checked={options.keepText} onChange={() => toggleOption("keepText")}/>保留原文字</label>
-      <label><input type="checkbox" checked={options.keepNumbers} onChange={() => toggleOption("keepNumbers")}/>保留数字信息</label>
-      <label><input type="checkbox" checked={options.mainColor} onChange={() => toggleOption("mainColor")}/>主色统一</label>
-      <label><input type="checkbox" checked={options.headerFooter} onChange={() => toggleOption("headerFooter")}/>页眉页脚统一</label>
-      <label><input type="checkbox" checked={options.backgroundTexture} onChange={() => toggleOption("backgroundTexture")}/>背景质感统一</label>
-      <label><input type="checkbox" checked={options.cardStyle} onChange={() => toggleOption("cardStyle")}/>卡片样式统一</label>
-      <label><input type="checkbox" checked={options.decorativeElements} onChange={() => toggleOption("decorativeElements")}/>装饰元素统一</label>
-      <label><input type="checkbox" checked={options.reduceText} onChange={() => toggleOption("reduceText")}/>减少文字密度</label>
-    </div>
     <button type="button" disabled={submitting} onClick={submitPolishPlan}><WandSparkles/>{submitting ? "提交中..." : "生成美化方案"}</button>
   </section>;
 }

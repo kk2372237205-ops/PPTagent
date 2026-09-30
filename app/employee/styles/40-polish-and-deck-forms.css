@@ -492,3 +492,90 @@
   .employee-root .polish-inline-run .polish-source-page-preview img { min-height:150px; }
   .employee-root .polish-inline-run .polish-save-page-note { align-self:stretch; justify-content:center; }
 }
+
+/* 逐页提示词中已套用的夹子：独立展示名称，避免和提示词输入区混在一起。 */
+.employee-root .polish-inline-run .polish-applied-clip-list {
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 10px;
+  padding: 7px 9px;
+  border: 1px solid rgba(117, 155, 178, 0.25);
+  border-radius: 12px;
+  background: rgba(29, 43, 54, 0.72);
+  gap: 7px;
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list > span {
+  padding: 0 3px 0 1px;
+  color: #9ebed0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip {
+  display: inline-flex;
+  min-width: 112px;
+  max-width: 260px;
+  min-height: 30px;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 7px 4px 11px;
+  border-radius: 9px;
+  color: #ecf5fa;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip i {
+  display: block;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  padding-left: 6px;
+  border-left: 1px solid currentColor;
+  opacity: 0.68;
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip:hover svg { opacity: 1; }
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip.color-blue {
+  border-color: rgba(110, 175, 219, 0.68);
+  background: rgba(43, 100, 142, 0.3);
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip.color-rose {
+  border-color: rgba(215, 130, 153, 0.66);
+  background: rgba(121, 55, 73, 0.27);
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip.color-amber {
+  border-color: rgba(214, 169, 95, 0.66);
+  background: rgba(116, 79, 33, 0.28);
+}
+
+@media (max-width:600px) {
+  .employee-root .polish-inline-run .polish-applied-clip-list { width: 100%; }
+  .employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip { min-width: 0; max-width: 100%; flex: 1 1 150px; }
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip.color-green {
+  border-color: rgba(119, 185, 147, 0.66);
+  background: rgba(48, 105, 76, 0.28);
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip.color-gold {
+  border-color: rgba(214, 169, 95, 0.66);
+  background: rgba(116, 79, 33, 0.28);
+}
