@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Check, ChevronLeft, Download, LoaderCircle, OctagonX, Paperclip, Pencil, Plus, Save } from "lucide-react";
+import { Check, ChevronLeft, Download, LoaderCircle, OctagonX, Paperclip, Pencil, Plus, Save, X } from "lucide-react";
 import { employeeApi } from "@/lib/employee-api";
 import { deckStatusText } from "@/lib/employee-deck-shared";
 import type { Service } from "@/lib/employee-api-types";
@@ -33,13 +33,14 @@ export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onC
   onBack: () => void;
   onConfirm: () => void;
   onCreatePpt: () => void;
-  onAddPageNotes: (pageIndexes: number[], note: string, replace?: boolean) => void;
+  onAddPageNotes: (pageIndexes: number[], note: string | { manualNote: string; clipIds: string[]; replace?: boolean }, replace?: boolean) => void;
   onCancel: () => void;
   onRegenerate: (slideIndex: number, action: "reroll" | "closer_previous") => void;
   onRetry: () => void;
   onPreview: (image: { url: string; title: string }) => void;
 }) {
   const [pageDrafts, setPageDrafts] = useState<Record<number, string>>({});
+  const [pageClipIds, setPageClipIds] = useState<Record<number, string[]>>({});
   const [openClipPage, setOpenClipPage] = useState<number | null>(null);
   const [clips, setClips] = useState<PolishPromptClip[]>([]);
   const [clipEditorOpen, setClipEditorOpen] = useState(false);
@@ -57,6 +58,7 @@ export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onC
   const sourcePages = run.sourceSnapshot?.pages || [];
   const sourcePageCount = run.sourceSnapshot?.pageCount || sourcePages.length;
   const selectingSourcePages = run.status === "source_ready" && sourcePages.length > 0;
+  const sourceConverting = ["confirmed", "planning"].includes(run.status) && run.options?.convertSourcePages !== false;
   const optionLabels = [
     ["keepText", "保留原文字"],
     ["keepNumbers", "保留数字信息"],
@@ -79,17 +81,30 @@ export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onC
     return () => { live = false; };
   }, [selectingSourcePages, service.id]);
 
+  function savedPageNote(pageIndex: number) {
+    return run.pageNotes?.find(item => String(item.pages || "").split(/[，,;；、\s]+/).map(Number).includes(pageIndex));
+  }
+
   function pageDraft(pageIndex: number) {
     if (pageIndex in pageDrafts) return pageDrafts[pageIndex];
-    return run.slides?.find(slide => slide.slideIndex === pageIndex)?.note || "";
+    const saved = savedPageNote(pageIndex);
+    return saved?.manualNote ?? saved?.note ?? (run.slides?.find(slide => slide.slideIndex === pageIndex)?.note || "");
+  }
+
+  function selectedClipIds(pageIndex: number) {
+    return pageClipIds[pageIndex] ?? savedPageNote(pageIndex)?.clipIds ?? [];
   }
 
   function appendClip(pageIndex: number, clip: PolishPromptClip) {
-    setPageDrafts(current => {
-      const existing = current[pageIndex] ?? (run.slides?.find(slide => slide.slideIndex === pageIndex)?.note || "");
-      return { ...current, [pageIndex]: [existing, clip.prompt].filter(Boolean).join(existing ? "\n" : "") };
+    setPageClipIds(current => {
+      const existing = current[pageIndex] ?? selectedClipIds(pageIndex);
+      return existing.includes(clip.id) ? current : { ...current, [pageIndex]: [...existing, clip.id] };
     });
     setOpenClipPage(null);
+  }
+
+  function removeClip(pageIndex: number, clipId: string) {
+    setPageClipIds(current => ({ ...current, [pageIndex]: (current[pageIndex] ?? selectedClipIds(pageIndex)).filter(id => id !== clipId) }));
   }
 
   function startNewClip() {
@@ -139,7 +154,12 @@ export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onC
     </div>
     {run.error && <div className="design-error">{run.error}</div>}
     {workerBlocked && <div className="design-error">{workerWarning}</div>}
-    {run.status !== "source_ready" && <section className="deck-plan-review inline polish-plan-review">
+    {sourceConverting && <section className="polish-source-converting" aria-live="polite">
+      <div className="polish-source-converting-orbit"><LoaderCircle className="spin"/><i/><i/><i/></div>
+      <div><span>正在准备逐页工作台</span><h3>原稿正在转换为 PNG 页面集</h3><p>{run.pageCount ? `正在整理 ${run.pageCount} 页原稿；完成后会自动打开逐页提示词与夹子。` : "正在读取原稿结构并建立页面图片集；请保持此页面打开。"}</p></div>
+      <ol><li className="done">读取 PPTX</li><li className="active">固化逐页 PNG</li><li>准备逐页修改</li></ol>
+    </section>}
+    {!sourceConverting && run.status !== "source_ready" && <section className="deck-plan-review inline polish-plan-review">
       <article>
         <span>美化方案</span>
         <h3>按页面要求美化</h3>
@@ -160,20 +180,23 @@ export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onC
       {selectingSourcePages && <div className="polish-source-page-stack">{sourcePages.map(page => {
         const url = employeeApi.urls.polish.sourcePageImage(service.id, run.id, page.pageIndex, run.updatedAt);
         const draft = pageDraft(page.pageIndex);
+        const appliedClipIds = selectedClipIds(page.pageIndex);
+        const appliedClips = appliedClipIds.map(clipId => clips.find(clip => clip.id === clipId)).filter((clip): clip is PolishPromptClip => Boolean(clip));
         const islandOpen = openClipPage === page.pageIndex;
         return <article className="polish-source-page-row" key={page.pageIndex}>
           <button type="button" className="polish-source-page-preview" onClick={() => onPreview({ url, title: `原稿第 ${page.pageIndex} 页` })}><img src={url} alt={`原稿第 ${page.pageIndex} 页`}/><span>第 {page.pageIndex} 页 · 点击放大预览</span></button>
           <div className="polish-source-page-workspace">
-            <header><b>第 {page.pageIndex} 页提示词</b><small>{draft ? "已填写，可继续修改" : "未填写"}</small></header>
+            <header><b>第 {page.pageIndex} 页提示词</b><small>{draft || appliedClipIds.length ? "已填写，可继续修改" : "未填写"}</small></header>
             <textarea value={draft} onChange={event => setPageDrafts(current => ({ ...current, [page.pageIndex]: event.target.value }))} placeholder="这一页怎么改，例如：保留关键数字，压缩小字，改成图文对照。"/>
+            {appliedClips.length > 0 && <div className="polish-applied-clip-list" aria-label={`第 ${page.pageIndex} 页已使用夹子`}><span>已使用</span>{appliedClips.map(clip => <button key={clip.id} type="button" className={`color-${clip.color}`} onClick={() => removeClip(page.pageIndex, clip.id)} title={`取消使用夹子：${clip.name}`}><i>{clip.name}</i><X/></button>)}</div>}
             <div className={`polish-clip-island ${islandOpen ? "is-open" : ""}`}>
               <button type="button" className="polish-clip-island-trigger" onClick={() => { setOpenClipPage(islandOpen ? null : page.pageIndex); setClipEditorOpen(false); }}><Paperclip/><b>夹子</b><span>{clips.length ? `${clips.length} 个可用` : "新建可复用提示词"}</span></button>
               {islandOpen && <div className="polish-clip-island-content">
-                <div className="polish-clip-rail">{clips.map(clip => <div key={clip.id} className={`polish-clip color-${clip.color}`}><button type="button" onClick={() => appendClip(page.pageIndex, clip)} title="将此夹子的提示词追加到本页"><span>{clip.name}</span></button><button type="button" aria-label={`编辑夹子 ${clip.name}`} onClick={() => editClip(clip)}><Pencil/></button></div>)}<button type="button" className="polish-clip-new" onClick={startNewClip}><Plus/>新建夹子</button></div>
+                <div className="polish-clip-rail">{clips.map(clip => <div key={clip.id} className={`polish-clip color-${clip.color} ${appliedClipIds.includes(clip.id) ? "is-applied" : ""}`}><button type="button" disabled={appliedClipIds.includes(clip.id)} onClick={() => appendClip(page.pageIndex, clip)} title={appliedClipIds.includes(clip.id) ? "本页已使用此夹子" : "套用此夹子到本页"}><span>{clip.name}</span>{appliedClipIds.includes(clip.id) && <Check/>}</button><button type="button" aria-label={`编辑夹子 ${clip.name}`} onClick={() => editClip(clip)}><Pencil/></button></div>)}<button type="button" className="polish-clip-new" onClick={startNewClip}><Plus/>新建夹子</button></div>
                 {clipEditorOpen && <section className="polish-clip-editor"><header><b>{editingClipId ? "编辑夹子" : "新建夹子"}</b><button type="button" onClick={() => setClipEditorOpen(false)}>收起</button></header><input value={clipName} maxLength={40} onChange={event => setClipName(event.target.value)} placeholder="夹子名称，例如：统一页脚"/><textarea value={clipPrompt} onChange={event => setClipPrompt(event.target.value)} placeholder="夹子提示词：写入每页需要追加的美化规则。"/><div><span>夹子颜色</span>{(["blue", "green", "gold", "rose"] as const).map(color => <button key={color} type="button" className={`color-${color} ${clipColor === color ? "selected" : ""}`} onClick={() => setClipColor(color)}>{({ blue: "蓝", green: "绿", gold: "金", rose: "红" })[color]}</button>)}<button type="button" className="polish-clip-save" disabled={clipSaving || !clipName.trim() || !clipPrompt.trim()} onClick={() => void saveClip()}><Save/>{clipSaving ? "保存中" : "保存夹子"}</button></div></section>}
               </div>}
             </div>
-            <button type="button" className="polish-save-page-note" disabled={busy || !draft.trim()} onClick={() => onAddPageNotes([page.pageIndex], draft.trim(), true)}><Check/>保存第 {page.pageIndex} 页要求</button>
+            <button type="button" className="polish-save-page-note" disabled={busy || (!draft.trim() && !appliedClipIds.length)} onClick={() => onAddPageNotes([page.pageIndex], { manualNote: draft.trim(), clipIds: appliedClipIds, replace: true })}><Check/>保存第 {page.pageIndex} 页要求</button>
           </div>
         </article>;
       })}</div>}

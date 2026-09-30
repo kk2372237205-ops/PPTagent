@@ -193,6 +193,78 @@
   .employee-root .polish-inline-run .polish-source-page-editor button { width:100%; }
 }
 
+/* 单页已套用的夹子只显示名称；完整提示词仍在保存时随本页要求发送。 */
+.employee-root .polish-inline-run .polish-applied-clip-list {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:6px;
+  min-height:24px;
+  margin-top:7px;
+}
+.employee-root .polish-inline-run .polish-applied-clip-list > span { color:#91a8b0; font-size:10px; }
+.employee-root .polish-inline-run .polish-applied-clip-list button {
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  max-width:190px;
+  border:1px solid rgba(133,161,174,.35);
+  border-radius:999px;
+  background:rgba(255,255,255,.055);
+  color:#dce9ed;
+  padding:4px 7px 4px 9px;
+  font-size:10px;
+  cursor:pointer;
+}
+.employee-root .polish-inline-run .polish-applied-clip-list button:hover { background:rgba(177,84,98,.16); border-color:rgba(210,112,127,.6); }
+.employee-root .polish-inline-run .polish-applied-clip-list button i { overflow:hidden; font-style:normal; text-overflow:ellipsis; white-space:nowrap; }
+.employee-root .polish-inline-run .polish-applied-clip-list button svg { width:12px; height:12px; flex:0 0 auto; color:#d7a4ae; }
+.employee-root .polish-inline-run .polish-applied-clip-list .color-blue { border-color:rgba(105,163,210,.55); }
+.employee-root .polish-inline-run .polish-applied-clip-list .color-green { border-color:rgba(105,180,137,.55); }
+.employee-root .polish-inline-run .polish-applied-clip-list .color-gold { border-color:rgba(205,163,85,.55); }
+.employee-root .polish-inline-run .polish-applied-clip-list .color-rose { border-color:rgba(205,119,141,.55); }
+.employee-root .polish-inline-run .polish-clip.is-applied { opacity:.68; }
+.employee-root .polish-inline-run .polish-clip.is-applied button:first-child { cursor:default; }
+.employee-root .polish-inline-run .polish-clip.is-applied button:first-child:disabled { color:#bfe3d0; opacity:1; }
+.employee-root .polish-inline-run .polish-clip.is-applied button:first-child svg { width:11px; height:11px; margin-left:4px; color:#91d5b1; }
+
+/* PNG 固化是本地预处理而非生图，使用阶段轨道而不是虚假的百分比。 */
+.employee-root .polish-inline-run .polish-source-converting {
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr) auto;
+  align-items:center;
+  gap:18px;
+  margin:20px 0;
+  padding:24px 26px;
+  border:1px solid rgba(115,157,173,.32);
+  border-radius:16px;
+  background:radial-gradient(circle at 10% 0%,rgba(84,141,158,.15),transparent 38%),rgba(22,30,37,.88);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.035);
+}
+.employee-root .polish-inline-run .polish-source-converting-orbit { position:relative; display:grid; width:54px; height:54px; place-items:center; }
+.employee-root .polish-inline-run .polish-source-converting-orbit > svg { width:29px; height:29px; color:#9ac3d0; }
+.employee-root .polish-inline-run .polish-source-converting-orbit i { position:absolute; width:5px; height:5px; border-radius:50%; background:#c8a85d; animation:polish-source-orbit 1.8s linear infinite; }
+.employee-root .polish-inline-run .polish-source-converting-orbit i:nth-of-type(1) { transform:translate(20px,-13px); }
+.employee-root .polish-inline-run .polish-source-converting-orbit i:nth-of-type(2) { transform:translate(-20px,12px); animation-delay:-.6s; }
+.employee-root .polish-inline-run .polish-source-converting-orbit i:nth-of-type(3) { transform:translate(3px,22px); animation-delay:-1.2s; }
+.employee-root .polish-inline-run .polish-source-converting span { color:#cbb16b; font-size:11px; font-weight:800; }
+.employee-root .polish-inline-run .polish-source-converting h3 { margin:5px 0; color:#f1f3ed; font-size:18px; }
+.employee-root .polish-inline-run .polish-source-converting p { margin:0; color:#99adb5; font-size:12px; line-height:1.7; }
+.employee-root .polish-inline-run .polish-source-converting ol { display:flex; min-width:245px; gap:0; margin:0; padding:0; list-style:none; counter-reset:polish-step; }
+.employee-root .polish-inline-run .polish-source-converting li { position:relative; flex:1; padding-top:25px; color:#687b84; font-size:10px; text-align:center; }
+.employee-root .polish-inline-run .polish-source-converting li::before { position:absolute; z-index:1; top:0; left:calc(50% - 8px); display:grid; width:16px; height:16px; place-items:center; border:1px solid rgba(136,162,172,.5); border-radius:50%; background:#172129; color:#a9bec5; content:counter(polish-step); counter-increment:polish-step; }
+.employee-root .polish-inline-run .polish-source-converting li:not(:last-child)::after { position:absolute; top:8px; left:calc(50% + 8px); width:calc(100% - 16px); height:1px; background:rgba(133,159,169,.3); content:""; }
+.employee-root .polish-inline-run .polish-source-converting li.done { color:#a9d0b8; }
+.employee-root .polish-inline-run .polish-source-converting li.done::before { border-color:#61a982; background:#24553e; color:#e6f8ec; }
+.employee-root .polish-inline-run .polish-source-converting li.active { color:#d9e9ed; }
+.employee-root .polish-inline-run .polish-source-converting li.active::before { border-color:#83bbc8; box-shadow:0 0 0 5px rgba(104,174,190,.12); color:#e5f7fa; animation:polish-source-pulse 1.5s ease-in-out infinite; }
+@keyframes polish-source-orbit { 50% { opacity:.3; } }
+@keyframes polish-source-pulse { 50% { box-shadow:0 0 0 9px rgba(104,174,190,0); } }
+@media (max-width:880px) {
+  .employee-root .polish-inline-run .polish-source-converting { grid-template-columns:auto minmax(0,1fr); }
+  .employee-root .polish-inline-run .polish-source-converting ol { grid-column:1 / -1; width:100%; }
+}
+
 /* 逐页美化工作台：原稿竖向排布，左侧只负责预览，右侧独立保存本页要求。 */
 .employee-root .polish-planner .polish-source-only { grid-template-columns:minmax(0,1fr); }
 .employee-root .polish-planner .polish-source-only > label { max-width:420px; }

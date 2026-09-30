@@ -203,15 +203,18 @@ export function useSmartStudioRuns(service: Service, notify: (text: string) => v
     } finally { setBusy(false); }
   }
 
-  async function addPolishPageNotes(pageIndexes: number[], note: string, replace = false) {
+  async function addPolishPageNotes(pageIndexes: number[], note: string | { manualNote: string; clipIds: string[]; replace?: boolean }, replace = false) {
     if (!activePolishRun) return;
+    const requirement = typeof note === "string"
+      ? { manualNote: note, clipIds: [], replace }
+      : { manualNote: note.manualNote, clipIds: note.clipIds, replace: note.replace ?? true };
     setBusy(true);
     try {
-      const response = await employeeApi.polish.addPageNotes(service.id, activePolishRun.id, { pageIndexes, note, replace });
+      const response = await employeeApi.polish.addPageNotes(service.id, activePolishRun.id, { pageIndexes, note: requirement.manualNote, replace: requirement.replace, clipIds: requirement.clipIds });
       const result = await responseJson(response);
       if (!response.ok) return notify(result.error || "逐页修改要求保存失败");
       setPolishRun(result.run as PptPolishRun);
-      notify(replace ? "已保存这一页的修改要求" : "已保存所选页面的修改要求");
+      notify(requirement.replace ? "已保存这一页的修改要求" : "已保存所选页面的修改要求");
     } finally { setBusy(false); }
   }
 
