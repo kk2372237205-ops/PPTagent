@@ -50,10 +50,12 @@ npm run dev:lite
 
 `dev:lite` 不替代完整开发模式，它只启动 Next、设计/生图后台执行脚本、生成 PPT 后台执行脚本和美化 PPT 后台执行脚本。需要 ONLYOFFICE 检查、图片炸开或组件拆图时仍使用 `npm run dev`。
 
-当前项目的唯一功能状态入口是 `docs/current-project-memory.md`。详细业务验收流程在 `docs/project-control-workflows.md`；新模型接手顺序在 `docs/model-handoff.md`。以下两份文件只用于历史追溯：
+当前项目的唯一功能状态入口是 `docs/current-project-memory.md`。详细业务验收流程在 `docs/project-control-workflows.md`；新模型接手顺序在 `docs/model-handoff.md`；某个功能涉及哪些文件看 `docs/feature-file-map.md`。
 
-- `docs/project-archive-2026-07-03.md`
-- `docs/maintenance-audit-2026-07-03.md`
+只用于历史追溯（**历史快照，行号与路径按当时状态保留**）：
+
+- `docs/archive/agents-history.md`
+- `docs/readonly-audit-2026-09-14.md`
 
 `npm run dev` 会先自动检查 Docker Desktop、启动 ONLYOFFICE 容器并确认编辑器可访问，然后才启动 Next.js。首次运行可能较慢，因为 Docker 需要拉取并初始化 ONLYOFFICE 镜像；Docker 未安装或无法启动时，命令会明确失败，不会启动一个缺少 PPT 编辑器的开发环境。
 

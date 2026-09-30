@@ -19,34 +19,32 @@
 4. `README.md`
    - 面向开发者的产品概览、本地启动、部署和外部服务配置。
 
-5. `project-archive-2026-07-03.md`
-   - 历史完整存档。
-   - 用于追溯早期方案；不能覆盖当前记忆。
-
-6. `maintenance-audit-2026-07-03.md`
-   - 瘦身、提速、可读性审计。
-   - 记录哪些文件已清理，哪些目录不能乱删，后续如何继续瘦身。
-
-7. `archive/agents-history.md`
+5. `archive/agents-history.md`
    - 2026-09-14 从 `AGENTS.md` 拆出的全部历史变更记录（第八个话题起）。
    - 只用于追溯“当初为什么这么做”，**不代表当前状态**。
    - `AGENTS.md` 现在只保留必须遵守的规则，已短到能被 AI 完整读入。
 
-8. `readonly-audit-2026-09-14.md`
+6. `readonly-audit-2026-09-14.md`
    - 一次完整的只读审计：目录脉络、74 条接口逐条盘点、前端可达性、功能真伪与改进优先级。
+   - **历史快照**：里面的行号与文件路径按审计当时的状态保留。
 
-9. `project-map.md`
+7. `project-map.md`
    - ⭐ **目录地图与项目管理手册**（2026-09-14 生成）。
    - 逐层讲清每个文件夹与子目录的作用、哪些文件夹是一个整体，以及日常怎么管理这个项目：
      三条常用命令、验证门、版本控制与回退、怎么判断文件能不能删、怎么派活给 AI、
      出问题时的排查顺序、新增功能的标准动作。
    - 想快速看懂整个项目结构，从这份开始。
 
+8. `feature-file-map.md`
+   - ⭐ **功能 → 文件对照表**（2026-09-27 新增）。
+   - 想知道“某个模式到底有哪些文件”时看这份：界面 / 接口 / 后台脚本 / 提示词 / 数据表 / 产物 / 共享层。
+   - `project-map.md` 按**目录**组织，这份按**功能**组织，两者互补。
+
 根目录的 `AGENTS.md` 是必须遵守的协作规则；它不是功能清单，历史已移到 `docs/archive/`。
 
 ## 代码模块怎么找
 
-员工端已经从单文件拆成 21 个模块文件。**改任何员工端代码前先看 `components/employee/README.md`**，
+员工端已经从单文件拆成 23 个模块文件（17 个 .tsx 面板 + 5 个 .ts 类型/工具 + README）。**改任何员工端代码前先看 `components/employee/README.md`**，
 里面有"哪个文件负责什么、对应哪些接口"的索引表，以及派活的注意事项。
 更完整的目录结构与协作方式见 `docs/project-map.md`。
 
@@ -93,11 +91,11 @@ npm run storage:report
 - `app/api/employee/admin/`
   - 管理员控制台读取成员、统计使用情况和修改权限的后端入口。
 
-- `scripts/deck-generation-worker.mjs`
+- `scripts/workers/deck-generation/deck-generation-worker.mjs`
   - 生成 PPT 的后台执行脚本。
   - 负责方案规划、逐页生图、PDF 合成、Codia 转 PPT。
 
-- `scripts/ppt-polish-worker.mjs`
+- `scripts/workers/ppt-polish/ppt-polish-worker.mjs`
   - 美化 PPT 的后台执行脚本。
   - 负责确认方案后逐页重绘、生成预览图，并配合转 PDF/PPT。
 
@@ -105,7 +103,7 @@ npm run storage:report
   - 生成 PPT 的可读 Markdown 技能规则。
   - 这里是“图组导演层”的人类可读版本。
 
-- `scripts/design-agent-worker.mjs`
+- `scripts/workers/design-agent/design-agent-worker.mjs`
   - 单页生图和旧智能设计任务后台执行脚本。
 
 - `app/api/employee/services/[id]/deck-generation/`

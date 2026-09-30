@@ -11,6 +11,7 @@ import { documentRoot, ensureWorkspaceDirectories, saveFile, workspaceRoot } fro
 export const runtime = "nodejs";
 
 const polishRunRoot = path.join(workspaceRoot, "ppt-polish-runs");
+
 type PolishRun = {
   id: string;
   serviceId: string;

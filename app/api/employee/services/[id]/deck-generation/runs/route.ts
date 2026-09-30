@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { authorizeEmployeeService } from "@/lib/employee-auth";
+import { deckDefaultStylePackId, deckStylePackIds } from "@/lib/employee-deck-constants";
 import { deckSourceRoot, deckThemeRoot, saveFile } from "@/lib/workspace-storage";
 
 export const runtime = "nodejs";
@@ -10,16 +11,6 @@ const deckRunInclude = {
   sources: { orderBy: { createdAt: "asc" as const } },
   pagePlans: { orderBy: { pageIndex: "asc" as const } }
 };
-
-const allowedStylePacks = new Set([
-  "blue-gold-tech",
-  "white-green-tech",
-  "black-gold-business",
-  "blue-purple-ai",
-  "red-white-government",
-  "minimal-academic",
-  "vivid-roadshow"
-]);
 
 export async function GET(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
@@ -51,7 +42,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   const generationMode = form.get("generationMode") === "advanced" ? "advanced" : "quick";
   const outlineText = String(form.get("outlineText") || "").trim();
   const pageCount = Math.max(2, Math.min(30, Number(form.get("pageCount") || 12) || 12));
-  const stylePack = String(form.get("stylePack") || "blue-gold-tech");
+  const stylePack = String(form.get("stylePack") || deckDefaultStylePackId);
   const paletteMode = form.get("paletteMode") === "reference" ? "reference" : "preset";
   const unityOptionsJson = normalizeUnityOptions(String(form.get("unityOptions") || "{}"));
   const referenceFiles = form.getAll("references").filter(isUploadedFile);
@@ -70,7 +61,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   if (paletteMode === "reference" && !themeReference) {
     return NextResponse.json({ error: "选择参考图配色后，请上传一张配色参考图" }, { status: 400 });
   }
-  if (!allowedStylePacks.has(stylePack)) return NextResponse.json({ error: "风格包无效" }, { status: 400 });
+  if (!deckStylePackIds.has(stylePack)) return NextResponse.json({ error: "风格包无效" }, { status: 400 });
   if (referenceText.length > 50_000) return NextResponse.json({ error: "粘贴的参考资料不能超过 5 万字，可改为上传文件" }, { status: 400 });
   if (referenceFiles.length > 30) return NextResponse.json({ error: "参考资料最多上传 30 个文件" }, { status: 400 });
   if (allFiles.reduce((total, file) => total + file.size, 0) > 500 * 1024 * 1024) {

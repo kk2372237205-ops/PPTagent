@@ -2,9 +2,9 @@
  * AI 助手与图片工具的共享类型
  *
  * 职责：定义图片工具面板内部的来源、图片转 PPT 结果与 PPT 提取图片结构。
- * 谁可以改：与 `components/employee/tools-ai-panels.tsx` 一起维护。
+ * 谁可以改：与 `components/employee/image-tools-panel.tsx` 一起维护。
  * 依赖：无（纯类型）。
- * 被谁用：`components/employee/tools-ai-panels.tsx`。
+ * 被谁用：`components/employee/image-tools-panel.tsx`。
  * 验证方式：`npm run verify`。
  */
 

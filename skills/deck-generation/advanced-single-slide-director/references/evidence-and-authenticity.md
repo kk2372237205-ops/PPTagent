@@ -25,13 +25,24 @@
 
 ## Prevent Fabrication
 
+**分两段读：第一段是绝对红线（伪造"凭证"），第二段是允许的写实（描绘"实物"）。**
+
+### 红线：绝不生成会被人当成凭证的东西
+
 - Do not ask Image2 to recreate, beautify, redraw, or simulate a certificate, contract, report, patent page, test record, official screenshot, invoice, order, award, dashboard, or news coverage.
 - Do not generate readable school or institution signs, official logos, product labels, or documentary interfaces unless that exact visible text is explicitly confirmed and the result cannot be mistaken for proof.
-- Do not portray a synthetic campus, laboratory, factory, customer site, product, person, or experiment as a real photographed scene.
-- A clearly conceptual or editorial scene may provide context, mechanism, atmosphere, or a placeholder-like communication cue when it is not presented as factual proof.
+- 不得在画面中出现公章、文件抬头、可读编号、签字、审批栏等会让人误认为是真实凭证的元素。
+
+### 允许：写实描绘"实物与场景"
+
+- **默认写实。** 设备、工具、线缆、机械结构、零部件、自然环境、作业场地氛围、工艺流程、装配过程，都应当画得像真实存在的实物。这**不是**伪造。
+- 写实画面表达的是"这个装置/工艺长什么样"，**不是**"这是我们现场的实拍记录"。每页重申这句边界：
+  `Rendering frame: this is a realistic rendering of what the subject looks like, not a documentary record of a specific real event, site, or person.`
+- 不得生成可辨认的真实人物肖像或真人合影；需要人物时使用不露正脸、不可识别的作业人员剪影或背影。
+- 封面用项目自身的主题物构成强视觉（设备、线路、结构、环境），**不要**编造带招牌的机构大楼或假纪实场景。
 - For a confirmed metric, Image2 may draw a clean chart only from the exact labels and values in the render contract. Missing values stay omitted.
-- For a cover, create a strong thematic visual with deliberate title whitespace. Prefer symbolic subject matter over a fictional branded building or fake documentary scene.
-- When no grounded diagram or honest conceptual visual is appropriate, use typography and neutral geometry. State factual limitations in warnings instead of fabricating proof.
+- 当某页确实只有文字可讲（图表页、数据表页）时，用排版与中性几何；**但不要因为"怕假"就把画面删掉** —— 那种做法得到的是纯文字页，同样不合格。
+
 
 ## Control Generic UI Language
 

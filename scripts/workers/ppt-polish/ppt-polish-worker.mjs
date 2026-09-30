@@ -9,7 +9,7 @@ import {
   createServiceFetch,
   imageGenerationBody,
   requireImageService
-} from "./ai-service-client.mjs";
+} from "../shared/ai-service-client.mjs";
 import { createPptPolishSourcePages } from "./ppt-polish-source-pages.mjs";
 
 const root = process.cwd();
@@ -21,6 +21,7 @@ const workspaceRoot = path.join(root, "uploads", "employee-workspace");
 const documentRoot = path.join(workspaceRoot, "documents");
 const imageRoot = path.join(workspaceRoot, "images");
 const polishRunRoot = path.join(workspaceRoot, "ppt-polish-runs");
+// 只共享风格包定义（用户可见选项的唯一含义）；画面工程规则不共享，见下方说明。
 const workerHeartbeatPath = path.join(root, ".next-dev", "ppt-polish-worker-heartbeat.json");
 const pollMs = Math.max(1500, Number(process.env.PPT_POLISH_POLL_MS || 3000));
 const staleGeneratingMs = Math.max(60_000, Number(process.env.PPT_POLISH_STALE_GENERATING_MS || 60_000));
@@ -190,6 +191,19 @@ async function openAiImage(prompt) {
   throw new Error("图片中转服务没有返回图片内容");
 }
 
+/**
+ * 美化 PPT 与生成 PPT 的规则边界（2026-09-27 owner 决定；2026-09-30 合并后收紧）
+ *
+ * 生成 PPT、美化 PPT、生图是三条独立产品线，不互相黏连：
+ * 美化**只读自己的** `skills/ppt-polish/visual-redraw-system.md`（见文件顶部
+ * polishVisualRules），**不读 `skills/deck-generation/` 的任何文件**。
+ * 理由：美化是"改造已有页面"，生成是"从零画整页"，画面合同本来就会越走越远；
+ * 共享一份规则，生成那边的改动就会无声改掉美化的产出。
+ *
+ * 早期美化曾注入 deck-generation 的 `style-packs.md` 与 `illustration-system.md`。
+ * 2026-09-30 起美化表单不再让用户选风格包（改为"保护要求 + 逐页修改要求"），
+ * 所以连 `style-packs.md` 也不再需要共享——美化不再依赖生成链路的任何提示词文件。
+ */
 function xmlText(value) {
   return String(value || "")
     .replace(/&lt;/g, "<")
@@ -287,6 +301,7 @@ function visualSystemPrompt(run, slide) {
     base.push(
       "Cover page special direction:",
       "- Make the cover emotionally strong and eye-catching: one cinematic hero visual, strong depth, confident lighting, and clear focal point.",
+      "- The hero visual occupies 55% or more of the canvas and bleeds off at least two edges (full bleed preferred).",
       "- Use very little text: main title, optional short subtitle, and at most three tiny metadata chips. Avoid dense timelines, paragraph cards, and explanatory blocks on the cover.",
       "- The title should feel memorable and central; the visual should carry most of the impact."
     );
@@ -294,6 +309,7 @@ function visualSystemPrompt(run, slide) {
     base.push(
       "Ending page special direction:",
       "- Make the ending page emotional, spacious, and memorable. Use one large closing sentence or slogan as the main focus.",
+      "- One symbolic thematic visual occupies 35%-60% of the canvas, built from this deck's own subject matter rather than generic thank-you art.",
       "- Keep text minimal. If supporting points are needed, use no more than three short chips or cards.",
       "- Use a stronger atmosphere than middle pages while preserving the deck's emerging visual language."
     );
@@ -301,7 +317,9 @@ function visualSystemPrompt(run, slide) {
     base.push(
       "Content page direction:",
       "- Make the page readable and structured with clear hierarchy, but keep visual energy aligned with the cover and ending.",
-      "- Use charts, cards, timelines, or diagrams only when they help the detected content; avoid unnecessary text-heavy boxes."
+      "- One dominant illustration occupies 35%-55% of the canvas, is the largest single element on the page, and bleeds off at least one edge.",
+      "- Prefer one larger picture over a row of small icons or thumbnails. If the detected text lists parallel items, draw them as one labeled process chain or a two-column comparison instead of many equal small boxes.",
+      "- Charts, cards, timelines and diagrams are welcome when they explain the detected content; a page made only of text and small icons is not acceptable."
     );
   }
   return base.join("\n");
@@ -354,6 +372,9 @@ Hard requirements:
 - Output exactly one full 16:9 PPT page with refined layout, title hierarchy, content blocks, background, and safe margins.
 - Preserve the original meaning. If numbers, dates, names, or important labels exist in the detected text, keep them readable and do not invent conflicting data.
 - Avoid dense paragraphs. Use concise designed text, cards, diagrams, timelines, charts, or structured blocks where appropriate.
+- **Every page must carry one dominant illustration occupying at least 25% of the canvas, and it must be the largest single element on the page.** Only two cases may go without: a chart page where the chart itself is the visual, and a pure data-table page. Text-only pages are a failure.
+- **Name the illustration's subject with concrete nouns taken from this page's detected text.** Abstract nouns such as growth, innovation, cooperation or future are not valid subjects — they produce generic decorative shapes instead of a real picture.
+- **Render the illustration realistically by default** — photorealistic for equipment, sites, materials and processes, with a precise technical diagram when the page explains a mechanism. **Never cartoon, flat-vector, mascot or clip-art style.** Never fabricate documents (certificates, contracts, reports, official seals, software screenshots), institution signage, logos, or identifiable real people.
 - Keep all important text and visuals inside a 6% safe area. Nothing important may touch or be cut off by the canvas edge.
 - Keep continuity across pages: same palette, header/footer rhythm, typography feeling, card language, icon style, detail treatment, and decorative language.
 - For regeneration, obey the requested redesign route. The new page must be visibly different from the previous generated version unless the instruction explicitly asks only for closer continuity.

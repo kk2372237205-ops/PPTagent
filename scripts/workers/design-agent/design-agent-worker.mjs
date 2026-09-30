@@ -1,10 +1,10 @@
-﻿import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import sharp from "sharp";
 import { PrismaClient } from "@prisma/client";
 const root = process.cwd();
-import { aiImageConfig, aiTextConfig, createServiceFetch, imageGenerationBody, requireImageEdits, requireImageService, requireTextService, textEndpoint, textFromResponse as textFromServiceResponse, textRequestBody } from "./ai-service-client.mjs";
+import { aiImageConfig, aiTextConfig, createServiceFetch, imageGenerationBody, requireImageEdits, requireImageService, requireTextService, textEndpoint, textFromResponse as textFromServiceResponse, textRequestBody } from "../shared/ai-service-client.mjs";
 import { cleanBackgroundSkill, masterRenderSkill, partCutoutSkill, partDecompositionSkill, rebuildAlignmentSkill, textArtCutoutSkill } from "./design-agent-skills.mjs";
 
 loadEnv();
@@ -13,10 +13,9 @@ const db = new PrismaClient();
 const workspaceRoot = path.join(root, "uploads", "employee-workspace");
 const imageRoot = path.join(workspaceRoot, "images");
 const referenceRoot = path.join(workspaceRoot, "references");
+// 原「抠图准备工作skill/skill.txt」已于 2026-09-27 删除（那个目录只被本文件里保留的旧流程引用）。
+// 读取处有 try/catch 兜底，读不到就返回空串，所以不会抛错；下面是保留的旧路径以便追溯。
 const projectCutoutSkillPath = path.join(root, "\u62a0\u56fe\u51c6\u5907\u5de5\u4f5cskill", "skill.txt");
-const arkEndpoint = process.env.ARK_RESPONSES_ENDPOINT || "https://ark.cn-beijing.volces.com/api/v3/responses";
-const deepseekModel = process.env.DEEPSEEK_TEXT_MODEL || "deepseek-v4-pro-260425";
-const doubaoVisionModel = process.env.DOUBAO_VISION_MODEL || process.env.DOUBAO_TEXT_MODEL || "doubao-seed-2-0-pro-260215";
 const textService = aiTextConfig();
 const imageService = aiImageConfig();
 const textRequest = createServiceFetch(textService);
@@ -59,11 +58,6 @@ function imageMime(fileName) {
   return ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" : ext === ".webp" ? "image/webp" : "image/png";
 }
 function safeJson(value, fallback) { try { return JSON.parse(value); } catch { return fallback; } }
-function textFromResponse(result) {
-  if (typeof result?.output_text === "string" && result.output_text.trim()) return result.output_text.trim();
-  const chunks = result?.output?.flatMap(item => item.content || []).map(item => item.text || item.value || "").filter(Boolean);
-  return chunks?.join("\n").trim() || "";
-}
 function providerError(result, fallback) { return result?.error?.message || result?.message || fallback; }
 function providerHttpError(provider, response, result, fallback) {
   return new Error(`${provider} API error (${response.status}): ${providerError(result, fallback)}`);
@@ -74,61 +68,6 @@ function jsonFromModel(text) {
   const end = fenced.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error("妯″瀷娌℃湁杩斿洖鍙敤鐨勭増寮?JSON");
   return JSON.parse(fenced.slice(start, end + 1));
-}
-function compactBriefTitle(brief) {
-  const raw = String(brief || "").replace(/\s+/g, " ").trim();
-  const named = raw.match(/(?:main title|title|标题|主题|名称)[:：\s"“”']+([^,，。；;\n"“”']{2,28})/i)?.[1]
-    || raw.match(/["“”'《](.{2,28})["“”'》]/)?.[1];
-  if (named) return named.trim();
-  return raw
-    .replace(/PPT|ppt|cover|slide|presentation|页面|封面|设计|生成|美化|帮我|请你/g, " ")
-    .split(/[,，。；;\n]/)
-    .map(item => item.trim())
-    .find(item => item.length >= 2)?.slice(0, 22) || "智能视觉方案";
-}
-function looksLikePlaceholder(value) {
-  const text = String(value || "").trim();
-  return !text
-    || /^(PPT\s*)?(title|subtitle|text|headline|placeholder|xxx|xxxx)$/i.test(text)
-    || /主标题|副标题|请输入|待补充|汇报人|所属部门|汇报日期/.test(text);
-}
-function cleanDesignText(value, fallback, max = 60) {
-  const text = String(value || "").replace(/\s+/g, " ").trim();
-  const safeFallback = String(fallback || "").replace(/\s+/g, " ").trim();
-  return (looksLikePlaceholder(text) ? safeFallback : text).slice(0, max);
-}
-function briefBullets(brief) {
-  const items = String(brief || "")
-    .split(/[。；;\n]/)
-    .map(item => item.replace(/^\d+[.、\s]*/, "").trim())
-    .filter(item => item.length >= 6 && !looksLikePlaceholder(item))
-    .slice(0, 3)
-    .map(item => item.slice(0, 42));
-  return items.length ? items : ["突出核心主题", "强化视觉层级", "保留可编辑结构"];
-}
-function normalizePlan(value, brief) {
-  const plan = value && typeof value === "object" ? value : {};
-  const fallbackTitle = compactBriefTitle(brief);
-  const title = cleanDesignText(plan.title, fallbackTitle, 42);
-  const subtitle = cleanDesignText(plan.subtitle, "专业呈现，清晰传达核心价值", 80);
-  const palette = Array.isArray(plan.palette) ? plan.palette.filter(color => /^#[0-9A-Fa-f]{6}$/.test(String(color))).slice(0, 4) : [];
-  const body = Array.isArray(plan.body)
-    ? plan.body.map(item => cleanDesignText(item, "", 42)).filter(Boolean).filter(item => !looksLikePlaceholder(item)).slice(0, 3)
-    : [];
-  return {
-    title: title || "PPT 美化方案",
-    subtitle,
-    palette: palette.length >= 2 ? palette : ["#092D66", "#1B73D1", "#F5B544", "#F3F7FC"],
-    accentLabel: cleanDesignText(plan.accentLabel, "WZLCF DESIGN", 22),
-    body: body.length ? body : briefBullets(brief),
-    pageType: ["cover", "section", "content", "comparison", "timeline"].includes(String(plan.pageType)) ? String(plan.pageType) : "cover",
-    composition: String(plan.composition) === "hero-left-text-right" ? "hero-left-text-right" : "text-left-hero-right",
-    heroSubject: String(plan.heroSubject || "与主题相关的单一主视觉对象").slice(0, 260),
-    backgroundDirection: String(plan.backgroundDirection || "低饱和、干净、有空间层次的氛围背景；不含主体、文字或信息卡").slice(0, 900),
-    visualDirection: String(plan.visualDirection || "克制、专业、具有清晰视觉焦点的 16:9 商务演示页").slice(0, 900),
-    imageDirection: String(plan.imageDirection || "抽象科技主视觉，留出标题与信息区，不生成可读文字").slice(0, 900),
-    requirements: Array.isArray(plan.requirements) ? plan.requirements.map(item => String(item).slice(0, 160)).filter(Boolean).slice(0, 8) : []
-  };
 }
 
 async function logEvent(runId, stage, status, detail = "") {
@@ -166,63 +105,8 @@ async function referenceBuffer(reference) {
   const filePath = path.join(referenceRoot, path.basename(reference.storedName));
   return { buffer: await readFile(filePath), name: reference.storedName, mime: imageMime(reference.storedName) };
 }
-async function arkResponse(model, content) {
-  if (!process.env.ARK_API_KEY) throw new Error("尚未配置 ARK_API_KEY");
-  const response = await fetch(arkEndpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.ARK_API_KEY}` },
-    body: JSON.stringify({ model, input: [{ role: "user", content }] })
-  });
-  const result = await response.json();
-  if (!response.ok) throw providerHttpError("ARK", response, result, "ARK model call failed");
-  const text = textFromResponse(result);
-  if (!text) throw new Error("鏂硅垷妯″瀷娌℃湁杩斿洖鍙鍐呭");
-  return text;
-}
-async function analyzeVision(references, brief) {
-  const content = [];
-  for (const reference of references) {
-    const file = await referenceBuffer(reference);
-    content.push({ type: "input_image", image_url: `data:${file.mime};base64,${file.buffer.toString("base64")}` });
-  }
-  content.push({ type: "input_text", text: `Analyze these references for PPT visual direction. Employee brief: ${brief}\nReturn JSON only: {"style":"","palette":["#RRGGBB"],"layout":"","visualFocus":"","avoid":[""],"keywords":[""]}. Do not copy names, phone numbers, school names, logos or sensitive text from the images.` });
-  const text = await arkResponse(doubaoVisionModel, content);
-  const parsed = safeJson(text.match(/\{[\s\S]*\}/)?.[0] || "{}", {});
-  return {
-    style: String(parsed.style || "professional presentation style"),
-    palette: Array.isArray(parsed.palette) ? parsed.palette.filter(color => /^#[0-9A-Fa-f]{6}$/.test(String(color))).slice(0, 4) : [],
-    layout: String(parsed.layout || "clear title and visual focus layout"),
-    visualFocus: String(parsed.visualFocus || "highlight the core topic"),
-    avoid: Array.isArray(parsed.avoid) ? parsed.avoid.map(String).slice(0, 6) : [],
-    keywords: Array.isArray(parsed.keywords) ? parsed.keywords.map(String).slice(0, 8) : []
-  };
-}
-async function makePlan(run, vision) {
-  const prompt = `You are WZLCF's senior PPT art director. Convert the employee brief into one editable 16:9 PPT production blueprint, not a generic image prompt.
-Order: ${run.service.title}
-Employee brief: ${run.brief}
-Vision analysis: ${JSON.stringify(vision)}
-Return JSON only, no Markdown:
-{"pageType":"cover|section|content|comparison|timeline","composition":"text-left-hero-right|hero-left-text-right","title":"","subtitle":"","palette":["#RRGGBB","#RRGGBB"],"accentLabel":"","body":["","",""],"heroSubject":"single subject description","backgroundDirection":"background layer with no text or subject","visualDirection":"overall page direction","imageDirection":"hero image composition/material/lighting","requirements":["important constraints from brief"]}`;
-  let text = await arkResponse(deepseekModel, [{ type: "input_text", text: prompt }]);
-  try { return normalizePlan(jsonFromModel(text), run.brief); } catch {
-    text = await arkResponse(deepseekModel, [{ type: "input_text", text: `${prompt}\nYour previous answer was not valid JSON. Return only the corrected JSON object.` }]);
-    return normalizePlan(jsonFromModel(text), run.brief);
-  }
-}
 function visualPrompt(plan, vision, mode) {
   return `Create one premium isolated presentation hero asset, not a complete slide and not a layout. Subject: ${plan.heroSubject}. Visual direction: ${plan.visualDirection}. Subject rendering: ${plan.imageDirection}. Palette: ${plan.palette.join(", ")}. ${mode === "mixed" ? `Use supplied references only for non-identifying mood, composition and color; do not copy them. Visual analysis: ${vision.style}; ${vision.layout}.` : "Create a fresh original asset from the production blueprint."} Include exactly one coherent visual subject with high-end commercial key-visual quality, crisp detail, elegant lighting, clean silhouette, and no cheap stock-template feeling. Do not add title text, letters, numbers, logos, watermarks, UI panels, cards, labels, borders, frames, charts, or a complete presentation page. Only include vehicles, robots, products, or characters when they are explicitly part of the subject. Keep the full subject visible with clean margins and separable edges for placement in an editable PPT.`;
-}
-function backgroundPrompt(plan, vision, mode) {
-  return `Create an original 16:9 premium presentation background layer only. This is not a finished slide. Background direction: ${plan.backgroundDirection}. Overall mood: ${plan.visualDirection}. Palette: ${plan.palette.join(", ")}. ${mode === "mixed" ? `Use supplied references only as non-identifying inspiration for palette, lighting and atmosphere. Visual analysis: ${vision.style}; ${vision.layout}.` : "Use the text production blueprint only."} The result must be a fully opaque atmospheric canvas with generous quiet space, cinematic depth, subtle gradients, refined particles or texture only when useful, and no generic blue PowerPoint template look. Absolutely no text, letters, numbers, logos, watermarks, people, robots, products, vehicles, cards, panels, frames, borders, iconography, charts, title effects, or focal subjects. Do not leave transparent/checkerboard areas. Keep visual texture subtle so editable PPT text remains readable.`;
-}
-function summaryBackgroundPrompt(plan, vision) {
-  const palette = (vision.palette?.length ? vision.palette : plan.palette).join(", ");
-  return `Create an original opaque 16:9 presentation background only. Use only this neutral visual summary: mood ${vision.style}; composition atmosphere ${vision.layout}; palette ${palette}; background direction ${plan.backgroundDirection}. No readable text, logos, people, products, robots, vehicles, cards, frames, panels, borders, icons, charts or focal subjects. No transparency.`;
-}
-function summaryHeroPrompt(plan, vision) {
-  const palette = (vision.palette?.length ? vision.palette : plan.palette).join(", ");
-  return `Create one original isolated presentation hero asset: ${plan.heroSubject}. Use only this neutral visual summary: mood ${vision.style}; palette ${palette}; rendering ${plan.imageDirection}. Do not include readable text, logos, watermarks, UI, cards, panels, borders, a complete slide, unrelated subjects, or cropped-off body parts. Keep the full subject clearly separated from its surroundings.`;
 }
 function multipartBody(fields, files) {
   const boundary = `----WzlcFDesign${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`;
@@ -330,16 +214,6 @@ function isOpenAiSafetyRejection(error) {
     : error instanceof Error ? error.message : String(error);
   return /rejected by the safety system|safety system|safety policy/i.test(message);
 }
-function summaryVisualPrompt(plan, vision) {
-  const palette = (vision.palette?.length ? vision.palette : plan.palette).join(", ");
-  return `Create an original 16:9 presentation slide hero visual only. Do not use, reproduce, or infer any supplied reference image, logo, brand, readable text, watermark, phone number, person identity, character, product, or copyrighted artwork. Use only this neutral style summary: professional presentation mood ${vision.style}; composition ${vision.layout}; visual emphasis ${vision.visualFocus}; palette ${palette}. Visual direction: ${plan.visualDirection}. Image direction: ${plan.imageDirection}. Leave generous clean space for editable PPT title and content blocks.`;
-}
-function readableOpenAiFailure(error) {
-  const message = error instanceof Error ? error.message : String(error);
-  if (error instanceof Error && error.name === "AbortError") return new Error("OpenAI 图片生成等待超过 5 分钟，已停止本次请求；请稍后重试");
-  if (/fetch failed|network|connect|socket|econn|enotfound/i.test(message)) return new Error(`无法连接 OpenAI 图片服务：${message}`);
-  return error instanceof Error ? error : new Error(message);
-}
 function employeeFacingFailure(error) {
   const message = error instanceof Error ? error.message : String(error);
   if (/safety system|safety policy/i.test(message)) return "参考图或提示词触发 OpenAI 安全审核，请更换参考图或改用更通用的原创描述。";
@@ -365,154 +239,6 @@ function safeFailureDetail(error) {
     .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer ***")
     .slice(0, 240);
 }
-async function openAiImage(plan, vision, mode, references, onStage = async () => {}, configuration = {}) {
-  const stage = String(configuration.stage || "image");
-  const targetName = String(configuration.targetName || "主视觉预览");
-  const initialPrompt = String(configuration.initialPrompt || visualPrompt(plan, vision, mode));
-  const fallbackPrompt = String(configuration.fallbackPrompt || summaryVisualPrompt(plan, vision));
-  if (mode !== "mixed" || !references.length) {
-    await onStage(`${stage}_text`, "running", `OpenAI 正在生成${targetName}`);
-    try {
-      return { buffer: await openAiImageRaw(plan, vision, mode, references, initialPrompt), finalPrompt: initialPrompt, usedSafetyFallback: false };
-    } catch (error) {
-      throw readableOpenAiFailure(error);
-    }
-  }
-
-  await onStage(`${stage}_reference`, "running", `OpenAI 正在读取参考图并生成${targetName}`);
-  try {
-    return { buffer: await openAiImageRaw(plan, vision, mode, references, initialPrompt), finalPrompt: initialPrompt, usedSafetyFallback: false };
-  } catch (error) {
-    if (!isOpenAiSafetyRejection(error)) throw readableOpenAiFailure(error);
-  }
-
-  await onStage(`${stage}_safety_fallback`, "running", "参考图触发 OpenAI 安全审核，正在移除原图并保留风格摘要");
-  await onStage(`${stage}_summary_retry`, "running", `OpenAI 正在根据参考图风格摘要重新生成${targetName}，不再传递原始参考图`);
-  try {
-    return { buffer: await openAiImageRaw(plan, vision, "text", [], fallbackPrompt), finalPrompt: fallbackPrompt, usedSafetyFallback: true };
-  } catch (error) {
-    if (isOpenAiSafetyRejection(error)) {
-      throw new Error("OpenAI 对参考图和风格摘要两次安全审核均未通过。请改用文生图模式，或移除可能包含 Logo、人物、影视角色或版权内容的参考图后重试。");
-    }
-    throw readableOpenAiFailure(error);
-  }
-}
-function safeSvgText(value) {
-  return String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-function validColor(value, fallback) {
-  return /^#[0-9A-Fa-f]{6}$/.test(String(value || "")) ? String(value) : fallback;
-}
-async function normalizeBackgroundAsset(buffer, plan) {
-  const backdrop = validColor(plan.palette?.[0], "#092D66");
-  return sharp(buffer)
-    .rotate()
-    .flatten({ background: backdrop })
-    .resize(1920, 1080, { fit: "cover", position: "attention" })
-    .png()
-    .toBuffer();
-}
-async function normalizeHeroAsset(buffer) {
-  return sharp(buffer)
-    .rotate()
-    .resize(900, 1260, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
-    .png()
-    .toBuffer();
-}
-async function composeDesignPreview(plan, background, hero) {
-  const navy = validColor(plan.palette?.[0], "#092D66");
-  const blue = validColor(plan.palette?.[1], "#1B73D1");
-  const gold = validColor(plan.palette?.[2], "#F5B544");
-  const paper = validColor(plan.palette?.[3], "#F3F7FC");
-  const heroLeft = plan.composition === "hero-left-text-right";
-  const contentX = heroLeft ? 1040 : 135;
-  const heroX = heroLeft ? 95 : 1050;
-  const heroTop = 190;
-  const title = safeSvgText(plan.title);
-  const subtitle = safeSvgText(plan.subtitle);
-  const accent = safeSvgText(plan.accentLabel);
-  const cards = (plan.body || []).slice(0, 3).map((item, index) => {
-    const y = 705 + index * 82;
-    return `<g opacity=".94"><rect x="${contentX}" y="${y}" width="560" height="58" rx="17" fill="#04152D" fill-opacity=".40" stroke="${blue}" stroke-opacity=".34"/><circle cx="${contentX + 29}" cy="${y + 29}" r="5" fill="${gold}"/><text x="${contentX + 56}" y="${y + 38}" font-family="Microsoft YaHei, Arial" font-size="23" font-weight="650" fill="${paper}">${safeSvgText(item)}</text></g>`;
-  }).join("");
-  const lineX = heroLeft ? 975 : 930;
-  const overlay = `<svg width="1920" height="1080" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <linearGradient id="textScrim" x1="0" x2="1">
-        <stop offset="0" stop-color="${navy}" stop-opacity="${heroLeft ? ".08" : ".72"}"/>
-        <stop offset=".55" stop-color="${navy}" stop-opacity=".40"/>
-        <stop offset="1" stop-color="${navy}" stop-opacity="${heroLeft ? ".72" : ".08"}"/>
-      </linearGradient>
-      <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
-        <feGaussianBlur stdDeviation="5" result="blur"/>
-        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-      </filter>
-    </defs>
-    <rect width="1920" height="1080" fill="url(#textScrim)"/>
-    <path d="M${contentX} 146 H${contentX + 510}" stroke="${blue}" stroke-opacity=".55" stroke-width="2"/>
-    <circle cx="${contentX}" cy="146" r="5" fill="${gold}" filter="url(#softGlow)"/>
-    <text x="${contentX}" y="116" font-family="Microsoft YaHei, Arial" font-size="22" font-weight="700" fill="${gold}" letter-spacing="5">${accent}</text>
-    <text x="${contentX}" y="270" font-family="Microsoft YaHei, Arial" font-size="78" font-weight="800" fill="${paper}">${title}</text>
-    <text x="${contentX}" y="350" font-family="Microsoft YaHei, Arial" font-size="30" fill="#DDEBFA" opacity=".92">${subtitle}</text>
-    <rect x="${lineX}" y="206" width="3" height="525" rx="2" fill="${gold}" fill-opacity=".72"/>
-    ${cards}
-  </svg>`;
-  const preparedHero = await sharp(hero)
-    .resize(690, 720, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
-    .png()
-    .toBuffer();
-  return sharp(background)
-    .resize(1920, 1080, { fit: "cover", position: "attention" })
-    .composite([{ input: preparedHero, left: heroX, top: heroTop }, { input: Buffer.from(overlay), left: 0, top: 0 }])
-    .png()
-    .toBuffer();
-}
-async function produceDesignAssets(run, plan, vision, correction = "", stagePrefix = "") {
-  const adjustedPlan = correction ? {
-    ...plan,
-    backgroundDirection: `${plan.backgroundDirection}. Correct these issues: ${correction}`.slice(0, 1100),
-    imageDirection: `${plan.imageDirection}. Correct these issues: ${correction}`.slice(0, 1100)
-  } : plan;
-  const background = await openAiImage(
-    adjustedPlan,
-    vision,
-    run.generationMode,
-    run.references,
-    async (stage, status, detail) => logEvent(run.id, `${stagePrefix}${stage}`, status, detail),
-    { stage: "background", targetName: "无字背景层", initialPrompt: backgroundPrompt(adjustedPlan, vision, run.generationMode), fallbackPrompt: summaryBackgroundPrompt(adjustedPlan, vision) }
-  );
-  const hero = await openAiImage(
-    adjustedPlan,
-    vision,
-    "text",
-    [],
-    async (stage, status, detail) => logEvent(run.id, `${stagePrefix}${stage}`, status, detail),
-    { stage: "hero", targetName: "独立主视觉", initialPrompt: visualPrompt(adjustedPlan, vision, "text"), fallbackPrompt: summaryHeroPrompt(adjustedPlan, vision) }
-  );
-  return {
-    plan: adjustedPlan,
-    background: await normalizeBackgroundAsset(background.buffer, adjustedPlan),
-    hero: await normalizeHeroAsset(hero.buffer),
-    finalPrompt: `${background.finalPrompt}\n\n--- HERO ASSET ---\n${hero.finalPrompt}`,
-    usedSafetyFallback: background.usedSafetyFallback || hero.usedSafetyFallback
-  };
-}
-async function persistDesignCandidate(run, assets) {
-  const backgroundStoredName = nowName("png");
-  const heroStoredName = nowName("png");
-  const previewStoredName = nowName("png");
-  await writeFile(path.join(imageRoot, backgroundStoredName), assets.background);
-  await writeFile(path.join(imageRoot, heroStoredName), assets.hero);
-  const plan = {
-    ...assets.plan,
-    assetFiles: { backgroundStoredName, heroStoredName, renderMode: "separate-background-and-hero" }
-  };
-  const preview = await composeDesignPreview(plan, assets.background, assets.hero);
-  await writeFile(path.join(imageRoot, previewStoredName), preview);
-  const job = await db.generationJob.create({ data: { prompt: assets.finalPrompt, status: "completed", provider: "openai", model: openAiImageModel, serviceId: run.serviceId, employeeId: run.employeeId } });
-  const generatedImage = await db.generatedImage.create({ data: { jobId: job.id, storedName: previewStoredName, originalUrl: null } });
-  return { plan, preview, job, generatedImage, usedSafetyFallback: assets.usedSafetyFallback };
-}
 async function normalizeSlidePng(buffer, background = "#08244f") {
   return sharp(buffer)
     .rotate()
@@ -520,41 +246,6 @@ async function normalizeSlidePng(buffer, background = "#08244f") {
     .resize(1920, 1080, { fit: "contain", background })
     .png()
     .toBuffer();
-}
-function masterRenderPrompt(plan, vision, mode, brief) {
-  const palette = (vision.palette?.length ? vision.palette : plan.palette).join(", ");
-  return `Create one complete, high-end 16:9 PowerPoint slide design as a polished presentation sample PNG. Treat the following employee brief as the source of truth and follow it directly, without replacing it with a generic template: ${brief}
-
-Structured design intent: ${JSON.stringify({
-    pageType: plan.pageType,
-    visualDirection: plan.visualDirection,
-    imageDirection: plan.imageDirection,
-    requirements: plan.requirements,
-    palette
-  })}
-
-${mode === "mixed" ? `Use the supplied reference images only for broad mood, palette, layout rhythm and material quality. Do not copy private logos, names, phone numbers or exact customer imagery. Vision summary: ${JSON.stringify(vision)}.` : "No reference images are required; create a fresh original presentation sample from the brief."}
-
-Important production rules:
-- This is the master visual truth for later layer reconstruction, so compose the whole slide beautifully in one image.
-- Use a professional B2B presentation aesthetic: strong hierarchy, generous spacing, coherent light, premium technology/business polish.
-- If the brief asks for placeholder text, render it as part of the slide sample. Do not invent extra long paragraphs.
-- Do not create cheap blue template blocks, random bullet strips, broken cropped subjects, messy panels, watermarks, or UI screenshots.
-- Keep important visual elements separable: clean silhouettes, clear title artwork, distinct cards/panels, and a readable layout.
-- Output only the finished slide image.`;
-}
-function cleanBackgroundPromptFromMaster(plan, vision, brief) {
-  const palette = (vision.palette?.length ? vision.palette : plan.palette).join(", ");
-  return `Using the provided PPT sample image as style reference, create a clean 16:9 background plate for rebuilding the slide.
-
-Remove all foreground subjects, robots, people, products, trains, title text, subtitles, logos, icons, information cards, panels, labels, numbers, readable text, photo frames, screenshot frames, chart frames, label slots, content containers, summary bars, footer boxes, side title plates and any rectangular frame that marks a content position.
-Preserve only the atmospheric background style: color palette (${palette}), broad gradient, subtle particles, code/grid texture, lighting direction, depth and tasteful business/technology mood.
-
-The background must be usable as the bottom layer of an editable PPT page before content modules are placed. It should not contain obvious erased silhouettes, holes, ghost shapes, checkerboard transparency, cards, card outlines, neon panel borders, label backgrounds, title underlines, placeholders, text residue or focal objects.
-
-Original employee brief for style context only: ${brief}
-Background direction: ${plan.backgroundDirection || ""}
-Return only the clean background image.`;
 }
 async function openAiEditPng(buffer, prompt, name = "source.png") {
   requireImageEdits(imageService);
@@ -590,56 +281,6 @@ async function generateCleanBackground(masterBuffer, cleanPrompt) {
     const fallback = await openAiImageRaw({ palette: ["#08244f"] }, {}, "text", [], fallbackPrompt);
     return { buffer: fallback, prompt: fallbackPrompt, usedFallback: true, warning: error instanceof Error ? error.message : String(error) };
   }
-}
-async function persistMasterRebuildCandidate(run, plan, master, cleanBackground, finalPrompt) {
-  const masterStoredName = nowName("png");
-  const cleanBackgroundStoredName = nowName("png");
-  await writeFile(path.join(imageRoot, masterStoredName), master);
-  await writeFile(path.join(imageRoot, cleanBackgroundStoredName), cleanBackground);
-  const job = await db.generationJob.create({
-    data: { prompt: finalPrompt, status: "completed", provider: "openai", model: openAiImageModel, serviceId: run.serviceId, employeeId: run.employeeId }
-  });
-  const masterImage = await db.generatedImage.create({ data: { jobId: job.id, storedName: masterStoredName, originalUrl: null } });
-  const cleanImage = await db.generatedImage.create({ data: { jobId: job.id, storedName: cleanBackgroundStoredName, originalUrl: null } });
-  const nextPlan = {
-    ...plan,
-    assetFiles: {
-      renderMode: "master-render-rebuild",
-      masterImageId: masterImage.id,
-      masterStoredName,
-      cleanBackgroundImageId: cleanImage.id,
-      cleanBackgroundStoredName
-    }
-  };
-  return { job, masterImage, cleanImage, plan: nextPlan };
-}
-async function createExplodeRunForMaster(run, masterImageId) {
-  const existing = await db.imageExplodeRun.findUnique({ where: { sourceImageId: masterImageId } });
-  if (existing) return existing;
-  return db.imageExplodeRun.create({
-    data: {
-      serviceId: run.serviceId,
-      employeeId: run.employeeId,
-      sourceImageId: masterImageId,
-      events: { create: { stage: "queued", status: "queued", detail: "Master Render 已进入旧图片炸开队列" } }
-    }
-  });
-}
-async function waitForExplodeRun(runId, timeoutMs = 10 * 60 * 1000) {
-  const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    const run = await db.imageExplodeRun.findUnique({
-      where: { id: runId },
-      include: { parts: { orderBy: [{ zIndex: "asc" }, { createdAt: "asc" }] }, textLayers: true, events: true }
-    });
-    if (!run) throw new Error("图片炸开任务不存在");
-    if (["completed", "failed", "cancelled"].includes(run.status)) return run;
-    await sleep(2000);
-  }
-  return await db.imageExplodeRun.findUnique({
-    where: { id: runId },
-    include: { parts: { orderBy: [{ zIndex: "asc" }, { createdAt: "asc" }] }, textLayers: true, events: true }
-  });
 }
 async function composeCleanReconstruction(cleanBackgroundBuffer, parts) {
   const composites = [];
@@ -850,58 +491,6 @@ function filterTextOverlaps(rows) {
     kept.push(row);
   }
   return { rows, skippedTextIds: [...skipped] };
-}
-function normalizeEvaluation(value) {
-  const raw = value && typeof value === "object" ? value : {};
-  const scores = raw.scores && typeof raw.scores === "object" ? raw.scores : {};
-  const read = key => Math.max(0, Math.min(100, Number(scores[key]) || 0));
-  const normalized = {
-    briefFit: read("briefFit"), hierarchy: read("hierarchy"), layout: read("layout"),
-    brand: read("brand"), readability: read("readability"), editability: read("editability"),
-    fidelity: read("fidelity")
-  };
-  const weighted = normalized.briefFit * .24 + normalized.hierarchy * .16 + normalized.layout * .20 + normalized.brand * .12 + normalized.readability * .16 + normalized.editability * .06 + normalized.fidelity * .06;
-  const reasons = Array.isArray(raw.reasons) ? raw.reasons.map(item => String(item).slice(0, 180)).filter(Boolean).slice(0, 5) : [];
-  const corrections = Array.isArray(raw.corrections) ? raw.corrections.map(item => String(item).slice(0, 220)).filter(Boolean).slice(0, 4) : [];
-  const critical = Boolean(raw.critical) || normalized.readability < 55 || normalized.layout < 55 || normalized.briefFit < 55;
-  return { scores: normalized, totalScore: Math.round(weighted * 10) / 10, reasons, corrections, critical };
-}
-async function evaluateCandidate(run, imageBuffer, plan, vision, candidateId) {
-  if (!process.env.ARK_API_KEY) {
-    const fallback = { scores: { briefFit: 75, hierarchy: 75, layout: 75, brand: 75, readability: 75, editability: 75, fidelity: 75 }, totalScore: 75, reasons: ["未配置视觉评估模型，已按固定工作流继续。"], corrections: [], critical: false };
-    await db.designAgentEvaluation.create({ data: { runId: run.id, candidateId, stage: "aesthetic", totalScore: fallback.totalScore, scoresJson: JSON.stringify(fallback.scores), reasonsJson: JSON.stringify(fallback.reasons) } });
-    return fallback;
-  }
-  const prompt = `You are a strict presentation design reviewer. Evaluate a 16:9 hero visual against the structured plan. Do not praise it. Return JSON only: {"scores":{"briefFit":0-100,"hierarchy":0-100,"layout":0-100,"brand":0-100,"readability":0-100,"editability":0-100,"fidelity":0-100},"critical":true|false,"reasons":["short Chinese reason"],"corrections":["short concrete correction"]}. A score below 55 means an obvious delivery problem. Detect text-safe-zone obstruction, clutter, weak hierarchy, irrelevant elements, excessive decoration, and visual elements that cannot be reconstructed cleanly. Plan: ${JSON.stringify(plan)}. Visual reference summary: ${JSON.stringify(vision)}. Employee request: ${run.brief}`;
-  const text = await arkResponse(doubaoVisionModel, [
-    { type: "input_image", image_url: `data:image/png;base64,${imageBuffer.toString("base64")}` },
-    { type: "input_text", text: prompt }
-  ]);
-  const evaluation = normalizeEvaluation(safeJson(text.match(/\{[\s\S]*\}/)?.[0] || "{}", {}));
-  await db.designAgentEvaluation.create({ data: { runId: run.id, candidateId, stage: "aesthetic", totalScore: evaluation.totalScore, scoresJson: JSON.stringify(evaluation.scores), reasonsJson: JSON.stringify({ reasons: evaluation.reasons, corrections: evaluation.corrections, critical: evaluation.critical }) } });
-  return evaluation;
-}
-async function preferenceHints(industry) {
-  const where = industry
-    ? { outcome: "accepted", OR: [{ industry }, { industry: "" }] }
-    : { outcome: "accepted" };
-  const items = await db.designPreferenceMemory.findMany({ where, orderBy: { createdAt: "desc" }, take: 16 });
-  if (!items.length) return [];
-  return items.map(item => {
-    const signals = safeJson(item.signalsJson, {});
-    return {
-      industry: item.industry,
-      pageType: item.pageType,
-      style: item.style,
-      palette: safeJson(item.paletteJson, []),
-      tone: item.informationTone,
-      layout: signals.layout || "",
-      heroSubject: signals.heroSubject || "",
-      backgroundDirection: signals.backgroundDirection || "",
-      score: signals.score || null,
-      acceptedAt: item.createdAt
-    };
-  }).slice(0, 6);
 }
 async function claimRun() {
   const candidate = await db.designAgentRun.findFirst({ where: { status: "queued" }, orderBy: { createdAt: "asc" } });
