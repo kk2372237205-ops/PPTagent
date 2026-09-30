@@ -123,6 +123,8 @@ export const employeeApi = {
       post(`${employeeBase}/services/${serviceId}/ppt-polish/runs/${runId}/confirm`),
     addPageNotes: (serviceId: string, runId: string, body: ApiBody) =>
       post(`${employeeBase}/services/${serviceId}/ppt-polish/runs/${runId}/page-notes`, body),
+    cancel: (serviceId: string, runId: string) =>
+      post(`${employeeBase}/services/${serviceId}/ppt-polish/runs/${runId}/cancel`),
     retry: (serviceId: string, runId: string) =>
       post(`${employeeBase}/services/${serviceId}/ppt-polish/runs/${runId}/retry`),
     createPpt: (serviceId: string, runId: string) =>

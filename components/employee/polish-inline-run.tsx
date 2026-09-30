@@ -12,14 +12,14 @@
  */
 
 import { useState } from "react";
-import { Check, ChevronLeft, Download, LoaderCircle } from "lucide-react";
+import { Check, ChevronLeft, Download, LoaderCircle, OctagonX } from "lucide-react";
 import { employeeApi } from "@/lib/employee-api";
 import { deckStylePacks } from "@/lib/employee-deck-constants";
 import { deckStatusText } from "@/lib/employee-deck-shared";
 import type { Service } from "@/lib/employee-api-types";
 import type { PptPolishRun } from "./polish-types";
 
-export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onConfirm, onCreatePpt, onAddPageNotes, onRegenerate, onRetry, onPreview }: {
+export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onConfirm, onCreatePpt, onAddPageNotes, onCancel, onRegenerate, onRetry, onPreview }: {
   service: Service;
   run: PptPolishRun;
   busy: boolean;
@@ -28,6 +28,7 @@ export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onC
   onConfirm: () => void;
   onCreatePpt: () => void;
   onAddPageNotes: (pageIndexes: number[], note: string) => void;
+  onCancel: () => void;
   onRegenerate: (slideIndex: number, action: "reroll" | "closer_previous") => void;
   onRetry: () => void;
   onPreview: (image: { url: string; title: string }) => void;
@@ -65,6 +66,7 @@ export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onC
       <div>
         {run.status === "plan_ready" && <><button className="design-secondary polish-plan-back" onClick={onBack} disabled={busy}><ChevronLeft/>返回修改</button><button className="design-apply" onClick={onConfirm} disabled={busy}>确认并转换页面</button></>}
         {run.status === "source_ready" && <button className="design-apply" onClick={onConfirm} disabled={busy}>开始生成页面</button>}
+        {["plan_ready", "confirmed", "planning", "source_ready", "generating"].includes(run.status) && <button className="polish-emergency-cancel" onClick={onCancel} disabled={busy}><OctagonX/>取消任务（紧急）</button>}
         {run.status === "failed" && run.slides?.length > 0 && <button className="design-apply" onClick={onRetry} disabled={busy}>继续生成</button>}
         {["review_ready", "pdf_ready"].includes(run.status) && <button className="design-apply" onClick={onCreatePpt} disabled={busy}>转化 PPT</button>}
         {run.pdfStoredName && <a className="design-secondary" href={pdfUrl}><Download/>下载 PDF</a>}

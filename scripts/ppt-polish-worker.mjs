@@ -466,6 +466,7 @@ async function processGenerating(run) {
     const activeSlides = run.slides.filter(slide => activeIndexes.has(slide.slideIndex));
     const results = await Promise.all(activeSlides.map(slide => generateSlideAsset(run, slide)));
     const latest = await readRunFile(`${run.id}.json`).catch(() => run);
+    if (latest.status === "cancelled") return latest;
     const resultMap = new Map(results.map(result => [result.slideIndex, result]));
     const mergedSlides = (latest.slides || []).map(slide => {
       const result = resultMap.get(slide.slideIndex);

@@ -203,6 +203,18 @@ export function useSmartStudioRuns(service: Service, notify: (text: string) => v
     } finally { setBusy(false); }
   }
 
+  async function cancelPolishRun() {
+    if (!activePolishRun) return;
+    setBusy(true);
+    try {
+      const response = await employeeApi.polish.cancel(service.id, activePolishRun.id);
+      const result = await responseJson(response);
+      if (!response.ok) return notify(result.error || "取消任务失败");
+      setPolishRun(result.run as PptPolishRun);
+      notify("任务已取消，后台不会继续派发新的页面。已提交给 Image2 的页面可能仍会完成。 ");
+    } finally { setBusy(false); }
+  }
+
   async function regeneratePolishSlide(slideIndex: number, action: "reroll" | "closer_previous") {
     if (!activePolishRun) return;
     setBusy(true);
@@ -282,6 +294,6 @@ export function useSmartStudioRuns(service: Service, notify: (text: string) => v
     invalidateDeckLoad,
     setDeckRun, setPolishRun,
     deckActions: { confirmDeckRun, replanDeckRun, createDeckPpt, regenerateDeckSlide },
-    polishActions: { confirmPolishRun, createPolishPpt, addPolishPageNotes, regeneratePolishSlide, retryPolishRun }
+    polishActions: { confirmPolishRun, createPolishPpt, addPolishPageNotes, cancelPolishRun, regeneratePolishSlide, retryPolishRun }
   };
 }

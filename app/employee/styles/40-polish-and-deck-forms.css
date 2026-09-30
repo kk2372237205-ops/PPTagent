@@ -33,6 +33,23 @@
 .employee-root .polish-inline-run .polish-plan-back {
   white-space:nowrap;
 }
+.employee-root .polish-inline-run .polish-emergency-cancel {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  margin-left:8px;
+  border:1px solid rgba(205, 95, 105, .65);
+  border-radius:8px;
+  background:rgba(132, 47, 57, .28);
+  color:#f1b3b8;
+  padding:8px 10px;
+  font-size:11px;
+  font-weight:800;
+  cursor:pointer;
+}
+.employee-root .polish-inline-run .polish-emergency-cancel:hover { background:rgba(161, 52, 64, .42); }
+.employee-root .polish-inline-run .polish-emergency-cancel:disabled { opacity:.5; cursor:not-allowed; }
+.employee-root .polish-inline-run .polish-emergency-cancel svg { width:14px; height:14px; }
 
 .employee-root .polish-planner .polish-page-note-hint {
   margin:0;

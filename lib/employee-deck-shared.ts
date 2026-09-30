@@ -55,6 +55,7 @@ export function deckStatusText(status: string) {
     ppt_queued: "Codia 排队中",
     ppt_processing: "Codia 转换中",
     ppt_ready: "PPT 已生成",
+    cancelled: "已取消",
     failed: "失败"
   } as Record<string, string>)[status] || status;
 }
