@@ -579,3 +579,57 @@
   border-color: rgba(214, 169, 95, 0.66);
   background: rgba(116, 79, 33, 0.28);
 }
+
+/* 已套用夹子沿用“夹子”本身的紧凑胶囊，而不是额外包一层浮动容器。 */
+.employee-root .polish-inline-run .polish-applied-clip-list {
+  width: auto;
+  max-width: none;
+  min-height: 0;
+  margin-top: 9px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 8px;
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list > span {
+  padding: 0;
+  color: #8faab9;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip {
+  min-width: 0;
+  max-width: 220px;
+  min-height: 32px;
+  gap: 7px;
+  padding: 4px 9px 4px 12px;
+  border-radius: 999px;
+  background: rgba(39, 71, 91, 0.42);
+  box-shadow: none;
+  font-size: 11px;
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip svg {
+  width: 13px;
+  height: 13px;
+  margin-left: 1px;
+  padding-left: 7px;
+  border-left: 1px solid rgba(185, 211, 225, 0.36);
+  color: #d9a7af;
+}
+
+.employee-root .polish-inline-run .polish-clip.is-applied button:last-child {
+  color: #e2a7b0;
+}
+
+.employee-root .polish-inline-run .polish-clip.is-applied button:last-child:hover {
+  color: #ffe0e4;
+}
+
+@media (max-width:600px) {
+  .employee-root .polish-inline-run .polish-applied-clip-list { width: auto; }
+  .employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip { flex: 0 1 auto; }
+}
