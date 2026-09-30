@@ -37,6 +37,8 @@ export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onC
   const styleLabel = deckStylePacks.find(item => item.id === run.stylePack)?.label || run.stylePack;
   const pdfUrl = employeeApi.urls.polish.pdf(service.id, run.id);
   const pptUrl = employeeApi.urls.polish.ppt(service.id, run.id);
+  const sourcePages = run.sourceSnapshot?.pages || [];
+  const sourcePageCount = run.sourceSnapshot?.pageCount || sourcePages.length;
   const optionLabels = [
     ["keepText", "保留原文字"],
     ["keepNumbers", "保留数字信息"],
@@ -76,6 +78,17 @@ export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onC
         {run.pageNotes?.length ? <ol>{run.pageNotes.map(item => <li key={item.id}><b>第 {item.pages} 页</b><small>{item.note}</small></li>)}</ol> : <p>暂无单页特殊要求，将按整套修改方向统一处理。</p>}
       </article>
     </section>
+    {sourcePages.length > 0 && <section className="deck-plan-review inline polish-source-pages">
+      <article>
+        <span>原稿页面已固化</span>
+        <h3>{sourcePageCount} 页 PNG</h3>
+        <p>页面图仅保存在本次美化任务中，用于人工核对与后续逐页处理；当前不会自动交给 Image2。</p>
+      </article>
+      <div className="polish-source-page-strip">{sourcePages.slice(0, 4).map(page => {
+        const url = employeeApi.urls.polish.sourcePageImage(service.id, run.id, page.pageIndex, run.updatedAt);
+        return <button key={page.pageIndex} type="button" onClick={() => onPreview({ url, title: `原稿第 ${page.pageIndex} 页` })}><img src={url} alt={`原稿第 ${page.pageIndex} 页`}/><span>第 {page.pageIndex} 页</span></button>;
+      })}</div>
+    </section>}
     {["generating", "review_ready", "pdf_queued", "pdf_ready", "ppt_queued", "ppt_processing", "ppt_ready", "failed"].includes(run.status) && run.slides?.length > 0 && <section className="deck-slide-review inline polish-slide-review">
       <div className="deck-progress"><b>{done}/{total || "?"}</b><span>{statusText}</span></div>
       <div className="deck-slide-grid">{(run.slides || []).map(slide => {

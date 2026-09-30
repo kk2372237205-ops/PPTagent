@@ -34,3 +34,43 @@
   white-space:nowrap;
 }
 
+/* Local source-page snapshots: compact proof that the incoming PPT was rendered
+   before any per-page image work begins. */
+.employee-root .polish-inline-run .polish-source-pages {
+  grid-template-columns:minmax(180px,.7fr) minmax(0,1.3fr);
+}
+
+.employee-root .polish-inline-run .polish-source-page-strip {
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:8px;
+}
+
+.employee-root .polish-inline-run .polish-source-page-strip button {
+  min-width:0;
+  padding:0;
+  overflow:hidden;
+  border:1px solid var(--line,rgba(151,177,203,.28));
+  border-radius:8px;
+  background:var(--surface-2,#131d29);
+  color:var(--muted,#a7b6c6);
+  cursor:pointer;
+}
+
+.employee-root .polish-inline-run .polish-source-page-strip img {
+  display:block;
+  width:100%;
+  aspect-ratio:16 / 9;
+  object-fit:cover;
+  background:#0e1620;
+}
+
+.employee-root .polish-inline-run .polish-source-page-strip span {
+  display:block;
+  padding:5px 4px;
+  font-size:10px;
+}
+
+@media (max-width:760px) {
+  .employee-root .polish-inline-run .polish-source-pages { grid-template-columns:1fr; }
+}

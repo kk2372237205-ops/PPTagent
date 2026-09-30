@@ -149,7 +149,7 @@ export function PolishPptPlanner({ service, note, setNote, notify, initialRun, o
       <input ref={fileRef} hidden type="file" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation" onChange={event => { acceptPpt(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }}/>
       {sourceMode === "current" && service.workDocument ? <FileText/> : <Upload/>}
       <b>{sourceMode === "current" && service.workDocument ? service.workDocument.originalName : selectedFileName || "拖入需要美化的 PPT"}</b>
-      <span>{sourceMode === "current" && service.workDocument ? "将从当前工作文稿生成有序页面图。" : "支持点击选择或直接拖拽 PPTX。"}</span>
+      <span>{sourceMode === "current" && service.workDocument ? "确认后先在本地固化为有序页面图，不会自动交给 Image2。" : "支持点击选择或直接拖拽 PPTX；确认后先本地固化页面图。"}</span>
     </div>
     <label>整套修改方向<textarea value={note} onChange={event => setNote(event.target.value)} placeholder="例如：更像发布会、减少文字、强化科技感、统一页眉页脚和图标风格。"/></label>
     <div className="polish-option-grid">

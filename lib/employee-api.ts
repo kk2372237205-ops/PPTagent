@@ -207,6 +207,8 @@ export const employeeApi = {
     polish: {
       pdf: (serviceId: string, runId: string) => `${employeeBase}/services/${serviceId}/ppt-polish/runs/${runId}/pdf`,
       ppt: (serviceId: string, runId: string) => `${employeeBase}/services/${serviceId}/ppt-polish/runs/${runId}/ppt`,
+      sourcePageImage: (serviceId: string, runId: string, pageIndex: number, updatedAt: string) =>
+        withVersion(`${employeeBase}/services/${serviceId}/ppt-polish/runs/${runId}/source-pages/${pageIndex}`, updatedAt),
       slideImage: (serviceId: string, runId: string, slideIndex: number, updatedAt: string) =>
         withVersion(`${employeeBase}/services/${serviceId}/ppt-polish/runs/${runId}/slides/${slideIndex}/image`, updatedAt)
     },

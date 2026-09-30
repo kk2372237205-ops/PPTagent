@@ -31,7 +31,9 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
     const message = error instanceof Error ? error.message : "PPTX 解析失败";
     return NextResponse.json({ error: message }, { status: 400 });
   }
-  const updated = { ...run, status: "generating", confirmedAt: now, pageCount: slides.length, slides, error: "", updatedAt: now };
+  // The local background script first turns this PPTX into a private per-page
+  // PNG set. Image generation begins only after that snapshot stage succeeds.
+  const updated = { ...run, status: "confirmed", confirmedAt: now, pageCount: slides.length, slides, error: "", updatedAt: now };
   await writeFile(path.join(polishRunRoot, `${path.basename(runId)}.json`), JSON.stringify(updated, null, 2), "utf8");
   return NextResponse.json({ run: updated }, { status: 202 });
 }

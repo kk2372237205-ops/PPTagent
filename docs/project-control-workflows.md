@@ -502,10 +502,10 @@ Image2 接收这份任务包、配色参考图和整套视觉规则条带。内�
 
 1. 检查后台执行脚本是否有心跳。
 2. 读取 PPTX。
-3. 解析 `ppt/slides/slide*.xml`，识别每页文本。
-4. 把逐页修改想法匹配到对应页。
-5. 生成每页的重绘任务。
-6. 把任务状态改为 `generating`。
+3. 先由本机 ONLYOFFICE 转成 PDF，再固化为本次任务私有的逐页 PNG 图片集和页面清单；此步骤不调用 Image2，也不会把客户页面自动交给 Image2。
+4. 解析 `ppt/slides/slide*.xml`，识别每页文字，并把逐页修改想法匹配到对应页。
+5. 页面图和清单会保存在 `uploads/employee-workspace/ppt-polish-runs/[runId]/source-pages/` 与同级 `source-pages-manifest.json`，用户能在任务中打开前四张原稿页核对。
+6. 页面图固化成功后，后台才进入逐页生成预览；固化失败会明确报错，不会假装开始重绘。
 
 后台执行脚本：
 

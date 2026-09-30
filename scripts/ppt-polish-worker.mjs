@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "fs";
 import { mkdir, readdir, readFile, writeFile } from "fs/promises";
+import { createHmac } from "crypto";
 import path from "path";
 import sharp from "sharp";
 import JSZip from "jszip";
@@ -9,6 +10,7 @@ import {
   imageGenerationBody,
   requireImageService
 } from "./ai-service-client.mjs";
+import { createPptPolishSourcePages } from "./ppt-polish-source-pages.mjs";
 
 const root = process.cwd();
 loadEnv();
@@ -68,6 +70,19 @@ async function codiaRequest(url, init = {}, timeoutMs = 300000) {
 
 function nowName(extension) {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}.${extension}`;
+}
+
+function sourceFileToken(runId, expiresAt = Date.now() + 10 * 60 * 1000) {
+  const secret = process.env.ONLYOFFICE_JWT_SECRET || "development-onlyoffice-secret";
+  const value = `${runId}.${expiresAt}`;
+  const signature = createHmac("sha256", secret).update(value).digest("base64url");
+  return `${expiresAt}.${signature}`;
+}
+
+function sourceUrlForRun(run) {
+  const baseUrl = trimSlash(process.env.PPT_POLISH_APP_INTERNAL_URL || process.env.APP_INTERNAL_URL || process.env.APP_BASE_URL || "http://host.docker.internal:3000");
+  const token = sourceFileToken(run.id);
+  return `${baseUrl}/api/employee/services/${encodeURIComponent(run.serviceId)}/ppt-polish/runs/${encodeURIComponent(run.id)}/source?token=${encodeURIComponent(token)}`;
 }
 
 async function ensureDirs() {
@@ -355,7 +370,18 @@ Hard requirements:
 
 async function prepareRun(run) {
   run = await writeRun(run, { status: "planning", error: "" });
-  const extracted = await extractPptxSlides(run.sourceStoredName);
+  const sourcePath = path.join(documentRoot, path.basename(run.sourceStoredName));
+  const sourceSnapshot = run.sourceSnapshot?.pageCount
+    ? run.sourceSnapshot
+    : await createPptPolishSourcePages({
+      run,
+      sourcePath,
+      sourceUrl: sourceUrlForRun(run),
+      runRoot: polishRunRoot,
+      onlyOfficeUrl: process.env.PPT_POLISH_ONLYOFFICE_URL || process.env.ONLYOFFICE_URL || "http://localhost:18080",
+      onlyOfficeSecret: process.env.ONLYOFFICE_JWT_SECRET || "development-onlyoffice-secret"
+    });
+  const extracted = run.slides?.length ? run.slides : await extractPptxSlides(run.sourceStoredName);
   const slides = extracted.map(slide => ({
     ...slide,
     note: pageNoteFor(slide.slideIndex, run.pageNotes)
@@ -364,6 +390,7 @@ async function prepareRun(run) {
     status: "generating",
     pageCount: slides.length,
     slides,
+    sourceSnapshot,
     error: ""
   });
 }

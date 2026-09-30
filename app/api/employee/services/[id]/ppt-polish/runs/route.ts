@@ -34,6 +34,7 @@ type PolishRun = {
   options: Record<string, boolean>;
   pageNotes: { id: string; pages: string; note: string }[];
   pageCount: number;
+  sourceSnapshot?: { pageCount: number; pages: { pageIndex: number; storedName: string; width: number; height: number; format: string }[]; createdAt: string; manifest: string };
   slides: { slideIndex: number; title: string; originalText: string; note: string; status: string; storedName?: string; prompt?: string; lastInstruction?: string; error?: string; updatedAt: string }[];
   pdfStoredName?: string;
   pptStoredName?: string;
