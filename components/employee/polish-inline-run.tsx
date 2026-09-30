@@ -188,7 +188,7 @@ export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onC
           <div className="polish-source-page-workspace">
             <header><b>第 {page.pageIndex} 页提示词</b><small>{draft || appliedClipIds.length ? "已填写，可继续修改" : "未填写"}</small></header>
             <textarea value={draft} onChange={event => setPageDrafts(current => ({ ...current, [page.pageIndex]: event.target.value }))} placeholder="这一页怎么改，例如：保留关键数字，压缩小字，改成图文对照。"/>
-            {appliedClips.length > 0 && <div className="polish-applied-clip-list" aria-label={`第 ${page.pageIndex} 页已使用夹子`}><span>已套用夹子</span>{appliedClips.map(clip => <button key={clip.id} type="button" className={`polish-applied-clip-chip color-${clip.color}`} onClick={() => removeClip(page.pageIndex, clip.id)} title={`取消使用夹子：${clip.name}`}><i>{clip.name}</i><X/></button>)}</div>}
+            {appliedClips.length > 0 && <div className="polish-applied-clip-list" aria-label={`第 ${page.pageIndex} 页已使用夹子`}><span>已套用夹子</span>{appliedClips.map(clip => <button key={clip.id} type="button" className={`polish-applied-clip-chip color-${clip.color}`} onClick={() => removeClip(page.pageIndex, clip.id)} title={`取消使用夹子：${clip.name}`}><span className="polish-applied-clip-name">{clip.name}</span><X/></button>)}</div>}
             <div className={`polish-clip-island ${islandOpen ? "is-open" : ""}`}>
               <button type="button" className="polish-clip-island-trigger" onClick={() => { setOpenClipPage(islandOpen ? null : page.pageIndex); setClipEditorOpen(false); }}><Paperclip/><b>夹子</b><span>{clips.length ? `${clips.length} 个可用` : "新建可复用提示词"}</span></button>
               {islandOpen && <div className="polish-clip-island-content">

@@ -633,3 +633,35 @@
   .employee-root .polish-inline-run .polish-applied-clip-list { width: auto; }
   .employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip { flex: 0 1 auto; }
 }
+
+/* 名称以自身内容撑开；空间不足时让整枚夹子换行，不能挤成“第…”。 */
+.employee-root .polish-inline-run .polish-applied-clip-list {
+  align-content: flex-start;
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip {
+  width: max-content;
+  max-width: 100%;
+  flex: 0 0 auto;
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-name {
+  display: block;
+  min-width: max-content;
+  max-width: 200px;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width:600px) {
+  .employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip { flex: 0 0 auto; }
+  .employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-name { max-width: min(200px, calc(100vw - 142px)); }
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-name {
+  min-width: 0;
+  width: fit-content;
+  flex: 0 1 auto;
+}
