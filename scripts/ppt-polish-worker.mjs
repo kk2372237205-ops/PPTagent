@@ -78,7 +78,7 @@ function readPolishVisualRules() {
   try {
     return readFileSync(polishVisualRulesPath, "utf8").replace(/\r?\n/g, "\n").trim().slice(0, 5000);
   } catch {
-    return "Rebuild one complete 16:9 presentation page. Preserve supplied facts and reading order. Match only the selected target style. Keep cover and ending pages emotionally strong with limited text, and keep content pages readable.";
+    return "Rebuild one complete 16:9 presentation page. Preserve supplied facts and reading order. Derive a restrained visual language from the content and page-level requirements. Keep cover and ending pages emotionally strong with limited text, and keep content pages readable.";
   }
 }
 
@@ -190,30 +190,6 @@ async function openAiImage(prompt) {
   throw new Error("图片中转服务没有返回图片内容");
 }
 
-function stylePackName(id) {
-  return ({
-    "blue-gold-tech": "蓝金科技",
-    "white-green-tech": "白绿科技",
-    "black-gold-business": "黑金商务",
-    "blue-purple-ai": "蓝紫 AI",
-    "red-white-government": "红白政企",
-    "minimal-academic": "极简学术",
-    "vivid-roadshow": "活力路演"
-  })[id] || id || "蓝金科技";
-}
-
-function stylePackDirection(id) {
-  return ({
-    "blue-gold-tech": "deep navy, bright blue, technology gold, cool white; title at top left, hero visual on the right, restrained grid and light-trail details; no purple neon, cartoon, or red government styling",
-    "white-green-tech": "white background, pale green, deep green, dark gray; generous white space, rounded cards, lightweight header and bottom step bar; no black-gold luxury, heavy shadows, or cyber neon",
-    "black-gold-business": "black, charcoal, gold, ivory white; high-contrast structure, vertical columns and refined metallic hairlines; no cartoon illustration, green eco styling, or cheap gradients",
-    "blue-purple-ai": "deep blue, indigo purple, electric blue, cool white; centered hero visual, modular cards and circular data structures; no excessive neon, game UI, or flashy buttons",
-    "red-white-government": "red, white, dark gray with sparse gold; formal stable hierarchy and clear information blocks; no cyber styling, entertainment mood, or cartoon treatment",
-    "minimal-academic": "white, light gray, black and one restrained accent color only; generous white space, strict grid, fine annotation lines and a small number of charts; no complex background, strong glow, dense decoration, blue-gold palette, or dark technology canvas",
-    "vivid-roadshow": "blue, cyan, white with restrained orange accents; energetic business story, image-and-text balance and prominent key numbers; no gloomy government styling or academic-paper feeling"
-  })[id] || "apply the selected target style only; keep the palette restrained and consistent";
-}
-
 function xmlText(value) {
   return String(value || "")
     .replace(/&lt;/g, "<")
@@ -301,9 +277,9 @@ function visualSystemPrompt(run, slide) {
     "PPT polish rules loaded from skills/ppt-polish/visual-redraw-system.md:",
     polishVisualRules,
     "Global visual system lock:",
-    `- Apply this selected target style only: ${stylePackDirection(run.stylePack)}. Do not borrow colors, motifs, or background treatment from another style pack.`,
+    "- There is no preset target style. Derive a restrained professional visual direction from the source content, selected requirements, and any page-level clip request. Do not force blue-gold or any other stock palette.",
     "- Keep background texture, header micro-labels, footer rhythm, page numbers, card radius, detail intensity, and spacing language consistent with adjacent pages.",
-    "- Do not abruptly switch to a different palette, illustration style, or poster-only treatment. Any warning color must be a small accent and still follow the selected target style.",
+    "- Do not abruptly switch to a different palette, illustration style, or poster-only treatment. Any warning color must be a small accent within the deck's emerging visual language.",
     "- Prefer fewer larger visual ideas over many small blocks. Avoid scattered decorations, mismatched illustration styles, and overloaded tiny text.",
     "- Treat the deck as one premium conference keynote, not independent posters."
   ];
@@ -319,7 +295,7 @@ function visualSystemPrompt(run, slide) {
       "Ending page special direction:",
       "- Make the ending page emotional, spacious, and memorable. Use one large closing sentence or slogan as the main focus.",
       "- Keep text minimal. If supporting points are needed, use no more than three short chips or cards.",
-      "- Use a stronger atmosphere than middle pages while still matching the selected target style."
+      "- Use a stronger atmosphere than middle pages while preserving the deck's emerging visual language."
     );
   } else {
     base.push(
@@ -349,13 +325,9 @@ function slidePrompt(run, slide, previous, next) {
 This is a PPT polish/redesign task. Rebuild the current slide as a polished presentation page, not a poster and not a screenshot.
 
 Deck source file: ${run.sourceName}
-Target style: ${stylePackName(run.stylePack)}
 Slide: ${slide.slideIndex}/${run.pageCount}
 Detected slide title/text:
 ${slide.originalText || slide.title}
-
-Overall polish direction:
-${run.note || "Make the deck more polished, consistent, readable, and presentation-ready."}
 
 Current slide specific request:
 ${slide.note || "No extra page-level request."}

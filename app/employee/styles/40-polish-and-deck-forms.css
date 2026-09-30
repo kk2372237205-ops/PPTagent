@@ -192,3 +192,231 @@
   .employee-root .polish-inline-run .polish-source-page-editor { flex-direction:column; }
   .employee-root .polish-inline-run .polish-source-page-editor button { width:100%; }
 }
+
+/* 逐页美化工作台：原稿竖向排布，左侧只负责预览，右侧独立保存本页要求。 */
+.employee-root .polish-planner .polish-source-only { grid-template-columns:minmax(0,1fr); }
+.employee-root .polish-planner .polish-source-only > label { max-width:420px; }
+.employee-root .polish-inline-run .polish-source-pages.is-selecting {
+  display:block;
+  padding:18px;
+  background:rgba(17,26,35,.74);
+}
+.employee-root .polish-inline-run .polish-source-pages-intro {
+  margin:0 0 14px;
+  padding:0 2px 13px;
+  border:0;
+  border-bottom:1px solid rgba(147,169,182,.17);
+  background:transparent;
+}
+.employee-root .polish-inline-run .polish-source-pages-intro h3 { margin:4px 0 5px; }
+.employee-root .polish-inline-run .polish-source-page-stack {
+  display:grid;
+  gap:14px;
+}
+.employee-root .polish-inline-run .polish-source-page-row {
+  display:grid;
+  grid-template-columns:minmax(260px,38%) minmax(0,1fr);
+  overflow:hidden;
+  border:1px solid rgba(145,169,182,.27);
+  border-radius:13px;
+  background:linear-gradient(135deg,rgba(26,36,46,.92),rgba(16,24,32,.96));
+  box-shadow:0 14px 32px rgba(0,0,0,.12);
+}
+.employee-root .polish-inline-run .polish-source-page-preview {
+  position:relative;
+  min-height:170px;
+  padding:0;
+  overflow:hidden;
+  border:0;
+  border-right:1px solid rgba(145,169,182,.2);
+  background:#111a22;
+  color:#d4e6ed;
+  cursor:zoom-in;
+}
+.employee-root .polish-inline-run .polish-source-page-preview img {
+  display:block;
+  width:100%;
+  height:100%;
+  min-height:170px;
+  object-fit:cover;
+  transition:transform .22s ease,filter .22s ease;
+}
+.employee-root .polish-inline-run .polish-source-page-preview:hover img { transform:scale(1.025); filter:brightness(.74); }
+.employee-root .polish-inline-run .polish-source-page-preview span {
+  position:absolute;
+  right:10px;
+  bottom:10px;
+  left:10px;
+  padding:7px 9px;
+  border:1px solid rgba(255,255,255,.16);
+  border-radius:8px;
+  background:rgba(8,15,21,.68);
+  color:#eef7f7;
+  font-size:11px;
+  font-weight:700;
+  text-align:left;
+  backdrop-filter:blur(8px);
+}
+.employee-root .polish-inline-run .polish-source-page-workspace {
+  display:flex;
+  min-width:0;
+  flex-direction:column;
+  gap:9px;
+  padding:14px 15px;
+}
+.employee-root .polish-inline-run .polish-source-page-workspace > header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.employee-root .polish-inline-run .polish-source-page-workspace > header b { color:#e3eef2; font-size:13px; }
+.employee-root .polish-inline-run .polish-source-page-workspace > header small { color:#91a8b2; font-size:10px; }
+.employee-root .polish-inline-run .polish-source-page-workspace > textarea {
+  width:100%;
+  min-height:76px;
+  box-sizing:border-box;
+  margin:0;
+  resize:vertical;
+}
+.employee-root .polish-inline-run .polish-save-page-note {
+  align-self:flex-end;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  min-height:32px;
+  border:1px solid rgba(117,177,150,.48);
+  border-radius:8px;
+  background:rgba(54,127,91,.72);
+  color:#effbf4;
+  padding:7px 11px;
+  font-size:11px;
+  font-weight:800;
+  cursor:pointer;
+}
+.employee-root .polish-inline-run .polish-save-page-note:disabled { opacity:.45; cursor:not-allowed; }
+
+/* 夹子：默认是一枚收起的胶囊，展开后呈现可套用规则和编辑器。 */
+.employee-root .polish-inline-run .polish-clip-island {
+  align-self:flex-start;
+  max-width:100%;
+  border:1px solid rgba(130,159,172,.28);
+  border-radius:999px;
+  background:rgba(43,57,68,.7);
+  box-shadow:0 8px 20px rgba(0,0,0,.14);
+  transition:border-radius .2s ease,background .2s ease,box-shadow .2s ease;
+}
+.employee-root .polish-inline-run .polish-clip-island.is-open {
+  width:100%;
+  border-color:rgba(120,171,154,.5);
+  border-radius:14px;
+  background:rgba(27,42,45,.92);
+  box-shadow:0 14px 30px rgba(0,0,0,.2);
+}
+.employee-root .polish-inline-run .polish-clip-island-trigger {
+  display:flex;
+  min-width:0;
+  align-items:center;
+  gap:7px;
+  border:0;
+  border-radius:999px;
+  background:transparent;
+  color:#cae0e5;
+  padding:7px 11px;
+  cursor:pointer;
+}
+.employee-root .polish-inline-run .polish-clip-island-trigger svg { width:14px; height:14px; color:#a5d6d2; }
+.employee-root .polish-inline-run .polish-clip-island-trigger b { font-size:11px; }
+.employee-root .polish-inline-run .polish-clip-island-trigger span { overflow:hidden; color:#8da4ae; font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
+.employee-root .polish-inline-run .polish-clip-island-content { padding:0 10px 10px; }
+.employee-root .polish-inline-run .polish-clip-rail { display:flex; flex-wrap:wrap; gap:7px; padding:6px 0 9px; }
+.employee-root .polish-inline-run .polish-clip {
+  display:inline-flex;
+  overflow:hidden;
+  border:1px solid rgba(132,158,173,.32);
+  border-radius:999px;
+  background:rgba(255,255,255,.045);
+}
+.employee-root .polish-inline-run .polish-clip button {
+  display:inline-flex;
+  align-items:center;
+  border:0;
+  background:transparent;
+  color:#d9e6e9;
+  cursor:pointer;
+}
+.employee-root .polish-inline-run .polish-clip button:first-child { max-width:170px; padding:6px 8px 6px 10px; font-size:10px; }
+.employee-root .polish-inline-run .polish-clip button:first-child span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.employee-root .polish-inline-run .polish-clip button:last-child { border-left:1px solid rgba(255,255,255,.12); padding:5px 7px; }
+.employee-root .polish-inline-run .polish-clip svg { width:12px; height:12px; }
+.employee-root .polish-inline-run .polish-clip.color-blue { border-color:rgba(101,157,204,.65); }
+.employee-root .polish-inline-run .polish-clip.color-green { border-color:rgba(91,171,130,.65); }
+.employee-root .polish-inline-run .polish-clip.color-gold { border-color:rgba(202,165,96,.65); }
+.employee-root .polish-inline-run .polish-clip.color-rose { border-color:rgba(198,111,130,.68); }
+.employee-root .polish-inline-run .polish-clip-new {
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  border:1px dashed rgba(156,185,191,.5);
+  border-radius:999px;
+  background:transparent;
+  color:#b9d5d8;
+  padding:6px 10px;
+  font-size:10px;
+  font-weight:700;
+  cursor:pointer;
+}
+.employee-root .polish-inline-run .polish-clip-new svg { width:12px; height:12px; }
+.employee-root .polish-inline-run .polish-clip-editor {
+  display:grid;
+  gap:8px;
+  padding:10px;
+  border-top:1px solid rgba(150,178,187,.2);
+}
+.employee-root .polish-inline-run .polish-clip-editor > header { display:flex; align-items:center; justify-content:space-between; }
+.employee-root .polish-inline-run .polish-clip-editor > header b { color:#dceff0; font-size:11px; }
+.employee-root .polish-inline-run .polish-clip-editor > header button { border:0; background:transparent; color:#8fb3b6; font-size:10px; cursor:pointer; }
+.employee-root .polish-inline-run .polish-clip-editor input,
+.employee-root .polish-inline-run .polish-clip-editor textarea { width:100%; box-sizing:border-box; margin:0; }
+.employee-root .polish-inline-run .polish-clip-editor textarea { min-height:64px; resize:vertical; }
+.employee-root .polish-inline-run .polish-clip-editor > div { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+.employee-root .polish-inline-run .polish-clip-editor > div > span { margin-right:3px; color:#92abb1; font-size:10px; }
+.employee-root .polish-inline-run .polish-clip-editor .color-blue,
+.employee-root .polish-inline-run .polish-clip-editor .color-green,
+.employee-root .polish-inline-run .polish-clip-editor .color-gold,
+.employee-root .polish-inline-run .polish-clip-editor .color-rose {
+  border:1px solid rgba(151,174,181,.32);
+  border-radius:999px;
+  background:transparent;
+  color:#cbdadd;
+  padding:4px 8px;
+  font-size:10px;
+  cursor:pointer;
+}
+.employee-root .polish-inline-run .polish-clip-editor .color-blue.selected { border-color:#6fadd9; color:#bde1fb; }
+.employee-root .polish-inline-run .polish-clip-editor .color-green.selected { border-color:#72b993; color:#c4edd4; }
+.employee-root .polish-inline-run .polish-clip-editor .color-gold.selected { border-color:#c9a35f; color:#f3d99b; }
+.employee-root .polish-inline-run .polish-clip-editor .color-rose.selected { border-color:#c87d8d; color:#f1bcc6; }
+.employee-root .polish-inline-run .polish-clip-editor .polish-clip-save {
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  margin-left:auto;
+  border:1px solid rgba(115,176,153,.5);
+  border-radius:7px;
+  background:rgba(54,127,91,.7);
+  color:#effbf4;
+  padding:6px 9px;
+  font-size:10px;
+  font-weight:800;
+  cursor:pointer;
+}
+.employee-root .polish-inline-run .polish-clip-editor .polish-clip-save:disabled { opacity:.45; cursor:not-allowed; }
+.employee-root .polish-inline-run .polish-clip-editor .polish-clip-save svg { width:12px; height:12px; }
+
+@media (max-width:760px) {
+  .employee-root .polish-inline-run .polish-source-page-row { grid-template-columns:1fr; }
+  .employee-root .polish-inline-run .polish-source-page-preview { min-height:150px; border-right:0; border-bottom:1px solid rgba(145,169,182,.2); }
+  .employee-root .polish-inline-run .polish-source-page-preview img { min-height:150px; }
+  .employee-root .polish-inline-run .polish-save-page-note { align-self:stretch; justify-content:center; }
+}

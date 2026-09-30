@@ -118,6 +118,10 @@ export const employeeApi = {
   /* 美化 PPT（一次重绘任务） */
   polish: {
     list: (serviceId: string) => get(`${employeeBase}/services/${serviceId}/ppt-polish/runs`),
+    clips: {
+      list: (serviceId: string) => get(`${employeeBase}/services/${serviceId}/ppt-polish/clips`),
+      save: (serviceId: string, body: ApiBody) => post(`${employeeBase}/services/${serviceId}/ppt-polish/clips`, body)
+    },
     create: (serviceId: string, form: FormData) => post(`${employeeBase}/services/${serviceId}/ppt-polish/runs`, form),
     confirm: (serviceId: string, runId: string) =>
       post(`${employeeBase}/services/${serviceId}/ppt-polish/runs/${runId}/confirm`),

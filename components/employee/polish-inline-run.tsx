@@ -11,13 +11,19 @@
  * 验证方式：npm run verify。
  */
 
-import { useState } from "react";
-import { Check, ChevronLeft, Download, LoaderCircle, OctagonX } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Check, ChevronLeft, Download, LoaderCircle, OctagonX, Paperclip, Pencil, Plus, Save } from "lucide-react";
 import { employeeApi } from "@/lib/employee-api";
-import { deckStylePacks } from "@/lib/employee-deck-constants";
 import { deckStatusText } from "@/lib/employee-deck-shared";
 import type { Service } from "@/lib/employee-api-types";
-import type { PptPolishRun } from "./polish-types";
+import type { PolishPromptClip, PptPolishRun } from "./polish-types";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function responseJson(response: Response): Promise<Record<string, any>> {
+  const text = await response.text();
+  if (!text.trim()) return { error: `服务暂时没有返回内容（HTTP ${response.status}）` };
+  try { return JSON.parse(text); } catch { return { error: `服务返回了无法识别的内容（HTTP ${response.status}）` }; }
+}
 
 export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onConfirm, onCreatePpt, onAddPageNotes, onCancel, onRegenerate, onRetry, onPreview }: {
   service: Service;
@@ -27,25 +33,30 @@ export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onC
   onBack: () => void;
   onConfirm: () => void;
   onCreatePpt: () => void;
-  onAddPageNotes: (pageIndexes: number[], note: string) => void;
+  onAddPageNotes: (pageIndexes: number[], note: string, replace?: boolean) => void;
   onCancel: () => void;
   onRegenerate: (slideIndex: number, action: "reroll" | "closer_previous") => void;
   onRetry: () => void;
   onPreview: (image: { url: string; title: string }) => void;
 }) {
-  const [selectedSourcePages, setSelectedSourcePages] = useState<number[]>([]);
-  const [sourcePageNote, setSourcePageNote] = useState("");
+  const [pageDrafts, setPageDrafts] = useState<Record<number, string>>({});
+  const [openClipPage, setOpenClipPage] = useState<number | null>(null);
+  const [clips, setClips] = useState<PolishPromptClip[]>([]);
+  const [clipEditorOpen, setClipEditorOpen] = useState(false);
+  const [editingClipId, setEditingClipId] = useState<string | null>(null);
+  const [clipName, setClipName] = useState("");
+  const [clipPrompt, setClipPrompt] = useState("");
+  const [clipColor, setClipColor] = useState<PolishPromptClip["color"]>("blue");
+  const [clipSaving, setClipSaving] = useState(false);
   const done = run.slides?.filter(slide => slide.status === "completed").length || 0;
   const total = run.pageCount || run.slides?.length || 0;
   const workerBlocked = Boolean(workerWarning && ["confirmed", "planning", "generating", "pdf_queued", "ppt_queued", "ppt_processing"].includes(run.status));
   const statusText = workerBlocked ? "等待 Worker 启动" : deckStatusText(run.status);
-  const styleLabel = deckStylePacks.find(item => item.id === run.stylePack)?.label || run.stylePack;
   const pdfUrl = employeeApi.urls.polish.pdf(service.id, run.id);
   const pptUrl = employeeApi.urls.polish.ppt(service.id, run.id);
   const sourcePages = run.sourceSnapshot?.pages || [];
   const sourcePageCount = run.sourceSnapshot?.pageCount || sourcePages.length;
   const selectingSourcePages = run.status === "source_ready" && sourcePages.length > 0;
-  const visibleSourcePages = selectingSourcePages ? sourcePages : sourcePages.slice(0, 4);
   const optionLabels = [
     ["keepText", "保留原文字"],
     ["keepNumbers", "保留数字信息"],
@@ -56,12 +67,65 @@ export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onC
     ["decorativeElements", "装饰元素统一"],
     ["reduceText", "减少文字密度"]
   ].filter(([key]) => run.options?.[key]).map(([, label]) => label);
+
+  useEffect(() => {
+    if (!selectingSourcePages) return;
+    let live = true;
+    void (async () => {
+      const response = await employeeApi.polish.clips.list(service.id);
+      const result = await responseJson(response);
+      if (live && response.ok) setClips((result.clips || []) as PolishPromptClip[]);
+    })();
+    return () => { live = false; };
+  }, [selectingSourcePages, service.id]);
+
+  function pageDraft(pageIndex: number) {
+    if (pageIndex in pageDrafts) return pageDrafts[pageIndex];
+    return run.slides?.find(slide => slide.slideIndex === pageIndex)?.note || "";
+  }
+
+  function appendClip(pageIndex: number, clip: PolishPromptClip) {
+    setPageDrafts(current => {
+      const existing = current[pageIndex] ?? (run.slides?.find(slide => slide.slideIndex === pageIndex)?.note || "");
+      return { ...current, [pageIndex]: [existing, clip.prompt].filter(Boolean).join(existing ? "\n" : "") };
+    });
+    setOpenClipPage(null);
+  }
+
+  function startNewClip() {
+    setEditingClipId(null);
+    setClipName("");
+    setClipPrompt("");
+    setClipColor("blue");
+    setClipEditorOpen(true);
+  }
+
+  function editClip(clip: PolishPromptClip) {
+    setEditingClipId(clip.id);
+    setClipName(clip.name);
+    setClipPrompt(clip.prompt);
+    setClipColor(clip.color);
+    setClipEditorOpen(true);
+  }
+
+  async function saveClip() {
+    if (!clipName.trim() || !clipPrompt.trim()) return;
+    setClipSaving(true);
+    try {
+      const response = await employeeApi.polish.clips.save(service.id, { id: editingClipId || undefined, name: clipName, prompt: clipPrompt, color: clipColor });
+      const result = await responseJson(response);
+      if (!response.ok) return;
+      setClips((result.clips || []) as PolishPromptClip[]);
+      setClipEditorOpen(false);
+      setEditingClipId(null);
+    } finally { setClipSaving(false); }
+  }
   return <section className="design-run design-deck-run polish-inline-run">
     <div className="design-run-head">
       <div>
         <span className={`design-status ${run.status}`}>{statusText}</span>
         <h2>{run.sourceName}</h2>
-        <small>{styleLabel} · {total ? `${done}/${total} 页` : `${run.pageNotes?.length || 0} 条页级要求`} · {new Date(run.createdAt).toLocaleString("zh-CN")}</small>
+        <small>{total ? `${done}/${total} 页` : `${run.pageNotes?.length || 0} 条页级要求`} · {new Date(run.createdAt).toLocaleString("zh-CN")}</small>
       </div>
       <div>
         {run.status === "plan_ready" && <><button className="design-secondary polish-plan-back" onClick={onBack} disabled={busy}><ChevronLeft/>返回修改</button><button className="design-apply" onClick={onConfirm} disabled={busy}>确认并转换页面</button></>}
@@ -78,8 +142,8 @@ export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onC
     {run.status !== "source_ready" && <section className="deck-plan-review inline polish-plan-review">
       <article>
         <span>美化方案</span>
-        <h3>{styleLabel}</h3>
-        <p>{run.note || "按当前文稿内容进行整体视觉统一、版面优化和逐页重绘。"}</p>
+        <h3>按页面要求美化</h3>
+        <p>保留原稿关键信息，并根据勾选要求和逐页提示词重组版面。</p>
         <div className="polish-plan-tags">{optionLabels.map(label => <i key={label}>{label}</i>)}</div>
       </article>
       <article>
@@ -88,16 +152,30 @@ export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onC
       </article>
     </section>}
     {(sourcePages.length > 0 || run.status === "source_ready") && <section className={`deck-plan-review inline polish-source-pages ${selectingSourcePages ? "is-selecting" : ""}`}>
-      <article>
-        <span>{selectingSourcePages ? "点选需要修改的页面" : "原稿页面已固化"}</span>
+      <article className="polish-source-pages-intro">
+        <span>{selectingSourcePages ? "逐页美化工作台" : "原稿页面已固化"}</span>
         <h3>{sourcePageCount ? `${sourcePageCount} 页 PNG` : "已跳过转换"}</h3>
-        <p>{selectingSourcePages ? "点击缩略图选中页面，再写这一页的修改要求。已选页面会带有绿色边框。" : "页面图仅保存在本次美化任务中，用于人工核对与后续逐页处理。"}</p>
+        <p>{selectingSourcePages ? "点击左侧缩略图放大核对；在右侧写该页提示词，可随时从夹子一键追加已保存的规则。" : "页面图仅保存在本次美化任务中，用于人工核对与后续逐页处理。"}</p>
       </article>
-      {selectingSourcePages && <section className="polish-source-page-editor"><div><b>{selectedSourcePages.length ? `已选第 ${selectedSourcePages.join("、")} 页` : "请先点选页面"}</b><textarea value={sourcePageNote} onChange={event => setSourcePageNote(event.target.value)} placeholder="这几页怎么改，例如：第 3 页减少底部小字，主视觉改为图文对照。"/></div><button type="button" disabled={busy || !selectedSourcePages.length || !sourcePageNote.trim()} onClick={() => { onAddPageNotes(selectedSourcePages, sourcePageNote.trim()); setSelectedSourcePages([]); setSourcePageNote(""); }}><Check/>保存本页要求</button></section>}
-      {sourcePages.length > 0 && <div className="polish-source-page-strip">{visibleSourcePages.map(page => {
+      {selectingSourcePages && <div className="polish-source-page-stack">{sourcePages.map(page => {
         const url = employeeApi.urls.polish.sourcePageImage(service.id, run.id, page.pageIndex, run.updatedAt);
-        const selected = selectedSourcePages.includes(page.pageIndex);
-        return <button key={page.pageIndex} type="button" className={selected ? "selected" : ""} onClick={() => selectingSourcePages ? setSelectedSourcePages(current => current.includes(page.pageIndex) ? current.filter(index => index !== page.pageIndex) : [...current, page.pageIndex].sort((a, b) => a - b)) : onPreview({ url, title: `原稿第 ${page.pageIndex} 页` })}><img src={url} alt={`原稿第 ${page.pageIndex} 页`}/><span>{selectingSourcePages ? `${selected ? "已选" : "选择"} · 第 ${page.pageIndex} 页` : `第 ${page.pageIndex} 页`}</span></button>;
+        const draft = pageDraft(page.pageIndex);
+        const islandOpen = openClipPage === page.pageIndex;
+        return <article className="polish-source-page-row" key={page.pageIndex}>
+          <button type="button" className="polish-source-page-preview" onClick={() => onPreview({ url, title: `原稿第 ${page.pageIndex} 页` })}><img src={url} alt={`原稿第 ${page.pageIndex} 页`}/><span>第 {page.pageIndex} 页 · 点击放大预览</span></button>
+          <div className="polish-source-page-workspace">
+            <header><b>第 {page.pageIndex} 页提示词</b><small>{draft ? "已填写，可继续修改" : "未填写"}</small></header>
+            <textarea value={draft} onChange={event => setPageDrafts(current => ({ ...current, [page.pageIndex]: event.target.value }))} placeholder="这一页怎么改，例如：保留关键数字，压缩小字，改成图文对照。"/>
+            <div className={`polish-clip-island ${islandOpen ? "is-open" : ""}`}>
+              <button type="button" className="polish-clip-island-trigger" onClick={() => { setOpenClipPage(islandOpen ? null : page.pageIndex); setClipEditorOpen(false); }}><Paperclip/><b>夹子</b><span>{clips.length ? `${clips.length} 个可用` : "新建可复用提示词"}</span></button>
+              {islandOpen && <div className="polish-clip-island-content">
+                <div className="polish-clip-rail">{clips.map(clip => <div key={clip.id} className={`polish-clip color-${clip.color}`}><button type="button" onClick={() => appendClip(page.pageIndex, clip)} title="将此夹子的提示词追加到本页"><span>{clip.name}</span></button><button type="button" aria-label={`编辑夹子 ${clip.name}`} onClick={() => editClip(clip)}><Pencil/></button></div>)}<button type="button" className="polish-clip-new" onClick={startNewClip}><Plus/>新建夹子</button></div>
+                {clipEditorOpen && <section className="polish-clip-editor"><header><b>{editingClipId ? "编辑夹子" : "新建夹子"}</b><button type="button" onClick={() => setClipEditorOpen(false)}>收起</button></header><input value={clipName} maxLength={40} onChange={event => setClipName(event.target.value)} placeholder="夹子名称，例如：统一页脚"/><textarea value={clipPrompt} onChange={event => setClipPrompt(event.target.value)} placeholder="夹子提示词：写入每页需要追加的美化规则。"/><div><span>夹子颜色</span>{(["blue", "green", "gold", "rose"] as const).map(color => <button key={color} type="button" className={`color-${color} ${clipColor === color ? "selected" : ""}`} onClick={() => setClipColor(color)}>{({ blue: "蓝", green: "绿", gold: "金", rose: "红" })[color]}</button>)}<button type="button" className="polish-clip-save" disabled={clipSaving || !clipName.trim() || !clipPrompt.trim()} onClick={() => void saveClip()}><Save/>{clipSaving ? "保存中" : "保存夹子"}</button></div></section>}
+              </div>}
+            </div>
+            <button type="button" className="polish-save-page-note" disabled={busy || !draft.trim()} onClick={() => onAddPageNotes([page.pageIndex], draft.trim(), true)}><Check/>保存第 {page.pageIndex} 页要求</button>
+          </div>
+        </article>;
       })}</div>}
     </section>}
     {["generating", "review_ready", "pdf_queued", "pdf_ready", "ppt_queued", "ppt_processing", "ppt_ready", "failed"].includes(run.status) && run.slides?.length > 0 && <section className="deck-slide-review inline polish-slide-review">

@@ -11,16 +11,6 @@ import { documentRoot, ensureWorkspaceDirectories, saveFile, workspaceRoot } fro
 export const runtime = "nodejs";
 
 const polishRunRoot = path.join(workspaceRoot, "ppt-polish-runs");
-const allowedStylePacks = new Set([
-  "blue-gold-tech",
-  "white-green-tech",
-  "black-gold-business",
-  "blue-purple-ai",
-  "red-white-government",
-  "minimal-academic",
-  "vivid-roadshow"
-]);
-
 type PolishRun = {
   id: string;
   serviceId: string;
@@ -29,7 +19,6 @@ type PolishRun = {
   sourceMode: "current" | "upload";
   sourceName: string;
   sourceStoredName: string;
-  stylePack: string;
   note: string;
   options: Record<string, boolean>;
   pageNotes: { id: string; pages: string; note: string }[];
@@ -68,11 +57,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
   const form = await request.formData();
   const sourceMode = String(form.get("sourceMode") || "current") === "upload" ? "upload" : "current";
-  const stylePack = String(form.get("stylePack") || "blue-gold-tech");
   const note = cleanText(String(form.get("note") || ""), 3000);
   const options = normalizeOptions(String(form.get("options") || "{}"));
   const pageNotes = normalizePageNotes(String(form.get("pageNotes") || "[]"));
-  if (!allowedStylePacks.has(stylePack)) return NextResponse.json({ error: "目标风格无效" }, { status: 400 });
   await ensurePolishDirectories();
   let sourceName = "";
   let sourceStoredName = "";
@@ -101,7 +88,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     sourceMode,
     sourceName: cleanText(sourceName, 180),
     sourceStoredName,
-    stylePack,
     note,
     options,
     pageNotes,

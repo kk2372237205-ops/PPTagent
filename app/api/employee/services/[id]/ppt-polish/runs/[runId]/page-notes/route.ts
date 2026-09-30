@@ -27,11 +27,32 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   if (!pageIndexes.length || !note) return NextResponse.json({ error: "请选择页面并填写这一页的修改想法。" }, { status: 400 });
 
   const now = new Date().toISOString();
-  const pageNotes = [...(run.pageNotes || []), { id: randomUUID(), pages: pageIndexes.join(","), note }];
+  const pageNotes = body.replace === true
+    ? replacePageNotes(run.pageNotes || [], pageIndexes, note)
+    : [...(run.pageNotes || []), { id: randomUUID(), pages: pageIndexes.join(","), note }];
   const slides = (run.slides || []).map((slide: { slideIndex: number }) => ({ ...slide, note: pageNoteFor(slide.slideIndex, pageNotes) }));
   const updated = { ...run, pageNotes, slides, updatedAt: now };
   await writeFile(path.join(polishRunRoot, `${path.basename(runId)}.json`), JSON.stringify(updated, null, 2), "utf8");
   return NextResponse.json({ run: updated });
+}
+
+/**
+ * 竖向逐页工作台每次只保存该页的最新要求。旧版允许一次选多页，
+ * 因此替换时需要保留同一旧条目里未被覆盖的其他页。
+ */
+function replacePageNotes(current: { id?: string; pages?: string; note?: string }[], pageIndexes: number[], note: string) {
+  const replacing = new Set(pageIndexes);
+  const kept: { id: string; pages: string; note: string }[] = [];
+  for (const item of current) {
+    const pages = parsePages(item.pages);
+    const remaining = pages.filter(page => !replacing.has(page));
+    if (remaining.length) kept.push({ id: String(item.id || randomUUID()), pages: remaining.join(","), note: cleanText(String(item.note || ""), 1000) });
+  }
+  return [...kept, ...pageIndexes.map(page => ({ id: randomUUID(), pages: String(page), note }))];
+}
+
+function parsePages(value: unknown) {
+  return Array.from(new Set(String(value || "").split(/[，,;；、\s]+/).map(Number).filter(page => Number.isInteger(page) && page >= 1))).sort((a, b) => a - b);
 }
 
 async function readPolishRun(runId: string) {

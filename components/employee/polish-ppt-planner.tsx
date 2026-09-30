@@ -1,7 +1,7 @@
 /**
  * 美化 PPT 方案表单（可复用 UI 组件）
  *
- * 职责：一次美化任务的填写入口——来源（当前文稿或上传 PPTX）、目标风格与保护要求。
+ * 职责：一次美化任务的填写入口——来源（当前文稿或上传 PPTX）与保护要求。
  *       提交后先生成"待确认方案"；确认后固化 PNG 页面，再逐页填写修改要求。
  * 谁可以改：本组件单独维护；改动不要顺手改生成 PPT 或生图链路。
  * 依赖：`@/lib/employee-api`、`@/lib/employee-api-types`、`@/lib/employee-deck-constants`、
@@ -16,7 +16,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { FileText, Upload, WandSparkles } from "lucide-react";
 import { employeeApi } from "@/lib/employee-api";
 import type { Service } from "@/lib/employee-api-types";
-import { deckStylePacks } from "@/lib/employee-deck-constants";
 import { workPresentationMaxBytes, workPresentationMaxLabel } from "@/lib/upload-limits";
 import type { PptPolishRun } from "./polish-types";
 
@@ -39,7 +38,6 @@ export function PolishPptPlanner({ service, notify, initialRun, onRunCreated, on
   onRunsLoaded?: (runs: PptPolishRun[]) => void;
 }) {
   const [sourceMode, setSourceMode] = useState<"current" | "upload">(initialRun?.sourceMode || (service.workDocument ? "current" : "upload"));
-  const [stylePack, setStylePack] = useState(initialRun?.stylePack || "blue-gold-tech");
   const [selectedFileName, setSelectedFileName] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -100,7 +98,6 @@ export function PolishPptPlanner({ service, notify, initialRun, onRunCreated, on
     if (sourceMode === "upload" && !selectedFile) return notify("请先放入需要美化的 PPT 文件");
     const form = new FormData();
     form.append("sourceMode", sourceMode);
-    form.append("stylePack", stylePack);
     form.append("options", JSON.stringify(options));
     if (sourceMode === "upload" && selectedFile) form.append("file", selectedFile);
     setSubmitting(true);
@@ -118,9 +115,8 @@ export function PolishPptPlanner({ service, notify, initialRun, onRunCreated, on
   }
 
   return <section className="deck-generation-form polish-planner">
-    <div className="polish-form-grid">
+    <div className="polish-form-grid polish-source-only">
       <label>美化来源<select value={sourceMode} onChange={event => setSourceMode(event.target.value as "current" | "upload")}><option value="current" disabled={!service.workDocument}>当前文稿</option><option value="upload">上传 PPT</option></select></label>
-      <label>目标风格<select value={stylePack} onChange={event => setStylePack(event.target.value)}>{deckStylePacks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
     </div>
     <div className={"polish-upload-zone " + (dragging ? "is-dragging" : "")}
       onClick={() => fileRef.current?.click()}
