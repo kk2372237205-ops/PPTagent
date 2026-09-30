@@ -61,6 +61,7 @@ export function PolishPptPlanner({ service, note, setNote, notify, initialRun, o
     cardStyle: false,
     decorativeElements: false,
     reduceText: true,
+    sourcePageReference: false,
     ...(initialRun?.options || {})
   });
   const fileRef = useRef<HTMLInputElement>(null);
@@ -161,6 +162,7 @@ export function PolishPptPlanner({ service, note, setNote, notify, initialRun, o
       <label><input type="checkbox" checked={options.cardStyle} onChange={() => toggleOption("cardStyle")}/>卡片样式统一</label>
       <label><input type="checkbox" checked={options.decorativeElements} onChange={() => toggleOption("decorativeElements")}/>装饰元素统一</label>
       <label><input type="checkbox" checked={options.reduceText} onChange={() => toggleOption("reduceText")}/>减少文字密度</label>
+      <label title="试验功能；必须由服务端明确开启，且 AI 重绘后仍需人工核对中文、logo、照片和图表。"><input type="checkbox" checked={options.sourcePageReference} onChange={() => toggleOption("sourcePageReference")}/>试验：以原稿页作视觉依据</label>
     </div>
     <section className="polish-page-notes">
       <header><div><b>逐页修改想法</b><span>{pageNotes.length} 条页级要求</span></div></header>

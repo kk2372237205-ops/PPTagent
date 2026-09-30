@@ -164,7 +164,8 @@ function normalizeOptions(value: string) {
     backgroundTexture: true,
     cardStyle: false,
     decorativeElements: false,
-    reduceText: true
+    reduceText: true,
+    sourcePageReference: false
   };
   try {
     const parsed = JSON.parse(value);

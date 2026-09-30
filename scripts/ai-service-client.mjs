@@ -146,7 +146,9 @@ function serviceAgent(proxyUrl, serviceName = "AI 服务", timeoutMs = 300000) {
   const key = `${proxyUrl || "direct"}:${timeoutMs}`;
   let agent = agents.get(key);
   if (!agent) {
-    const options = { headersTimeout: timeoutMs, bodyTimeout: timeoutMs };
+    // The relay rejects concurrent HTTP/2 streams; Undici 8 otherwise enables
+    // them by default. Keep the image and text transport on HTTP/1.1.
+    const options = { headersTimeout: timeoutMs, bodyTimeout: timeoutMs, allowH2: false };
     agent = proxyUrl ? new ProxyAgent({ uri: proxyUrl, ...options }) : new Agent(options);
     agents.set(key, agent);
   }

@@ -25,6 +25,9 @@ const staleGeneratingMs = Math.max(60_000, Number(process.env.PPT_POLISH_STALE_G
 const polishConcurrency = Math.min(4, Math.max(1, Number(process.env.PPT_POLISH_CONCURRENCY || 2)));
 const imageService = aiImageConfig();
 const imageRequest = createServiceFetch(imageService);
+// Separate from AI_IMAGE_SUPPORTS_EDITS: source pages must never start being
+// uploaded to Image2 because another feature enables image editing.
+const sourcePageReferenceEditsEnabled = process.env.PPT_POLISH_SOURCE_EDITS_ENABLED === "1";
 const externalRequest = createServiceFetch({ serviceName: "Codia", proxyUrl: process.env.CODIA_PROXY_URL || "" });
 const codiaBaseUrl = trimSlash(process.env.CODIA_BASE_URL || "https://openapi.codia.ai");
 let workerHeartbeatState = "starting";
@@ -161,26 +164,55 @@ function readableExternalFailure(error) {
   return message || "图片中转服务暂时不可用，请稍后重试。";
 }
 
-async function openAiImage(prompt) {
-  requireImageService(imageService);
-  const response = await imageRequest(`${imageService.baseUrl}/images/generations`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${imageService.apiKey}`
-    },
-    body: JSON.stringify(imageGenerationBody(imageService, prompt))
-  });
-  const result = await response.json();
-  if (!response.ok || !result.data?.[0]) throw new Error(providerError(result, "图片中转服务生成失败"));
-  const image = result.data[0];
-  if (image.b64_json) return Buffer.from(image.b64_json, "base64");
-  if (image.url) {
+function multipartBody(fields, files) {
+  const boundary = `----WzlcFPolish${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`;
+  const cleanHeaderValue = value => String(value).replace(/[\r\n"]/g, "_");
+  const chunks = [];
+  for (const [name, value] of Object.entries(fields)) {
+    chunks.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${cleanHeaderValue(name)}"\r\n\r\n${String(value)}\r\n`));
+  }
+  for (const file of files) {
+    chunks.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${cleanHeaderValue(file.field)}"; filename="${cleanHeaderValue(file.name)}"\r\nContent-Type: ${cleanHeaderValue(file.mime)}\r\n\r\n`));
+    chunks.push(file.buffer);
+    chunks.push(Buffer.from("\r\n"));
+  }
+  chunks.push(Buffer.from(`--${boundary}--\r\n`));
+  return { body: Buffer.concat(chunks), contentType: `multipart/form-data; boundary=${boundary}` };
+}
+
+async function imageBufferFromResult(image) {
+  if (image?.b64_json) return Buffer.from(image.b64_json, "base64");
+  if (image?.url) {
     const download = await imageRequest(image.url, {}, 120000);
     if (!download.ok) throw new Error("图片中转服务生成图下载失败");
     return Buffer.from(await download.arrayBuffer());
   }
   throw new Error("图片中转服务没有返回图片内容");
+}
+
+async function openAiImage(prompt, sourcePagePath = "") {
+  requireImageService(imageService);
+  const headers = { Authorization: `Bearer ${imageService.apiKey}` };
+  let response;
+  if (sourcePagePath) {
+    if (!sourcePageReferenceEditsEnabled) throw new Error("原稿页视觉依据仍处于关闭的试验开关中，尚未向 Image2 上传原稿页面。");
+    const sourceImage = await readFile(sourcePagePath);
+    const multipart = multipartBody(imageGenerationBody(imageService, prompt), [{ field: "image", buffer: sourceImage, name: path.basename(sourcePagePath), mime: "image/png" }]);
+    response = await imageRequest(`${imageService.baseUrl}/images/edits`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": multipart.contentType },
+      body: multipart.body
+    });
+  } else {
+    response = await imageRequest(`${imageService.baseUrl}/images/generations`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify(imageGenerationBody(imageService, prompt))
+    });
+  }
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.data?.[0]) throw new Error(providerError(result, "图片中转服务生成失败"));
+  return imageBufferFromResult(result.data[0]);
 }
 
 function stylePackName(id) {
@@ -193,6 +225,18 @@ function stylePackName(id) {
     "minimal-academic": "极简学术",
     "vivid-roadshow": "活力路演"
   })[id] || id || "蓝金科技";
+}
+
+function stylePackDirection(id) {
+  return ({
+    "blue-gold-tech": "deep navy, bright blue, technology gold, cool white; title at top left, hero visual on the right, restrained grid and light-trail details; no purple neon, cartoon, or red government styling",
+    "white-green-tech": "white background, pale green, deep green, dark gray; generous white space, rounded cards, lightweight header and bottom step bar; no black-gold luxury, heavy shadows, or cyber neon",
+    "black-gold-business": "black, charcoal, gold, ivory white; high-contrast structure, vertical columns and refined metallic hairlines; no cartoon illustration, green eco styling, or cheap gradients",
+    "blue-purple-ai": "deep blue, indigo purple, electric blue, cool white; centered hero visual, modular cards and circular data structures; no excessive neon, game UI, or flashy buttons",
+    "red-white-government": "red, white, dark gray with sparse gold; formal stable hierarchy and clear information blocks; no cyber styling, entertainment mood, or cartoon treatment",
+    "minimal-academic": "white, light gray, black and one restrained accent color only; generous white space, strict grid, fine annotation lines and a small number of charts; no complex background, strong glow, dense decoration, blue-gold palette, or dark technology canvas",
+    "vivid-roadshow": "blue, cyan, white with restrained orange accents; energetic business story, image-and-text balance and prominent key numbers; no gloomy government styling or academic-paper feeling"
+  })[id] || "apply the selected target style only; keep the palette restrained and consistent";
 }
 
 function xmlText(value) {
@@ -265,7 +309,8 @@ function optionLines(options = {}) {
     backgroundTexture: "统一背景质感",
     cardStyle: "统一卡片样式",
     decorativeElements: "统一装饰元素",
-    reduceText: "降低文字密度，改成更清晰的信息层级"
+    reduceText: "降低文字密度，改成更清晰的信息层级",
+    sourcePageReference: "以本地固化的原稿页面作视觉依据，重绘时优先保留原有阅读顺序"
   };
   return Object.entries(labels).filter(([key]) => options[key]).map(([, label]) => `- ${label}`).join("\n") || "- 保持页面专业、清晰、统一";
 }
@@ -280,9 +325,9 @@ function visualSystemPrompt(run, slide) {
   const role = slideRole(run, slide);
   const base = [
     "Global visual system lock:",
-    "- Use one consistent deck identity across every page: deep navy base, electric blue light trails, refined gold highlights, glassy dark cards, clean sans-serif Chinese typography, and the same icon stroke style.",
-    "- Keep background texture, header micro-labels, footer rhythm, page numbers, card radius, glow strength, and spacing language consistent with adjacent pages.",
-    "- Do not suddenly switch to a red/black, orange, purple, beige, cartoon, hand-drawn, or poster-only style. Even crisis/risk pages must stay in the blue-gold tech system; red is only a thin warning accent, not the dominant palette.",
+    `- Apply this selected target style only: ${stylePackDirection(run.stylePack)}. Do not borrow colors, motifs, or background treatment from another style pack.`,
+    "- Keep background texture, header micro-labels, footer rhythm, page numbers, card radius, detail intensity, and spacing language consistent with adjacent pages.",
+    "- Do not abruptly switch to a different palette, illustration style, or poster-only treatment. Any warning color must be a small accent and still follow the selected target style.",
     "- Prefer fewer larger visual ideas over many small blocks. Avoid scattered decorations, mismatched illustration styles, and overloaded tiny text.",
     "- Treat the deck as one premium conference keynote, not independent posters."
   ];
@@ -298,7 +343,7 @@ function visualSystemPrompt(run, slide) {
       "Ending page special direction:",
       "- Make the ending page emotional, spacious, and memorable. Use one large closing sentence or slogan as the main focus.",
       "- Keep text minimal. If supporting points are needed, use no more than three short chips or cards.",
-      "- Use a stronger atmosphere than middle pages while still matching the same blue-gold tech identity."
+      "- Use a stronger atmosphere than middle pages while still matching the selected target style."
     );
   } else {
     base.push(
@@ -315,7 +360,7 @@ function previousVisualAnchor(slide) {
   const prompt = cleanText(slide.prompt, 1200);
   return [
     "Use this previous generated page prompt as a visual style anchor only.",
-    "Borrow its palette discipline, density, header/footer rhythm, glass card language, glow direction, and icon style.",
+    "Borrow its palette discipline, density, header/footer rhythm, card language, detail accents, and icon style.",
     "Do not copy previous-page text, data, charts, characters, or exact composition.",
     prompt
   ].join("\n");
@@ -357,12 +402,15 @@ ${previous?.originalText || "start"}
 Next slide context:
 ${next?.originalText || "end"}
 
+Source-page visual context:
+${run.options?.sourcePageReference ? "A local snapshot of this same source page is supplied only as visual context. Preserve its reading order, major grouping, and useful visual hierarchy where possible, but redesign it into the selected target style. This is an AI redraw, not pixel-perfect editing: Chinese text, logos, photographs, diagrams, and tiny labels can change and must be reviewed." : "No source-page image is supplied. Rebuild from extracted text and the selected target style."}
+
 Hard requirements:
 - Output exactly one full 16:9 PPT page with refined layout, title hierarchy, content blocks, background, and safe margins.
 - Preserve the original meaning. If numbers, dates, names, or important labels exist in the detected text, keep them readable and do not invent conflicting data.
 - Avoid dense paragraphs. Use concise designed text, cards, diagrams, timelines, charts, or structured blocks where appropriate.
 - Keep all important text and visuals inside a 6% safe area. Nothing important may touch or be cut off by the canvas edge.
-- Keep continuity across pages: same palette, header/footer rhythm, typography feeling, card language, icon style, glow color, and decorative language.
+- Keep continuity across pages: same palette, header/footer rhythm, typography feeling, card language, icon style, detail treatment, and decorative language.
 - For regeneration, obey the requested redesign route. The new page must be visibly different from the previous generated version unless the instruction explicitly asks only for closer continuity.
 - Do not include watermarks, model signatures, browser UI, chat UI, random logos, or unrelated characters.
 - If exact Chinese text is uncertain, use short legible Chinese labels based on the detected text rather than gibberish.`;
@@ -381,6 +429,9 @@ async function prepareRun(run) {
       onlyOfficeUrl: process.env.PPT_POLISH_ONLYOFFICE_URL || process.env.ONLYOFFICE_URL || "http://localhost:18080",
       onlyOfficeSecret: process.env.ONLYOFFICE_JWT_SECRET || "development-onlyoffice-secret"
     });
+  if (run.options?.sourcePageReference && !sourcePageReferenceEditsEnabled) {
+    throw new Error("已固化原稿页，但“原稿页视觉依据”试验开关尚未开启；系统没有向 Image2 上传原稿页面。");
+  }
   const extracted = run.slides?.length ? run.slides : await extractPptxSlides(run.sourceStoredName);
   const slides = extracted.map(slide => ({
     ...slide,
@@ -395,6 +446,14 @@ async function prepareRun(run) {
   });
 }
 
+function sourcePagePathFor(run, slide) {
+  const page = run.sourceSnapshot?.pages?.find(item => item.pageIndex === slide.slideIndex);
+  if (!page?.storedName) throw new Error(`未找到第 ${slide.slideIndex} 页的原稿页面图。`);
+  const sourcePagePath = path.join(polishRunRoot, path.basename(run.id), "source-pages", path.basename(page.storedName));
+  if (!existsSync(sourcePagePath)) throw new Error(`第 ${slide.slideIndex} 页原稿页面图已不存在。`);
+  return sourcePagePath;
+}
+
 async function generateSlideAsset(run, slide) {
   const slides = run.slides || [];
   const currentIndex = slides.findIndex(item => item.slideIndex === slide.slideIndex);
@@ -403,7 +462,8 @@ async function generateSlideAsset(run, slide) {
   const prompt = slidePrompt(run, slide, previous, next);
   let normalized;
   try {
-    const raw = await openAiImage(prompt);
+    const sourcePagePath = run.options?.sourcePageReference ? sourcePagePathFor(run, slide) : "";
+    const raw = await openAiImage(prompt, sourcePagePath);
     normalized = await sharp(raw)
       .resize(1920, 1080, { fit: "contain", background: "#061525" })
       .png()
