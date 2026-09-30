@@ -9,7 +9,7 @@
  * 验证方式：`npm run verify`。
  */
 
-import { deckAdvancedLayoutPacks, deckStylePacks } from "@/lib/employee-deck-constants";
+import { deckAdvancedLayoutPacks, deckDefaultLayoutLabel, deckStylePacks } from "@/lib/employee-deck-constants";
 import type {
   DeckGenerationPagePlan,
   DeckGenerationRun,
@@ -47,6 +47,7 @@ export function deckStatusText(status: string) {
     planning: "生成方案中",
     plan_ready: "待确认方案",
     confirmed: "排队执行",
+    source_ready: "请选择需要逐页修改的页面",
     generating: "生成页面中",
     review_ready: "预览待确认",
     pdf_queued: "正在生成 PDF",
@@ -54,6 +55,7 @@ export function deckStatusText(status: string) {
     ppt_queued: "Codia 排队中",
     ppt_processing: "Codia 转换中",
     ppt_ready: "PPT 已生成",
+    cancelled: "已取消",
     failed: "失败"
   } as Record<string, string>)[status] || status;
 }
@@ -71,7 +73,7 @@ export function formatDeckFileSize(bytes: number) {
 /** 面板上显示的"当前风格"说明：参考图配色模式显示版式语言，否则显示风格包名 */
 export function deckRunStyleLabel(run: Pick<DeckGenerationRun, "generationMode" | "paletteMode" | "stylePack">) {
   if (run.generationMode === "advanced" && run.paletteMode === "reference") {
-    const layout = deckAdvancedLayoutPacks.find(item => item.id === run.stylePack)?.label || "图文叙事版式";
+    const layout = deckAdvancedLayoutPacks.find(item => item.id === run.stylePack)?.label || deckDefaultLayoutLabel;
     return `参考图配色 · ${layout}`;
   }
   return deckStylePacks.find(item => item.id === run.stylePack)?.label || run.stylePack;

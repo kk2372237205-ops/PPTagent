@@ -20,7 +20,7 @@
 
 | 我之前常说的词 | 以后文档里的说法 | 当前真实文件 |
 | --- | --- | --- |
-| worker | 后台执行脚本 | `scripts/deck-generation-worker.mjs`、`scripts/ppt-polish-worker.mjs` |
+| worker | 后台执行脚本 | `scripts/workers/deck-generation/deck-generation-worker.mjs`、`scripts/workers/ppt-polish/ppt-polish-worker.mjs` |
 | run | 一次生成任务 / 一次美化任务 | 数据库记录或 `workspace/ppt-polish-runs/*.json` |
 | slide | 单页预览图任务 | 生成 PPT 存数据库，美化 PPT 存 JSON |
 | plan_ready | 方案待确认 | 用户还没点“确认生成/确认方案” |
@@ -206,7 +206,7 @@
 - 卡片样式统一和装饰元素统一默认不勾选。
 - 高级版至少必须上传一份真正的内容资料；大纲文件和配色参考图不算内容资料。前端和服务端都会检查。
 
-“参考图配色”先由 GPT-5.6 分析背景色、正文色、强调色、辅助色和大致使用比例，再把同一张原图直接交给 Image2 作为视觉输入；两边都不能照抄参考图的文字、事实或完整页面布局。选择参考图配色但没有上传图片时，前端和接口都会阻止提交。
+“参考图配色”由本地程序提取背景色、正文色、强调色、辅助色和大致使用比例；Image2 只收到这份色值清单、文字规则和本地生成的风格条带，**绝不收到用户上传的配色原图**。两边都不能照抄参考图的文字、事实或完整页面布局。选择参考图配色但没有上传图片时，前端和接口都会阻止提交。
 
 创建一次生成任务的接口：
 
@@ -224,7 +224,7 @@
 
 资料读取脚本：
 
-- `scripts/deck-source-parser.mjs`
+- `scripts/workers/deck-generation/deck-source-parser.mjs`
 
 当前读取规则：
 
@@ -253,7 +253,7 @@
 
 快速版保留页数滑杆，范围为 2 到 30 页。用户提供简介、资料和配色后点击“生成快速方案”。
 
-后台执行脚本（工程文件 `scripts/deck-generation-worker.mjs`）会：
+后台执行脚本（工程文件 `scripts/workers/deck-generation/deck-generation-worker.mjs`）会：
 
 1. 读取全部资料并保留来源位置。
 2. 识别汇报对象、任务目标、必须回答的问题和资料中的可靠事实。
@@ -318,7 +318,6 @@ GPT-5.6 按每页标题、小标题和想讲的内容，从全部文字证据中
 - `skills/deck-generation/outline-control.md`
 - `skills/deck-generation/content-density.md`
 - `skills/deck-generation/palette-reference.md`
-- `skills/deck-generation/quality-audit.md`
 - `skills/deck-generation/slide-image-specs.md`
 - `skills/deck-generation/advanced-single-slide-director/SKILL.md`
 
@@ -331,20 +330,21 @@ GPT-5.6 按每页标题、小标题和想讲的内容，从全部文字证据中
 - 整套 PPT 共享配色职责、字体层级、页眉页脚和视觉母题。
 - 封面和最后一页都少文字、强视觉。最后一页无论原资料包含价值、落地、路线、指标或下一步，非逐字锁定内容都压缩为一句有情绪力量的结论和最多一条短支撑语；详细内容应在前一页完成，最后一页只负责收束。
 - Image2 可以生成概念视觉，也可以按已确认的数字、日期、标签和关系绘制图表、路线、流程与对比；信息不够时必须省略，不能猜测。
-- 高级版适合图像表达的正文页优先规划 1-3 个画面单元，高密度页最多 4 个；纯文字论证可以不强行配图。画面可以嵌入时间线、对比、流程、技术机制、全宽背景或不对称构图，位置由它与文字的语义关系决定。
+- 高级版所说的“插图”是可以单独替换的完整照片类图片框，不是流程图、时间线、图表、图标或装饰几何。只要正文有具体物体、材料、工艺、环境或应用情境，默认安排至少两张不同插图：一张主视图加一张不同的细节、工序或语境图，不能把同一场景裁两次凑数；两个或三个并列的具名痛点、阶段、案例或应用情境，分别使用两到三张插图并各自连到对应内容块。纯事实图表、纯数据表或已经完整标注的技术机制图可以少于两张；照片类图片框最多三个，不能用一张无关配图装饰多个独立论点，也不能随机拼贴。每页在主图加细节、三联故事带、照片锚点流程、双图对照、全景加证据带、图解加照片嵌图、纵向图片脊柱等轮廓中按内容选择，相邻正文不重复“左侧图解或卡片＋右侧一张竖图”。
+- 高级版正文页会从用户填写的“PPT 结构”、本页画面合同和具体物体名自动形成公开视觉检索词；系统只接受许可明确的普通栅格图片作为语义参考，并以检索词和文件元信息排除人物、品牌、机构招牌、公文、截图与文档。参考图只帮助 Image2 理解通用物体、材料、工艺、景别与自然光，在这一次整页请求中重绘融合；不贴原图、不当资料证据、不读取其文字或事实。封面和结尾页不检索网络图，继续强情绪、少文字。
 - 所有文字、图表和生成画面仍由 Image2 在一次请求中直接生成成同一张完整 16:9 页面图，不增加二次生图、后插图或自动返工。
 - 多个画面必须共同服务一条阅读路径，不能拼贴无关图片，也不能把整套页面固定成左文右图、上文下图或统一底部图片区。
 - 禁止伪造可识别学校/机构招牌、logo、证书、合同、报告、产品标签、客户现场、官方截图或任何看起来像真实证明的素材。
 
-快速版当前同时生成 2 张，高级版最多同时生成 6 张。高级版单次 Image2 请求最长等待 10 分钟，避免上游排队超过 300 秒后迫使用户重新付费生成；达到上限后直接报告失败，不自动发起第二次 Image2 请求。高级版默认每页只调用一次 Image2，返回后立即保存成图，不再逐页调用 GPT-5.6 看图或自动返工。用户只看到排队、生成、完成或失败状态，Image2 调用统计会显示初次预计、已发起、已完成、人工重生和自动重绘次数。
+快速版当前同时生成 2 张；高级版默认同时生成 3 张，部署环境可按中转站实测容量调高，但最多 6 张。高级版单次 Image2 请求最长等待 10 分钟，避免上游排队超过 300 秒后迫使用户重新付费生成；达到上限后直接报告失败，不自动发起第二次 Image2 请求。高级版默认每页只调用一次 Image2，返回后立即保存成图，不再逐页调用 GPT-5.6 看图或自动返工。用户只看到排队、生成、完成或失败状态，Image2 调用统计会显示初次预计、已发起、已完成、人工重生和自动重绘次数。
 
-参考图模式的每一页使用 `/v1/images/edits` 接收真实配色参考图与整套共用的视觉规则条带；内容资料图片不会被加入参考图。所有页面从第一张开始共享同一份视觉指纹，不依赖某一张“锚点页”，因此不会把 6 并发重新变成串行。只有用户主动点击“更贴近上一页”时，才额外把上一页真实成图作为视觉语言约束纳入输入。
+高级版每一页使用 `/v1/images/edits` 接收整套共用的本地风格条带；参考图配色原图与内容资料图片都不会被加入参考图。正文页如找到合规公开视觉参考，可与风格条带在同一次请求中共同输入。所有页面从第一张开始共享同一份视觉指纹，不依赖某一张“锚点页”，因此不会把 6 并发重新变成串行。只有用户主动点击“更贴近上一页”时，才额外把上一页真实成图作为视觉语言约束纳入输入。
 
 普通文档先由本地解析程序读取文字。只有解析文字少于安全阈值时，PDF/PPT 页面才短暂交给 GPT-5.6 做 OCR 补救；这些页面不会保存为高级版视觉素材，也不会建立视觉证据索引。封面根据整份 PPT 的主题与定位生成强主视觉，正文根据每页大标题和已确认内容执行，最后一页始终负责强情绪、少文字的收束。
 
-高级版全部页面完成后，系统只把整套缩略图交给 GPT-5.6 做一次后台交付安全检查。它只检查空白/损坏页、大面积乱码、明显伪造证明、标题与画面直接冲突或核心内容严重裁切；一般审美差异、配色变化、图标或卡片不够理想都不提示。检查不会调用 Image2，也不会自动重绘；检查服务暂时不可用时仍正常进入预览。
+高级版全部页面完成后**不再有任何额外模型调用**：Image2 成图保存后直接进入预览，可以马上逐页查看、放大、单页返工或转 PDF/PPT。（原先这里有一次"后台交付安全检查"——把整套缩略图交给 GPT-5.6 找空白页、乱码、伪造证明等问题；它只在通过时静默、发现问题也只提示不重绘，却要占用后台脚本 30–90 秒，已于 2026-09-30 按 owner 要求删除。防伪造的要求仍然生效，写在生成规则 `skills/deck-generation/illustration-system.md`。）
 
-单页人工返工从已确认任务包、整套风格条带和配色参考图重新开始，不把当前失败草稿继续传给 Image2。用户主动点击“更贴近上一页”时可额外输入上一页成图，但只用于对齐视觉语言。
+单页人工返工从已确认任务包、整套风格条带和配色规则重新开始，不把当前失败草稿继续传给 Image2。用户主动点击“更贴近上一页”时可额外输入上一页成图，但只用于对齐视觉语言。
 
 单页预览和返工接口：
 
@@ -390,7 +390,7 @@ Codia 返回 402 表示余额或订阅不可用，403 表示当前 Key 或套餐
 - 用户在完整方案中能看到页面任务、正文、结论、画面方向、来源文件和来源位置。
 - 用户在画面方向中能看到文字主导、图文均衡或视觉主导，以及每个画面服务的内容和整页图文关系。
 - 未确认方案或内容前，不能直接生成页面或最终 PPTX。
-- 参考配色图由本地程序提取颜色职责，并把原图直接交给 Image2；只能控制颜色关系和视觉气质，不能照抄版式或内容，也不额外消耗一次 GPT-5.6 配色分析请求。
+- 参考配色图由本地程序提取颜色职责；原图不交给 Image2，只能通过色值清单、文字规则和本地风格条带控制颜色关系与视觉气质，也不额外消耗一次 GPT-5.6 配色分析请求。
 - 参考图模式只显示“版式语言（不含配色）”，不能把“蓝金、黑金、红白”等内置配色名称混进最终任务。
 - 参考图模式的版式选项使用独立无配色规则，描述图文叙事、技术说明、结论先行、系统关系、庄重层级、学术论证或路演叙事；它不是整套文字密度选项，密度仍由每页内容决定。
 - 卡片样式统一和装饰元素统一默认不勾选。
@@ -399,7 +399,7 @@ Codia 返回 402 表示余额或订阅不可用，403 表示当前 Key 或套餐
 - 页面预览图能点击放大。
 - “重新生成本页”和“更贴近上一页”必须真实重新出图。
 - 每页必须保存 GPT-5.6 到 Image2 的任务包和实际参考图传递记录；不再保存逐页质检报告，自动重绘次数固定为 0。
-- 全部页面完成后只做一次后台交付安全检查；只提示致命异常，是否返工由用户决定，不能自动消耗 Image2 额度。
+- 全部页面完成后不再做任何后台检查或额外模型调用，直接进入预览；是否返工完全由用户决定，系统不能自动消耗 Image2 额度（交付安全检查已于 2026-09-30 删除）。
 - 右侧任务列表显示最新生成 PPT 任务，点击后能回到当前步骤。
 - 快速版和高级版都使用同一条完整图片生图路线；高级版的区别是 GPT-5.6 按用户结构逐页取材、写画面合同，并用一次完整方案确认控制 Image2。
 
@@ -434,15 +434,15 @@ Codia 返回 402 表示余额或订阅不可用，403 表示当前 Key 或套餐
 - 整套共用的配色、字体气质、页眉页脚、背景、卡片、装饰和图片语言指纹。
 - 禁止新增、删除、改写或猜测的内容。
 
-Image2 接收这份任务包、配色参考图和整套视觉规则条带。内容资料图片不进入 Image2；配色参考图只传递颜色关系，视觉规则条带只传递页眉页脚、字体气质、背景、卡片和装饰语言，禁止复制其中的文字、事实、logo 或完整构图。任务包保存在 `DeckGenerationSlide.renderContractJson`；整套视觉指纹保存在 `DeckGenerationRun.styleFingerprintJson`。
+Image2 接收这份任务包和整套视觉规则条带。内容资料图片与配色参考图原文件不进入 Image2；配色只通过本地提取色值和文字规则传递。正文页如有合规公开视觉参考，会在同一次请求中作为“重绘语义参考”输入，禁止复制其文字、事实、logo、人物或完整构图。任务包保存在 `DeckGenerationSlide.renderContractJson`；整套视觉指纹保存在 `DeckGenerationRun.styleFingerprintJson`。
 
 #### 谁来监督 Image2
 
 单页图片生成后立即保存，不再调用 GPT-5.6 做逐页看图检查，也不出现“重新质检”或“按质检建议修正”。这避免每页多一次文字模型调用和额外等待，更不会触发自动 Image2 返工。
 
-所有页面完成后，系统只把整套缩略图交给 GPT-5.6 做一次安静的交付安全检查。只有空白/损坏页、大面积乱码、明显伪造机构或证明材料、画面与标题直接冲突、核心内容严重裁切等 `critical` 问题才提示页码；普通审美问题不提示。检查不自动重做，服务不可用也不阻断预览。
+所有页面完成后**不再调用任何模型**，Image2 成图直接进入预览（原先的"交付安全检查"已于 2026-09-30 删除，见上文）。字段 `DeckGenerationRun.deckQualityStatus` 现在固定为 `disabled`，只作为历史字段保留。
 
-整套安全报告保存在 `DeckGenerationRun.deckQualityReportJson`。它不是新的确认步骤；用户查看整套预览后，可以主动“重新生成本页”“更贴近上一页”，也可以直接生成 PDF/PPTX。
+它不是新的确认步骤；用户查看整套预览后，可以主动“重新生成本页”“更贴近上一页”，也可以直接生成 PDF/PPTX。
 
 ## 美化 PPT：当前交付流程
 
@@ -459,15 +459,14 @@ Image2 接收这份任务包、配色参考图和整套视觉规则条带。内�
 用户选择：
 
 - 美化来源：当前文稿，或上传 PPTX
-- 目标风格
-- 整套修改方向
-- 勾选要求，例如保留原文字、保留数字信息、主色统一、页眉页脚统一、背景质感统一、卡片样式统一、装饰元素统一、减少文字密度
-- 逐页修改想法，例如第 1 页怎么改、第 2-5 页怎么改
+- 勾选要求，例如保留原文字、保留数字信息、主色统一、页眉页脚统一、背景质感统一、卡片样式统一、装饰元素统一、减少文字密度。
+- `PPT转PNG` 默认开启：确认后系统将整份 PPTX 在本地固化为按页 PNG，用于核对原稿和选择需要逐页修改的页面，不上传 Image2。用户可关闭它，供后续直接提供页面图片集的流程使用。
+- 逐页修改想法不在创建方案时显示。开启 `PPT转PNG` 后，确认按钮会先进入“正在准备逐页工作台”的等待阶段；转换完成时直接点击页面缩略图，再填写该页怎么改；页码由系统自动记录。
 
 当前限制：
 
 - 美化模式只支持 PPTX。
-- 如果用户既没有写整套修改方向，也没有写逐页修改想法，接口会拒绝提交。
+- 关闭 `PPT转PNG` 只会跳过转换；直接上传 PNG 图片集的入口尚未开放，不能把关闭开关误解为已经可选择图片文件夹。
 
 创建任务接口：
 
@@ -490,8 +489,8 @@ Image2 接收这份任务包、配色参考图和整套视觉规则条带。内�
 
 用户有两个明确选择：
 
-- 返回修改：回到美化表单，恢复目标风格、整套修改方向、勾选要求和逐页修改清单；若来源是本地上传 PPTX，浏览器安全限制下需要重新选择文件。
-- 确认生成：确认当前方案并开始逐页重绘。
+- 返回修改：回到美化表单，恢复勾选要求；若来源是本地上传 PPTX，浏览器安全限制下需要重新选择文件。
+- 确认并转换页面：先按 `PPT转PNG` 开关处理原稿。开启时，系统停在缩略图选择页；用户可点击页面、填写该页要求并保存。再次点击“开始生成页面”才会逐页重绘。
 
 用户确认后，前端请求：
 
@@ -502,14 +501,17 @@ Image2 接收这份任务包、配色参考图和整套视觉规则条带。内�
 
 1. 检查后台执行脚本是否有心跳。
 2. 读取 PPTX。
-3. 解析 `ppt/slides/slide*.xml`，识别每页文本。
-4. 把逐页修改想法匹配到对应页。
-5. 生成每页的重绘任务。
-6. 把任务状态改为 `generating`。
+3. 先由本机 ONLYOFFICE 转成 PDF，再固化为本次任务私有的逐页 PNG 图片集和页面清单；此步骤不调用 Image2，也不会把客户页面自动交给 Image2。
+4. 解析 `ppt/slides/slide*.xml`，识别每页文字，并把逐页修改想法匹配到对应页。
+5. 页面图和清单会保存在 `uploads/employee-workspace/ppt-polish-runs/[runId]/source-pages/` 与同级 `source-pages-manifest.json`。任务展示全部缩略图，员工点选页面后再填写本页要求，页码由系统自动保存，不依赖文件夹名称或人工抄页码。
+6. 页面图固化成功后，任务停在“请选择需要逐页修改的页面”。员工可以直接开始生成，也可以先为任意页面添加要求；之后才进入逐页生成预览。固化失败会明确报错，不会假装开始重绘。
+7. 默认流程只使用原稿中提取的文字、勾选要求和用户在逐页工作台填写或通过“夹子”追加的要求；不会自动把原稿页传给 Image2，也不会强制套用蓝金等预设配色。
+8. “夹子”是员工级可复用提示词包，包含名称、颜色和提示词。可在任意单页右侧的胶囊入口中创建、编辑、保存或一键套用；已套用的夹子只在文本框下显示名称标签，可随时取消，完整提示词仍会随该页要求交给后台；它不绑定某一份客户 PPT。
+9. 在方案确认、页面转换、页面点选和生成预览阶段，任务头部提供“取消任务（紧急）”。取消会立刻停止后续页面排队；已经提交给 Image2 的少量并发页面无法撤回，但其结果不会继续推进该任务。
 
 后台执行脚本：
 
-- `scripts/ppt-polish-worker.mjs`
+- `scripts/workers/ppt-polish/ppt-polish-worker.mjs`
 
 健康检查文件：
 
@@ -647,24 +649,24 @@ PDF 接口：
 ### 系统现在怎样调用
 
 1. 资料分析、大纲、逐页内容和结构化 JSON 使用 `AI_TEXT_API_KEY`，默认请求 `https://yzstudio.vip/v1/chat/completions`。全局 `AI_TEXT_MODEL` 统一为 `gpt-5.6-sol`，覆盖快速版、高级版、AI 助手、美化 PPT 和其他文字功能；高级版仍可通过 `DECK_ADVANCED_TEXT_MODEL` 独立覆盖，当前同样为 `gpt-5.6-sol`。
-2. 生成 PPT 页面、美化 PPT 页面、AI 图片和主视觉图使用 `AI_IMAGE_API_KEY`，模型为 `gpt-image-2`。普通文生图仍请求 `https://yzstudio.vip/v1/images/generations`；只有生成 PPT 高级版需要真实视觉参考时请求 `/v1/images/edits`。
+2. 生成 PPT 页面、美化 PPT 页面、AI 图片和主视觉图使用 `AI_IMAGE_API_KEY`，模型为 `gpt-image-2`。普通文生图仍请求 `https://yzstudio.vip/v1/images/generations`；高级版生成 PPT 通过 `/v1/images/edits` 输入本地风格条带，正文页可额外输入合规公开视觉参考，但用户资料和配色参考原图始终不输入。
 3. 两条链路默认直接连接 YZStudio；只有明确填写 `AI_TEXT_PROXY_URL` 或 `AI_IMAGE_PROXY_URL` 时才额外经过本地代理。
 4. Codia、方舟豆包、DeepSeek 和本地图片拆解仍使用各自独立配置，因为它们不是原 ChatGPT Key 所承载的功能。
 5. YZStudio 已公开同步和异步接口，但当前没有提供异步状态查询返回格式。系统暂时使用公开的同步接口，并继续由项目自己的后台任务队列控制并发和恢复，避免猜测轮询协议。
 
 ### 图片编辑能力边界
 
-- 2026-08-05 已验证 YZStudio 的 `POST /v1/images/edits` 路由存在并进入图片字段校验；生成 PPT 高级版单独使用 `DECK_ADVANCED_REFERENCE_IMAGES=1` 传递配色参考图与整套风格条带，不传内容资料图片。
+- 2026-08-05 已验证 YZStudio 的 `POST /v1/images/edits` 路由存在并进入图片字段校验；生成 PPT 高级版单独使用 `DECK_ADVANCED_REFERENCE_IMAGES=1` 传递整套风格条带，正文页可附加合规公开视觉参考；不传内容资料图片或配色参考原图。
 - 这个开关只影响生成 PPT 高级版，不等于给美化 PPT、AI 清字或其他旧功能统一开放图片编辑。
 - 其他需要图片编辑的功能仍由 `AI_IMAGE_SUPPORTS_EDITS` 独立控制，默认保持 `0`，不会偷偷回退旧 Key 或借用高级版开关。
 
 ### 真实文件位置
 
 - 服务端统一配置与网页接口调用：`lib/ai-providers.ts`。
-- 后台执行脚本统一调用：`scripts/ai-service-client.mjs`。
-- 生成 PPT：`scripts/deck-generation-worker.mjs`。
-- 美化 PPT：`scripts/ppt-polish-worker.mjs`。
-- 单页生图/设计与图片炸开：`scripts/design-agent-worker.mjs`、`scripts/image-explode-worker.mjs`。
+- 后台执行脚本统一调用：`scripts/workers/shared/ai-service-client.mjs`。
+- 生成 PPT：`scripts/workers/deck-generation/deck-generation-worker.mjs`。
+- 美化 PPT：`scripts/workers/ppt-polish/ppt-polish-worker.mjs`。
+- 单页生图/设计与图片炸开：`scripts/workers/design-agent/design-agent-worker.mjs`、`scripts/workers/image-explode/image-explode-worker.mjs`。
 - 普通 AI 图片与 AI 清字接口：`app/api/employee/services/[id]/generate-images/route.ts`、`app/api/employee/services/[id]/image-explode/runs/[runId]/parts/[partId]/clean-text/route.ts`。
 - 管理控制台状态：`app/api/employee/admin/overview/route.ts`、`components/employee-app.tsx`。
 
@@ -675,7 +677,7 @@ PDF 接口：
 - 全局 `AI_TEXT_MODEL` 已统一为 `gpt-5.6-sol`，快速版、AI 助手、美化 PPT 和其他文字功能都不再请求裸 `gpt-5.6`。高级版保留独立覆盖变量只是为了以后按功能切换模型，当前与全局完全一致。这个修复不增加表单、确认步骤、GPT 请求轮次或 Image2 生图次数。
 - 高级版不再建立视觉证据索引，也不保存来源图片裁片；普通解析文字不足时才进行 OCR 补救。普通 502、503、网络断线仍按短暂故障重试。
 - 前端轮询按请求顺序接收任务状态，旧响应不能覆盖新状态；进入“完整方案待确认”后不会继续显示旧的中转站中止错误。
-- 修改 `.env` 或 `scripts/deck-generation-worker.mjs` 后必须重启本项目的生成 PPT 后台执行脚本；只刷新网页不会加载新模型配置。
+- 修改 `.env` 或 `scripts/workers/deck-generation/deck-generation-worker.mjs` 后必须重启本项目的生成 PPT 后台执行脚本；只刷新网页不会加载新模型配置。
 
 ### 配置与验收
 
@@ -710,11 +712,11 @@ PDF 接口：
 ### 实际调用关系
 
 1. Word、PDF、Excel、PPT 等资料先由本地解析程序读取正文、表格和来源位置，不调用生图账户。
-2. 用户上传的主题色参考图由本地程序直接提取背景、正文、强调色、辅助色和使用职责，不再为配色单独调用 GPT-5.6。原始参考图仍会在用户确认整套方案后直接交给 Image2，保证图片模型同时看到真实色彩关系和结构化配色合同。
+2. 用户上传的主题色参考图由本地程序直接提取背景、正文、强调色、辅助色和使用职责，不再为配色单独调用 GPT-5.6。原始参考图不会交给 Image2；图片模型只收到色值关系、结构化配色合同与本地风格条带。
 3. 逐页结构整理、按页匹配资料和正文方案同样使用 `AI_TEXT_API_KEY`。
    - 高级版的大纲整理、资料匹配和视觉方案遇到同类临时上游错误时，也会进行两次短暂重试；余额、权限或配置错误不会被当成临时故障吞掉。
    - 如果 PPT/PDF 的普通解析文字不足，本地程序会把渲染页交给 GPT-5.6 只恢复标题、关键结论、数字和专名；不会同时提取视觉素材或建立图片证据索引。
-4. 只有用户确认一次完整逐页方案、开始生成 16:9 页面预览图时，才使用 `AI_IMAGE_API_KEY` 和 `gpt-image-2`。参考图模式把主题图原文件直接传入 `/v1/images/edits`，而不是只把提取出的颜色文字写进提示词。
+4. 只有用户确认一次完整逐页方案、开始生成 16:9 页面预览图时，才使用 `AI_IMAGE_API_KEY` 和 `gpt-image-2`。参考图模式只把本地提取的颜色规则写入任务包并输入本地风格条带，主题图原文件绝不传入 `/v1/images/edits`。
 
 ### 余额不足时怎样恢复
 
@@ -726,7 +728,7 @@ PDF 接口：
 
 ### 真实代码位置
 
-- 文字/图片账户选择和余额提示：`scripts/deck-generation-worker.mjs`
+- 文字/图片账户选择和余额提示：`scripts/workers/deck-generation/deck-generation-worker.mjs`
 - 失败任务的“重新分析资料”入口：`components/employee-app.tsx`
 - 原任务恢复接口：`app/api/employee/services/[id]/deck-generation/runs/[runId]/replan/route.ts`
 ## YZStudio 地址误填与余额排查（2026-08-03）
@@ -749,10 +751,10 @@ PDF 接口：
 
 ### 本次代码保护
 
-- `scripts/ai-service-client.mjs`：后台执行脚本创建代理连接前先校验地址；误把 `/v1` API 地址填入代理字段时显示中文配置说明。
+- `scripts/workers/shared/ai-service-client.mjs`：后台执行脚本创建代理连接前先校验地址；误把 `/v1` API 地址填入代理字段时显示中文配置说明。
 - `lib/ai-providers.ts`：网页服务端请求使用相同校验，避免同类误填变成难理解的 `invalid url`。
 - `.env`：两个 `BASE_URL` 统一保存官网根地址 `https://yzstudio.vip`，两个 `PROXY_URL` 保持为空；代码自动补 `/v1`。
-- `scripts/deck-generation-worker.mjs`：余额提示明确说明“请求已到达 YZStudio、不是配置缺项”，并指出应检查文字分组额度。
+- `scripts/workers/deck-generation/deck-generation-worker.mjs`：余额提示明确说明“请求已到达 YZStudio、不是配置缺项”，并指出应检查文字分组额度。
 ### 补充验证：不是模型或接口模式错误（2026-08-03）
 
 - 已脱敏核对 `.env`：文字 Key 与此前创建的文字分组 Key 一致，图片 Key 与生图分组 Key 一致，两把 Key 没有放反。
@@ -765,10 +767,10 @@ PDF 接口：
 ## YZStudio 官网 Base URL 兼容修复（2026-08-03）
 
 - YZStudio 管理员要求 Base URL 填官网 `https://yzstudio.vip`，因此本机 `.env`、`.env.example` 和 `.env.production.example` 已统一采用官网根地址。
-- `scripts/ai-service-client.mjs` 与 `lib/ai-providers.ts` 会把官网根地址标准化为 `https://yzstudio.vip/v1`；如果以后填写的旧值本身已经带 `/v1`，也不会重复拼接。
+- `scripts/workers/shared/ai-service-client.mjs` 与 `lib/ai-providers.ts` 会把官网根地址标准化为 `https://yzstudio.vip/v1`；如果以后填写的旧值本身已经带 `/v1`，也不会重复拼接。
 - 最终文字请求仍为 `https://yzstudio.vip/v1/chat/completions`，最终图片请求仍为 `https://yzstudio.vip/v1/images/generations`。`*_PROXY_URL` 继续留空。
 - 这次修改解决的是“后台页面填写官网、代码需要 API 路径”的口径差异，不会伪装修复供应商计费。当前两把 Key 直连 `/v1/models` 以及各自正式接口仍返回 `403 / INSUFFICIENT_BALANCE`，需要 YZStudio 检查账户余额与 Key 分组的计费绑定。
-- 真实改动文件：`.env`、`.env.example`、`.env.production.example`、`scripts/ai-service-client.mjs`、`lib/ai-providers.ts`、`README.md`、`docs/project-control-workflows.md`、`AGENTS.md`。
+- 真实改动文件：`.env`、`.env.example`、`.env.production.example`、`scripts/workers/shared/ai-service-client.mjs`、`lib/ai-providers.ts`、`README.md`、`docs/project-control-workflows.md`、`AGENTS.md`。
 ## YZStudio Key 鉴权与余额绑定复核（2026-08-03）
 
 - 新截图显示的“Base URL + 文本接口”容易被误读为无 `/v1`：实测 `POST https://yzstudio.vip/chat/completions` 返回 `405`，而 `POST https://yzstudio.vip/v1/chat/completions` 进入 YZStudio API 并返回结构化 `403 / INSUFFICIENT_BALANCE`。因此官网输入框实际应与 `/v1` API 根路径组合，当前程序自动补 `/v1` 的写法正确。
@@ -798,9 +800,9 @@ PDF 接口：
 
 真实代码位置：
 
-- 外部网络错误详情：`scripts/ai-service-client.mjs`
-- 生成 PPT 转换：`scripts/deck-generation-worker.mjs`
-- 美化 PPT 转换：`scripts/ppt-polish-worker.mjs`
+- 外部网络错误详情：`scripts/workers/shared/ai-service-client.mjs`
+- 生成 PPT 转换：`scripts/workers/deck-generation/deck-generation-worker.mjs`
+- 美化 PPT 转换：`scripts/workers/ppt-polish/ppt-polish-worker.mjs`
 - 图片转 PPT：`app/api/employee/services/[id]/image-to-pptx/route.ts`
 
 ### `invalid content-length header` 的最终处理（2026-08-04）

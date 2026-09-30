@@ -25,7 +25,9 @@ components/
     ├── workbench-chrome.tsx 订单/消息/团队/设置
     ├── employee-admin.tsx  管理控制台
     ├── onlyoffice-editor.tsx
-    ├── tools-ai-panels.tsx AI 助手与图片工具
+    ├── ai-assistant-panel.tsx 生图 / AI 创作助手（2026-09-27 从 tools-ai-panels.tsx 拆出）
+    ├── image-tools-panel.tsx  图片工具（抠图 / 图片转 PPT / 提取图片）
+    ├── tools-ai-shared.ts     上面两个面板共用的小工具
     ├── material-rail.tsx / ppt-paste-tray.tsx
     ├── deck-*.tsx          生成 PPT 表单与运行面板
     ├── polish-*.tsx        美化 PPT 表单与运行面板

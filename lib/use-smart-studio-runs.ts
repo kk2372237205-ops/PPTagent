@@ -36,6 +36,8 @@ export function useSmartStudioRuns(service: Service, notify: (text: string) => v
   const [historyLoaded, setHistoryLoaded] = useState<HistoryLoaded>({ image: false, deck: false, polish: false });
   const [initialHistorySelected, setInitialHistorySelected] = useState(false);
   const deckLoadSequence = useRef(0);
+  const activePolishRunId = activePolishRun?.id;
+  const activePolishRunStatus = activePolishRun?.status;
   // focusHistoryTop 操作的是组件里的历史列表 DOM，用 ref 承接，避免在渲染期间写 ref
   const focusHistoryRef = useRef<(() => void) | undefined>(undefined);
   useEffect(() => { focusHistoryRef.current = focusHistoryTop; }, [focusHistoryTop]);
@@ -76,6 +78,16 @@ export function useSmartStudioRuns(service: Service, notify: (text: string) => v
     setPolishWorkerWarning(result.workerHealth?.ok === false ? (result.workerHealth.message || "PPT 美化 Worker 未运行/已停止") : "");
     syncPolishRuns((result.runs || []) as PptPolishRun[]);
   }, [notify, service.id, syncPolishRuns]);
+
+  /**
+   * 美化任务确认后先由后台把 PPT 固化成 PNG。这个阶段不在表单组件内，
+   * 因此必须由任务主状态持续刷新；否则页面已转换完成，界面仍会停在“待确认”。
+   */
+  useEffect(() => {
+    if (!activePolishRunId || !["confirmed", "planning", "generating", "pdf_queued", "ppt_queued", "ppt_processing"].includes(activePolishRunStatus || "")) return;
+    const timer = window.setInterval(() => void loadPolishRuns(), 1800);
+    return () => window.clearInterval(timer);
+  }, [activePolishRunId, activePolishRunStatus, loadPolishRuns]);
 
   /** 作废仍在飞行中的"生成 PPT 列表"响应，避免慢响应覆盖刚创建的任务 */
   const invalidateDeckLoad = useCallback(() => {
@@ -170,7 +182,7 @@ export function useSmartStudioRuns(service: Service, notify: (text: string) => v
       }
       setPolishWorkerWarning("");
       setPolishRun(result.run as PptPolishRun);
-      notify("已确认方案，后台开始生成逐页预览图。");
+      notify(result.run.status === "source_ready" ? "页面图片已准备好，请点选需要修改的页面。" : "已确认方案，后台开始生成逐页预览图。");
     } finally { setBusy(false); }
   }
 
@@ -188,6 +200,33 @@ export function useSmartStudioRuns(service: Service, notify: (text: string) => v
       setPolishWorkerWarning("");
       setPolishRun(result.run as PptPolishRun);
       notify(result.run.status === "ppt_ready" ? "PPT 已生成" : "已进入 PDF / Codia 转化队列");
+    } finally { setBusy(false); }
+  }
+
+  async function addPolishPageNotes(pageIndexes: number[], note: string | { manualNote: string; clipIds: string[]; replace?: boolean }, replace = false) {
+    if (!activePolishRun) return;
+    const requirement = typeof note === "string"
+      ? { manualNote: note, clipIds: [], replace }
+      : { manualNote: note.manualNote, clipIds: note.clipIds, replace: note.replace ?? true };
+    setBusy(true);
+    try {
+      const response = await employeeApi.polish.addPageNotes(service.id, activePolishRun.id, { pageIndexes, note: requirement.manualNote, replace: requirement.replace, clipIds: requirement.clipIds });
+      const result = await responseJson(response);
+      if (!response.ok) return notify(result.error || "逐页修改要求保存失败");
+      setPolishRun(result.run as PptPolishRun);
+      notify(requirement.replace ? "已保存这一页的修改要求" : "已保存所选页面的修改要求");
+    } finally { setBusy(false); }
+  }
+
+  async function cancelPolishRun() {
+    if (!activePolishRun) return;
+    setBusy(true);
+    try {
+      const response = await employeeApi.polish.cancel(service.id, activePolishRun.id);
+      const result = await responseJson(response);
+      if (!response.ok) return notify(result.error || "取消任务失败");
+      setPolishRun(result.run as PptPolishRun);
+      notify("任务已取消，后台不会继续派发新的页面。已提交给 Image2 的页面可能仍会完成。 ");
     } finally { setBusy(false); }
   }
 
@@ -270,6 +309,6 @@ export function useSmartStudioRuns(service: Service, notify: (text: string) => v
     invalidateDeckLoad,
     setDeckRun, setPolishRun,
     deckActions: { confirmDeckRun, replanDeckRun, createDeckPpt, regenerateDeckSlide },
-    polishActions: { confirmPolishRun, createPolishPpt, regeneratePolishSlide, retryPolishRun }
+    polishActions: { confirmPolishRun, createPolishPpt, addPolishPageNotes, cancelPolishRun, regeneratePolishSlide, retryPolishRun }
   };
 }

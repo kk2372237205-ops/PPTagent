@@ -118,9 +118,17 @@ export const employeeApi = {
   /* 美化 PPT（一次重绘任务） */
   polish: {
     list: (serviceId: string) => get(`${employeeBase}/services/${serviceId}/ppt-polish/runs`),
+    clips: {
+      list: (serviceId: string) => get(`${employeeBase}/services/${serviceId}/ppt-polish/clips`),
+      save: (serviceId: string, body: ApiBody) => post(`${employeeBase}/services/${serviceId}/ppt-polish/clips`, body)
+    },
     create: (serviceId: string, form: FormData) => post(`${employeeBase}/services/${serviceId}/ppt-polish/runs`, form),
     confirm: (serviceId: string, runId: string) =>
       post(`${employeeBase}/services/${serviceId}/ppt-polish/runs/${runId}/confirm`),
+    addPageNotes: (serviceId: string, runId: string, body: ApiBody) =>
+      post(`${employeeBase}/services/${serviceId}/ppt-polish/runs/${runId}/page-notes`, body),
+    cancel: (serviceId: string, runId: string) =>
+      post(`${employeeBase}/services/${serviceId}/ppt-polish/runs/${runId}/cancel`),
     retry: (serviceId: string, runId: string) =>
       post(`${employeeBase}/services/${serviceId}/ppt-polish/runs/${runId}/retry`),
     createPpt: (serviceId: string, runId: string) =>
@@ -207,6 +215,8 @@ export const employeeApi = {
     polish: {
       pdf: (serviceId: string, runId: string) => `${employeeBase}/services/${serviceId}/ppt-polish/runs/${runId}/pdf`,
       ppt: (serviceId: string, runId: string) => `${employeeBase}/services/${serviceId}/ppt-polish/runs/${runId}/ppt`,
+      sourcePageImage: (serviceId: string, runId: string, pageIndex: number, updatedAt: string) =>
+        withVersion(`${employeeBase}/services/${serviceId}/ppt-polish/runs/${runId}/source-pages/${pageIndex}`, updatedAt),
       slideImage: (serviceId: string, runId: string, slideIndex: number, updatedAt: string) =>
         withVersion(`${employeeBase}/services/${serviceId}/ppt-polish/runs/${runId}/slides/${slideIndex}/image`, updatedAt)
     },

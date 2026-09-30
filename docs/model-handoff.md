@@ -20,9 +20,13 @@
 
 | 你要改什么 | 读这些 |
 | --- | --- |
-| 员工端任何界面 | `components/employee/README.md`（21 个模块索引表），再看对应的单个 `.tsx` |
+| **不确定某个模式有哪些文件** | ⭐ **`docs/feature-file-map.md`**（功能 → 文件对照表：界面 / 接口 / 脚本 / 提示词 / 数据表 / 产物 / 共享层） |
+| 员工端任何界面 | `components/employee/README.md`（23 个模块索引表），再看对应的单个 `.tsx` |
 | 生成 PPT | `skills/README.md` + `skills/deck-generation/` + `scripts/README.md` |
+| **画面/插图质量（写实、面积、风格）** | ⭐ **`PPTskills汇总/README.md`** → 再看 `03-插图手册` 与 `01-风格库` 第 1.5 节 |
+| **为什么插图以前画不好** | `PPTskills汇总/05-根因诊断-为什么插图画不好.md`（带行号证据，通读，这是本话题的地基） |
 | 美化 PPT / 生图 / 图片工具 | `components/employee/` 里对应的那个文件 + `scripts/README.md` |
+| **AI 调用网络层（超时/重试/HTTP2）** | `scripts/workers/shared/ai-service-client.mjs` + `docs/model-handoff.md` 的"网络层"一节 |
 | 后台执行与启动脚本 | `scripts/README.md` |
 | 业务验收流程（给项目 owner 看） | `docs/project-control-workflows.md`（53 KB，只在需要验收时读） |
 | 历史问题与安全清单 | `docs/readonly-audit-2026-09-14.md`（56 KB，按需跳读，不要通读） |
@@ -31,10 +35,12 @@
 
 | 文档 | 为什么不要读 |
 | --- | --- |
-| `docs/archive/agents-history.md`（69 KB） | 是**历史记录**，里面很多结论已经过时（例如"美化 PPT 只有 UI"、"用 OpenAI Key"）。只在需要追溯"当初为什么这么做"时查 |
-| `docs/project-archive-2026-07-03.md` | 2026-07-03 的存档，描述的是**改造前**的方案（那时 `employee-app.tsx` 还是 3754 行） |
-| `docs/maintenance-audit-2026-07-03.md` | 同上是历史审计，里面"约 2020 行"等数字都已过时 |
+| `docs/archive/agents-history.md`（69 KB） | 是**历史记录**，里面很多结论已经过时（例如"美化 PPT 只有 UI"、"用 OpenAI Key"）。只在需要追溯"当初为什么这么做"时查。**历史快照，里面提到的已删文件按当时状态保留** |
+| `docs/readonly-audit-2026-09-14.md`（56 KB） | 审计报告。**历史快照**，里面的行号与路径按当时状态保留，不要当现状读 |
 | `AGENTS.md` 里不带日期的"已实现功能"段落 | 是业务**意图**规则，不等于当前实现；判断实现请看 `lib/` 与 `app/api/` 的真实代码 |
+
+> 2026-09-27 减法：`docs/project-archive-2026-07-03.md` 与 `docs/maintenance-audit-2026-07-03.md`
+> 已删除（它们描述的正是"会误导你"的改造前状态）。需要追溯请查 git 历史。
 
 ## 当前系统骨架
 
@@ -42,8 +48,9 @@
 > 那里有"哪个文件负责什么、对应哪些接口"的索引表。
 
 - `app/`：Next.js 页面和服务端接口（74 条路由）。
-- `components/employee-app.tsx`：员工工作台**外壳**（原 3753 行，现 400 行出头，只剩骨架与常量）。
-- `components/employee/*.tsx`：31 个业务面板，每块一个文件，可以分别派人改。
+- `components/employee-app.tsx`：员工工作台**外壳**（原 3753 行，现 424 行，只剩骨架、常量与 4 处 design-agent 调用）。
+  > 注：用 PowerShell `Get-Content | Measure-Object -Line` 数它会得到 422，因为文件里有孤立 CR 换行会被合行。以 read 工具的 424 为准。
+- `components/employee/*.tsx`：**17 个业务面板**（另有 5 个 `.ts`：4 个纯类型 + 1 个共用小工具 `tools-ai-shared.ts`，再加 1 个 README，目录合计 **23 个文件**），每块一个文件，可以分别派人改。清单见 `components/employee/README.md`。
 - `app/employee/employee.css`：样式**入口**，只有 `@import` 列表。
 - `app/employee/styles/*.css`：按模块拆开的 9 个样式层，顺序由入口文件固定。
 - `lib/employee-auth.ts`：员工会话、学校隔离、角色和功能权限（**权限只能改这里**）。
@@ -52,8 +59,8 @@
 - `lib/employee-permissions.ts`：角色/功能中文名与默认权限。
 - `lib/use-smart-studio-runs.ts`：智能模式三条链路的状态与请求编排。
 - `lib/ai-providers.ts`：文字模型与图片模型的服务端配置边界。
-- `scripts/deck-generation-worker.mjs`：生成 PPT 的后台执行脚本。
-- `scripts/ppt-polish-worker.mjs`：美化 PPT 的后台执行脚本。
+- `scripts/workers/deck-generation/deck-generation-worker.mjs`：生成 PPT 的后台执行脚本。
+- `scripts/workers/ppt-polish/ppt-polish-worker.mjs`：美化 PPT 的后台执行脚本。
 - `skills/deck-generation/`：资料引用、结构控制、信息密度、配色和质量规则。
 - `prisma/schema.prisma`：业务数据结构。
 
@@ -73,14 +80,61 @@
 
 先向项目 owner 汇报：当前目标和用户流程；预计读取、修改和明确不会修改的文件；验证方式；是否会调用收费的外部服务。确认理解没有偏差后再修改。
 
-## 上一个话题做到哪了（2026-09-14）
+## 上一个话题做到哪了（2026-09-22 · 画面质量与写实化）
+
+**分支：`codex/illustration-and-style-fix`（10 个提交，未合并 main）。起点是 `main` 的 `a0c5f99`。**
+
+**这一话题只动了两层：提示词（`skills/`）和 AI 调用网络层（`scripts/`）。架构一个字没改。**
+
+```powershell
+git diff --stat main...HEAD   # 22 个文件，+4053 / -404
+```
+
+| 目录 | 改动文件数 |
+| --- | --- |
+| `components/`、`lib/`、`app/`、`prisma/`、`docs/` | **0**（架构与界面完全没动） |
+| `skills/deck-generation/**` | 10 个（9 改 + 1 新增 `illustration-system.md`） |
+| `scripts/` | 3 个（`ai-service-client.mjs`、`deck-generation-worker.mjs`、`ppt-polish-worker.mjs`） |
+| `PPTskills汇总/`（新顶层目录） | 5 个纯文档（原有 8 个，2026-09-27 减法删掉 3 个已消化的），**代码不读它** |
+
+### 做了什么
+
+1. **查清了"插图过小 / 没有插图 / 很假"的根因**（`PPTskills汇总/05-根因诊断`，带行号证据）。最值钱的一条：`deck-generation-worker.mjs` 在 `image_language` 字段上读了**一个永远为空的值**，因为 `visual-identity.md` 声明的字段名和代码读的键名对不上（4 个字段全军覆没）。
+2. **给提示词补上"画面占比"这个维度**：全链路原本没有任何面积约束，模型就把插图缩成装饰角标。
+3. **把禁止式规则改成"禁令 + 替代品"**：原来 12/15 条约束都是 Never/Do not，模型选了最省事的合规解——什么都不画。
+4. **美化 PPT 链路第一次读 `skills/`**，并去掉了硬编码的蓝金视觉锁（它让员工选的其它风格包完全失效）。
+5. **修掉快速版 4 个缺陷**：没有任何正向插图指令、参考图配色模式下仍注入带颜色的风格包、颜色中性判断漏了快速版、参考图配色静默退化成纯文字色值。
+6. **修掉一个隐蔽的依赖升级回归**：undici 8 起 `allowH2` 默认变 `true`，AI 调用被静默切到 HTTP/2；高级版 6 页并发复用一条 h2 连接时中转站拒绝新增流（`NGHTTP2_REFUSED_STREAM`），前 6 页全挂。已显式 `allowH2: false`，并给图片调用补上瞬态重试（文字调用一直有，图片调用一直没有）。
+7. **画面方向定为"写实"**（详见下面"产品决策"）。
+
+### ⚠️ 本话题必须遵守的既有决策（不要重新讨论）
+
+| 决策 | 内容 |
+| --- | --- |
+| **参考图配色 ≠ 参考图当素材** | 参考图配色只以**本地提取出的色值清单**（文字硬约束）生效，**两条链路都不把参考图原文件交给 Image2**。曾经有 `palette-reference.md` 写着"必须把原图作为 Image2 输入"，就是它导致误改，已改写并加了警告。 |
+| **用户资料图片不作页面素材** | `advancedSourceVisualReuseEnabled` / `protectedEvidenceMasksEnabled` 保持 `false`。owner 实测过让用户图片进渲染，会与后续加工互相干扰。**不要因为 owner 要求"写实"就去打开这两个开关。** |
+| **画面默认走写实** | owner 明确否决"卡通风/扁平矢量"。写实指的是**画面质感**（真实材质、自然光、诚实纹理），靠提示词实现。真实性红线只针对**凭证**：证书、合同、检测报告、盖章文件、机构招牌、logo、仿真截图、可辨认真人。 |
+| **交付安全检查已删除（两个版本都没有）** | 快速版原本就没加（Q5 决定）。**2026-09-30 起高级版也删掉了**：`auditDeckConsistency`、`normalizeDeckAudit`、`buildDeckContactSheet`、`openAiVisionBufferJson` 与 `skills/deck-generation/quality-audit.md` 全部移除，`skillBundle()` 里也不再注入该文件。全部页面完成后不再有任何额外模型调用。`deckQualityStatus` 字段保留但固定写 `disabled`。要恢复看 git 历史（`1eeeb2f` 及更早）。 |
+
+### 完全没验证的部分（接手须知）
+
+**本话题所有改动都是提示词/网络层，只跑过静态检查（`npm run verify` 全绿），一次真实出图验证都没做过。**
+
+接手后第一件事应该是：起 `npm run dev:lite` → 打开 `/employee` → 点「暂不扫码，进入本地工作台」→ 生成一页或几页 → 按 `PPTskills汇总/07-出图验收单.md` 的 10 项逐页打分。
+
+已知待办：
+- `docs/current-project-memory.md` 的功能状态**尚未同步本话题**（接手者可补）。
+- 输出质量是否真的变好，**未经视觉验证**。
+- 根因诊断里列的 P1/P2 项（代码层的硬编码提示词迁移、风格条带全是矩形等）**没有做**，只做了 P0。
+
+## 更早的话题：模块化改造（2026-09-14）
 
 **已完成：模块化改造 20 轮（P1–P7 全部落地）**，31 个提交，工作区干净，标签 `baseline` 是改造**之前**的原始状态。
 
 | 指标 | 改造前 | 现在 |
 | --- | --- | --- |
 | `components/employee-app.tsx` | 3753 行 | **422 行** |
-| 员工端结构 | 1 个巨型文件 | 16 个组件 + 11 个主干模块 + 9 个样式层 |
+| 员工端结构 | 1 个巨型文件 | 16 个组件 + 11 个主干模块 + 9 个样式层（**这是 2026-09-14 的数字**；2026-09-27 拆 UI 后为 17 个 .tsx 面板 + 5 个 .ts，目录合计 23 个文件） |
 | 组件内手写 `fetch("/api/…")` | 60 处 | 4 处 |
 | `employee.css` | 3426 行单文件 | 11 行入口 + `styles/` 9 层 |
 | `AGENTS.md` | 87,965 字节（超预算会被截断） | 19,015 字节（可完整读入） |
@@ -99,15 +153,53 @@
 
 **必须提醒项目 owner 的一件事**：`uploads\`（6.41 GB 业务文件）与 `prisma\dev.db` **不在 Git 里、也没有备份**。Git 能回退代码，救不了这些数据。
 
+## 本话题踩过的坑（照做能省几小时）
+
+### 工具与流程
+
+1. **`npm run verify` 会改写 `next-env.d.ts`**（把 `.next-dev` 指向 `.next`）。每次跑完 `git restore next-env.d.ts`，否则工作区永远不干净。这是 Next 自动生成的，不是人的改动。
+2. **`deck-generation-worker.mjs` 是 CRLF/LF 混用**（约 3991 CRLF + 110 纯 LF）。直接编辑会把 110 行行尾一起改掉，产生纯空白 diff 噪音。**比对差异用 `git diff --ignore-cr-at-eol`**；插入单行时用字节级写入（latin1 往返）保留原行尾。
+3. **PowerShell 传多行 commit message 会失败**——含引号时 `git commit -m $msg` 会把后半段当成 pathspec。**写成文件用 `git commit -F 文件`**，用完删掉。
+4. **`--max-warnings 0` 会抓出"删代码留下的孤儿函数"**。本话题它抓到两次（`imageMimeType` 变成未使用）。删掉调用点后一定要重跑验证。
+5. **`Select-String -Path` 遇到 `[id]` 这种路径会当通配符**，静默找不到文件。用 read/glob 工具，别用 PowerShell 路径。
+
+### 覆盖陷阱（最容易白干）
+
+6. **`style-packs.md` 只在「内置配色」模式被读取；「参考图配色」模式读的是 `advanced-layout-profiles.md`。** 只改其中一个，另一条配色链路完全不生效。**`illustration-system.md` 在生成链路里是无条件读取的**，生成链路跨两种配色都要生效的规则写在那里最保险。
+   **⚠️ 规则边界（2026-09-27 决定，2026-09-30 两轮收紧）：美化现在什么规则文件都不读。** 它的提示词只有三段——**用户要求**（最高优先级）、**本页原有文字**（参考）、**本页位置**（第几页/来源/前后页）。演变：美化最初不读 skills → 后来注入 `style-packs.md` + `illustration-system.md` → 09-27 只共享 `style-packs.md` → 09-30 表单移除风格包后改为只读自己的 `skills/ppt-polish/visual-redraw-system.md` → **09-30 晚 owner 发现"不听话"，把那份自己的规则文件也删了**（原话："这些提示词我都不需要用到这里，只听用户的提示词命令"）。原因：那些规则和用户指令正面冲突（"不要锁定风格"vs"用蓝白科技风"、"每页必须 ≥25% 主导插图"vs"图片内容不变"、"默认写实摄影"vs 科技风、"封面结尾文字极少"和"降低文字密度"vs"内容不变"），模型会听更长更具体的一方。**不要再给美化接任何规则文件。** 生成 PPT 的读取面全程没动。
+7. **风格包 id 现在只有一处真源：`lib/employee-deck-packs.mjs`。** 2026-09-27 之前它在 8 处重复定义（`lib/employee-deck-constants.ts`、4 个 API 路由、worker 里 2 个映射表、美化 worker 1 个），漏一处就是"界面能选、后台认不出"。现在界面、接口、两个 worker 全部 import 这一个 `.mjs`，**新增/删除风格包只需改 `.mjs` + `skills/deck-generation/style-packs.md`（+ 参考图配色模式还要改 `advanced-layout-profiles.md`）**。`scripts/check-style-packs.mjs` 会逐 id 校验三处一致、阻止已删除的 id 复活，并禁止任何消费者文件再写 id 字面量。**界面名和提示词名是两个字段**（`label` / `promptLabel`），别把"（推荐）"喂进提示词。
+8. **`normalizePlan` 是严格白名单**（`deck-generation-worker.mjs`）。往方案 JSON 里加新字段**不会**进入图片提示词——必须用散文写进 `composition` / `main_visual_brief` 这些自由文本字段。
+
+### 网络层的三条硬事实
+
+9. **`ai-service-client.mjs` 里 `allowH2` 必须保持 `false`。** undici 8 起默认 `true`，中转站只要被 offer h2 就一定选 h2，6 页并发会被拒绝流。**不要删掉这个选项。**
+10. **图片调用和文字调用都要有瞬态重试。** 文字调用一直有 `withTransientRetry`，图片调用是本话题才补上的。中转站的容量类错误（`No available compatible accounts`、`上游服务异常`）必须能被 `transientAiFailure` 认出来，否则整页直接判失败。
+11. **`.env` 里 `AI_IMAGE_SIZE` 目前是 `2560x1440`**（owner 自己改的，非标准尺寸）。代码默认是 `1536x864`。实测（2026-09-30，同一提示词各测 2–3 次）：`1536x864` 约 20 秒、**`1672x941` 约 21–22 秒且中转站照单返回**、`1920x1080` 会被换成 `2048x1152` 且那次 101 秒、`2560x1440` 约 22–90 秒（抖动最大）。最终保存的是 1920×1080，所以 `1672x941` 是"最快 + 放大倍数最小"的折中候选；换尺寸后必须重启后台脚本才生效。
+
+### 多任务串行问题与并行开关（2026-09-30）
+
+12. **串行调度是过去最大的隐性浪费。** `tick()` 每个分支处理完就 `return`，而且要把整波出图 await 完才轮到下一个任务。实测：14:38 那次**确认后 336 秒才开始画第一页**（前一个任务还在画），同一批的**上传解析等了 215 秒**。
+13. **`DECK_PARALLEL_RUNS=1` 打开任务级并发**（默认 `0` = 保持原串行行为；改完必须重启后台脚本）。配套两个新参数：`DECK_PARALLEL_RUN_LIMIT`（同时推进几个任务，默认 3）、`DECK_GLOBAL_IMAGE_CONCURRENCY`（**所有任务加起来**同时在跑的 Image2 张数，默认 5）。
+14. **为什么必须有全局闸门**：`processAdvancedGeneratingRun` 的并发上限是**每个任务** 3 张。串行时全局最多 3 张，没问题；并行后会变成 6、9 张一起打中转站 → 容量错误。所以并行模式下两个 Image2 入口（`openAiImage`、`openAiImageWithReferences`）都过 `imageSlot` 信号量。
+15. **并行的安全前提已经存在**：同一页重复调用会重复计费，但 `claimImageCall` 用事务把 `reserved` 改成 `requesting`，天然防重；`tickParallel` 另外用 `inFlight` 表防止同一个任务被重复认领。
+16. **启用前必须做的验证**：同时提交两个任务（各 3–4 页），观察 ① 第二个任务是否不再等第一个画完 ② 单页耗时是否没有明显恶化 ③ 有没有出现 `No available compatible accounts`。**没有做过这个双任务实测就不要合并到 main。**
+17. **美化 PPT 是另一个进程，也要单独打开**：`PPT_POLISH_PARALLEL_RUNS=1`（配 `PPT_POLISH_PARALLEL_RUN_LIMIT`、`PPT_POLISH_GLOBAL_IMAGE_CONCURRENCY`）。两个 worker 各自持有一个全局闸门，所以**最坏情况的中转站并发是两者相加**（例如 4+3=7）；如果开始出现容量错误，先降这两个数字。
+18. **重启恢复（2026-09-30 补上）**：后台脚本被杀时，留在 `generating` 的页面之前会**永久占着并发名额**（`activeCount` 只统计 `generating`，永不减少），整个任务再也画不下去。现在两个出图函数（`processGeneratingRun`、`processAdvancedGeneratingRun`）都会把「超过单页超时 + 1 分钟还没更新」的 `generating` 页重置为 `queued`。所以**中途重启是安全的**，但重启后要等一个超时周期（默认 10 分钟）才会被回收。
+
 ## 常用验证
 
 ```powershell
-npm run verify          # tsc + eslint(--max-warnings 11) + prisma validate + next build
+npm run verify          # check-style-packs + tsc + eslint(--max-warnings 0) + prisma validate + next build
 npm run verify:check    # 只跑静态检查，改代码过程中随时可用
 npm run verify:build    # 只跑生产构建，交付前必跑
 ```
 
-`--max-warnings 11` 是基线（11 条历史警告都在 `scripts/design-agent-worker.mjs`），**任何新增警告都会让这条命令失败**——包括未使用的 import。这是刻意的。
+`verify:check` 的第一项是 `node scripts/check-style-packs.mjs`（风格包三处一致性 + 已删 id 复活检测），秒级失败、报错信息直接给出该改哪个文件。
+
+**eslint 警告基线是 0**（2026-09-27 从 11 收紧）。**任何新增警告都会让这条命令失败**——包括未使用的 import，也包括"删了调用点留下的孤儿函数"。这是刻意的。同一天清掉了 `scripts/workers/design-agent/design-agent-worker.mjs` 里 31 个零引用声明（文件从 1695 行降到 1282 行）。
+
+> 注意：该文件里还留着 **5 处前任作者特意标注"为后续工作流保留"的旧代码**（`buildSmartExplodeRun`、`decomposeMaster`、`generateCleanBackground`、`smartCleanPrompt`、`legacyProcessRun`），各自带 `eslint-disable-next-line` 注释。
+> **它们是有意保留的，不是垃圾。** 要删必须单独确认。
 
 本机 PowerShell 默认禁止跑 `npm` 脚本，需要先：
 `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`

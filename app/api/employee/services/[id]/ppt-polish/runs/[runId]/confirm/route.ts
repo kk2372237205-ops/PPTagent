@@ -15,7 +15,7 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
   const employee = authorization.access.employee;
   const run = await readPolishRun(runId);
   if (!run || run.serviceId !== id || run.employeeId !== employee.id) return NextResponse.json({ error: "美化任务不存在" }, { status: 404 });
-  const canConfirm = run.status === "plan_ready" || (["queued", "confirmed", "planning", "generating"].includes(run.status) && !run.pageCount && !run.slides?.length);
+  const canConfirm = run.status === "plan_ready" || run.status === "source_ready" || (["queued", "confirmed", "planning", "generating"].includes(run.status) && !run.pageCount && !run.slides?.length);
   if (!canConfirm) {
     return NextResponse.json({ error: "当前美化任务不能重复确认" }, { status: 400 });
   }
@@ -24,6 +24,12 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
     return NextResponse.json({ error: workerHealth.message || "PPT 美化 Worker 未运行/已停止，请重启 npm run dev:lite 或 npm run dev" }, { status: 503 });
   }
   const now = new Date().toISOString();
+  if (run.status === "source_ready") {
+    const slides = await extractPptxSlides(run.sourceStoredName, run.pageNotes);
+    const updated = { ...run, status: "generating", pageCount: slides.length, slides, error: "", updatedAt: now };
+    await writeFile(path.join(polishRunRoot, `${path.basename(runId)}.json`), JSON.stringify(updated, null, 2), "utf8");
+    return NextResponse.json({ run: updated }, { status: 202 });
+  }
   let slides;
   try {
     slides = await extractPptxSlides(run.sourceStoredName, run.pageNotes);
@@ -31,7 +37,9 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
     const message = error instanceof Error ? error.message : "PPTX 解析失败";
     return NextResponse.json({ error: message }, { status: 400 });
   }
-  const updated = { ...run, status: "generating", confirmedAt: now, pageCount: slides.length, slides, error: "", updatedAt: now };
+  // The local background script first turns this PPTX into a private per-page
+  // PNG set. Image generation begins only after that snapshot stage succeeds.
+  const updated = { ...run, status: "confirmed", confirmedAt: now, pageCount: slides.length, slides, error: "", updatedAt: now };
   await writeFile(path.join(polishRunRoot, `${path.basename(runId)}.json`), JSON.stringify(updated, null, 2), "utf8");
   return NextResponse.json({ run: updated }, { status: 202 });
 }

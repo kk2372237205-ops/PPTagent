@@ -33,4 +33,635 @@
 .employee-root .polish-inline-run .polish-plan-back {
   white-space:nowrap;
 }
+.employee-root .polish-inline-run .polish-emergency-cancel {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  margin-left:8px;
+  border:1px solid rgba(205, 95, 105, .65);
+  border-radius:8px;
+  background:rgba(132, 47, 57, .28);
+  color:#f1b3b8;
+  padding:8px 10px;
+  font-size:11px;
+  font-weight:800;
+  cursor:pointer;
+}
+.employee-root .polish-inline-run .polish-emergency-cancel:hover { background:rgba(161, 52, 64, .42); }
+.employee-root .polish-inline-run .polish-emergency-cancel:disabled { opacity:.5; cursor:not-allowed; }
+.employee-root .polish-inline-run .polish-emergency-cancel svg { width:14px; height:14px; }
 
+.employee-root .polish-planner .polish-page-note-hint {
+  margin:0;
+  padding:12px;
+  color:#99acb9;
+  font-size:11px;
+  line-height:1.45;
+}
+
+/* Local source-page snapshots: compact proof that the incoming PPT was rendered
+   before any per-page image work begins. */
+.employee-root .polish-inline-run .polish-source-pages {
+  grid-template-columns:minmax(180px,.7fr) minmax(0,1.3fr);
+}
+
+.employee-root .polish-planner .polish-source-snapshot-note {
+  display:flex;
+  min-height:56px;
+  align-items:center;
+  justify-content:space-between;
+  gap:18px;
+  padding:9px 12px 9px 14px;
+  border:1px solid rgba(139, 164, 177, .30);
+  border-radius:10px;
+  background:rgba(255,255,255,.025);
+}
+.employee-root .polish-planner .polish-source-snapshot-note > div {
+  min-width:0;
+  display:grid;
+  gap:3px;
+}
+.employee-root .polish-planner .polish-source-snapshot-note b { color:#dbeef7; font-size:12px; }
+.employee-root .polish-planner .polish-source-snapshot-note span { color:#9fb8c7; font-size:11px; line-height:1.3; }
+.employee-root .polish-planner .polish-switch {
+  flex:0 0 auto;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  border:0;
+  padding:4px 0 4px 6px;
+  background:transparent;
+  color:#aabac3;
+  font:inherit;
+  cursor:pointer;
+}
+.employee-root .polish-planner .polish-switch i {
+  position:relative;
+  display:block;
+  width:36px;
+  height:20px;
+  border-radius:999px;
+  background:#b34e55;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);
+  transition:background .18s ease;
+}
+.employee-root .polish-planner .polish-switch i::after {
+  position:absolute;
+  top:3px;
+  left:3px;
+  width:14px;
+  height:14px;
+  border-radius:50%;
+  background:#fff;
+  content:"";
+  transition:transform .18s ease;
+}
+.employee-root .polish-planner .polish-source-snapshot-note.is-on .polish-switch i { background:#3d9a69; }
+.employee-root .polish-planner .polish-source-snapshot-note.is-on .polish-switch i::after { transform:translateX(16px); }
+.employee-root .polish-planner .polish-source-snapshot-note.is-on .polish-switch em { color:#8fd5ae; }
+.employee-root .polish-planner .polish-source-snapshot-note.is-off .polish-switch em { color:#e39499; }
+.employee-root .polish-planner .polish-switch em { min-width:24px; font-size:11px; font-style:normal; font-weight:700; }
+
+.employee-root .polish-inline-run .polish-source-page-strip {
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:8px;
+}
+
+.employee-root .polish-inline-run .polish-source-page-strip button {
+  min-width:0;
+  padding:0;
+  overflow:hidden;
+  border:1px solid var(--line,rgba(151,177,203,.28));
+  border-radius:8px;
+  background:var(--surface-2,#131d29);
+  color:var(--muted,#a7b6c6);
+  cursor:pointer;
+}
+
+.employee-root .polish-inline-run .polish-source-page-strip img {
+  display:block;
+  width:100%;
+  aspect-ratio:16 / 9;
+  object-fit:cover;
+  background:#0e1620;
+}
+
+.employee-root .polish-inline-run .polish-source-page-strip span {
+  display:block;
+  padding:5px 4px;
+  font-size:10px;
+}
+
+.employee-root .polish-inline-run .polish-source-pages.is-selecting {
+  grid-template-columns:1fr;
+}
+.employee-root .polish-inline-run .polish-source-page-editor {
+  display:flex;
+  align-items:stretch;
+  gap:10px;
+  padding:10px 12px;
+  border:1px solid rgba(108, 150, 129, .34);
+  border-radius:10px;
+  background:rgba(61, 154, 105, .08);
+}
+.employee-root .polish-inline-run .polish-source-page-editor > div { min-width:0; flex:1; }
+.employee-root .polish-inline-run .polish-source-page-editor b { display:block; margin:1px 0 7px; color:#a9dfbc; font-size:11px; }
+.employee-root .polish-inline-run .polish-source-page-editor textarea { width:100%; min-height:56px; margin:0; resize:vertical; }
+.employee-root .polish-inline-run .polish-source-page-editor button {
+  align-self:center;
+  min-width:104px;
+  min-height:38px;
+  border:1px solid rgba(109, 189, 140, .42);
+  border-radius:8px;
+  background:#2f865b;
+  color:#fff;
+  font-size:11px;
+  font-weight:700;
+  cursor:pointer;
+}
+.employee-root .polish-inline-run .polish-source-page-editor button:disabled { opacity:.45; cursor:not-allowed; }
+.employee-root .polish-inline-run .polish-source-page-strip button.selected {
+  border-color:#66be8a;
+  box-shadow:0 0 0 2px rgba(102,190,138,.25);
+}
+.employee-root .polish-inline-run .polish-source-page-strip button.selected span { color:#a9dfbc; }
+
+@media (max-width:760px) {
+  .employee-root .polish-inline-run .polish-source-pages { grid-template-columns:1fr; }
+  .employee-root .polish-inline-run .polish-source-page-editor { flex-direction:column; }
+  .employee-root .polish-inline-run .polish-source-page-editor button { width:100%; }
+}
+
+/* 单页已套用的夹子只显示名称；完整提示词仍在保存时随本页要求发送。 */
+.employee-root .polish-inline-run .polish-applied-clip-list {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:6px;
+  min-height:24px;
+  margin-top:7px;
+}
+.employee-root .polish-inline-run .polish-applied-clip-list > span { color:#91a8b0; font-size:10px; }
+.employee-root .polish-inline-run .polish-applied-clip-list button {
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  max-width:190px;
+  border:1px solid rgba(133,161,174,.35);
+  border-radius:999px;
+  background:rgba(255,255,255,.055);
+  color:#dce9ed;
+  padding:4px 7px 4px 9px;
+  font-size:10px;
+  cursor:pointer;
+}
+.employee-root .polish-inline-run .polish-applied-clip-list button:hover { background:rgba(177,84,98,.16); border-color:rgba(210,112,127,.6); }
+.employee-root .polish-inline-run .polish-applied-clip-list button i { overflow:hidden; font-style:normal; text-overflow:ellipsis; white-space:nowrap; }
+.employee-root .polish-inline-run .polish-applied-clip-list button svg { width:12px; height:12px; flex:0 0 auto; color:#d7a4ae; }
+.employee-root .polish-inline-run .polish-applied-clip-list .color-blue { border-color:rgba(105,163,210,.55); }
+.employee-root .polish-inline-run .polish-applied-clip-list .color-green { border-color:rgba(105,180,137,.55); }
+.employee-root .polish-inline-run .polish-applied-clip-list .color-gold { border-color:rgba(205,163,85,.55); }
+.employee-root .polish-inline-run .polish-applied-clip-list .color-rose { border-color:rgba(205,119,141,.55); }
+.employee-root .polish-inline-run .polish-clip.is-applied { opacity:.68; }
+.employee-root .polish-inline-run .polish-clip.is-applied button:first-child { cursor:default; }
+.employee-root .polish-inline-run .polish-clip.is-applied button:first-child:disabled { color:#bfe3d0; opacity:1; }
+.employee-root .polish-inline-run .polish-clip.is-applied button:first-child svg { width:11px; height:11px; margin-left:4px; color:#91d5b1; }
+
+/* PNG 固化是本地预处理而非生图，使用阶段轨道而不是虚假的百分比。 */
+.employee-root .polish-inline-run .polish-source-converting {
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr) auto;
+  align-items:center;
+  gap:18px;
+  margin:20px 0;
+  padding:24px 26px;
+  border:1px solid rgba(115,157,173,.32);
+  border-radius:16px;
+  background:radial-gradient(circle at 10% 0%,rgba(84,141,158,.15),transparent 38%),rgba(22,30,37,.88);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.035);
+}
+.employee-root .polish-inline-run .polish-source-converting-orbit { position:relative; display:grid; width:54px; height:54px; place-items:center; }
+.employee-root .polish-inline-run .polish-source-converting-orbit > svg { width:29px; height:29px; color:#9ac3d0; }
+.employee-root .polish-inline-run .polish-source-converting-orbit i { position:absolute; width:5px; height:5px; border-radius:50%; background:#c8a85d; animation:polish-source-orbit 1.8s linear infinite; }
+.employee-root .polish-inline-run .polish-source-converting-orbit i:nth-of-type(1) { transform:translate(20px,-13px); }
+.employee-root .polish-inline-run .polish-source-converting-orbit i:nth-of-type(2) { transform:translate(-20px,12px); animation-delay:-.6s; }
+.employee-root .polish-inline-run .polish-source-converting-orbit i:nth-of-type(3) { transform:translate(3px,22px); animation-delay:-1.2s; }
+.employee-root .polish-inline-run .polish-source-converting span { color:#cbb16b; font-size:11px; font-weight:800; }
+.employee-root .polish-inline-run .polish-source-converting h3 { margin:5px 0; color:#f1f3ed; font-size:18px; }
+.employee-root .polish-inline-run .polish-source-converting p { margin:0; color:#99adb5; font-size:12px; line-height:1.7; }
+.employee-root .polish-inline-run .polish-source-converting ol { display:flex; min-width:245px; gap:0; margin:0; padding:0; list-style:none; counter-reset:polish-step; }
+.employee-root .polish-inline-run .polish-source-converting li { position:relative; flex:1; padding-top:25px; color:#687b84; font-size:10px; text-align:center; }
+.employee-root .polish-inline-run .polish-source-converting li::before { position:absolute; z-index:1; top:0; left:calc(50% - 8px); display:grid; width:16px; height:16px; place-items:center; border:1px solid rgba(136,162,172,.5); border-radius:50%; background:#172129; color:#a9bec5; content:counter(polish-step); counter-increment:polish-step; }
+.employee-root .polish-inline-run .polish-source-converting li:not(:last-child)::after { position:absolute; top:8px; left:calc(50% + 8px); width:calc(100% - 16px); height:1px; background:rgba(133,159,169,.3); content:""; }
+.employee-root .polish-inline-run .polish-source-converting li.done { color:#a9d0b8; }
+.employee-root .polish-inline-run .polish-source-converting li.done::before { border-color:#61a982; background:#24553e; color:#e6f8ec; }
+.employee-root .polish-inline-run .polish-source-converting li.active { color:#d9e9ed; }
+.employee-root .polish-inline-run .polish-source-converting li.active::before { border-color:#83bbc8; box-shadow:0 0 0 5px rgba(104,174,190,.12); color:#e5f7fa; animation:polish-source-pulse 1.5s ease-in-out infinite; }
+@keyframes polish-source-orbit { 50% { opacity:.3; } }
+@keyframes polish-source-pulse { 50% { box-shadow:0 0 0 9px rgba(104,174,190,0); } }
+@media (max-width:880px) {
+  .employee-root .polish-inline-run .polish-source-converting { grid-template-columns:auto minmax(0,1fr); }
+  .employee-root .polish-inline-run .polish-source-converting ol { grid-column:1 / -1; width:100%; }
+}
+
+/* 逐页美化工作台：原稿竖向排布，左侧只负责预览，右侧独立保存本页要求。 */
+.employee-root .polish-planner .polish-source-only { grid-template-columns:minmax(0,1fr); }
+.employee-root .polish-planner .polish-source-only > label { max-width:420px; }
+.employee-root .polish-inline-run .polish-source-pages.is-selecting {
+  display:block;
+  padding:18px;
+  background:rgba(17,26,35,.74);
+}
+.employee-root .polish-inline-run .polish-source-pages-intro {
+  margin:0 0 14px;
+  padding:0 2px 13px;
+  border:0;
+  border-bottom:1px solid rgba(147,169,182,.17);
+  background:transparent;
+}
+.employee-root .polish-inline-run .polish-source-pages-intro h3 { margin:4px 0 5px; }
+.employee-root .polish-inline-run .polish-source-page-stack {
+  display:grid;
+  gap:14px;
+}
+.employee-root .polish-inline-run .polish-source-page-row {
+  display:grid;
+  grid-template-columns:minmax(260px,38%) minmax(0,1fr);
+  overflow:hidden;
+  border:1px solid rgba(145,169,182,.27);
+  border-radius:13px;
+  background:linear-gradient(135deg,rgba(26,36,46,.92),rgba(16,24,32,.96));
+  box-shadow:0 14px 32px rgba(0,0,0,.12);
+}
+.employee-root .polish-inline-run .polish-source-page-preview {
+  position:relative;
+  min-height:170px;
+  padding:0;
+  overflow:hidden;
+  border:0;
+  border-right:1px solid rgba(145,169,182,.2);
+  background:#111a22;
+  color:#d4e6ed;
+  cursor:zoom-in;
+}
+.employee-root .polish-inline-run .polish-source-page-preview img {
+  display:block;
+  width:100%;
+  height:100%;
+  min-height:170px;
+  object-fit:cover;
+  transition:transform .22s ease,filter .22s ease;
+}
+.employee-root .polish-inline-run .polish-source-page-preview:hover img { transform:scale(1.025); filter:brightness(.74); }
+.employee-root .polish-inline-run .polish-source-page-preview span {
+  position:absolute;
+  right:10px;
+  bottom:10px;
+  left:10px;
+  padding:7px 9px;
+  border:1px solid rgba(255,255,255,.16);
+  border-radius:8px;
+  background:rgba(8,15,21,.68);
+  color:#eef7f7;
+  font-size:11px;
+  font-weight:700;
+  text-align:left;
+  backdrop-filter:blur(8px);
+}
+.employee-root .polish-inline-run .polish-source-page-workspace {
+  display:flex;
+  min-width:0;
+  flex-direction:column;
+  gap:9px;
+  padding:14px 15px;
+}
+.employee-root .polish-inline-run .polish-source-page-workspace > header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.employee-root .polish-inline-run .polish-source-page-workspace > header b { color:#e3eef2; font-size:13px; }
+.employee-root .polish-inline-run .polish-source-page-workspace > header small { color:#91a8b2; font-size:10px; }
+.employee-root .polish-inline-run .polish-source-page-workspace > textarea {
+  width:100%;
+  min-height:76px;
+  box-sizing:border-box;
+  margin:0;
+  resize:vertical;
+}
+.employee-root .polish-inline-run .polish-save-page-note {
+  align-self:flex-end;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  min-height:32px;
+  border:1px solid rgba(117,177,150,.48);
+  border-radius:8px;
+  background:rgba(54,127,91,.72);
+  color:#effbf4;
+  padding:7px 11px;
+  font-size:11px;
+  font-weight:800;
+  cursor:pointer;
+}
+.employee-root .polish-inline-run .polish-save-page-note:disabled { opacity:.45; cursor:not-allowed; }
+
+/* 夹子：默认是一枚收起的胶囊，展开后呈现可套用规则和编辑器。 */
+.employee-root .polish-inline-run .polish-clip-island {
+  align-self:flex-start;
+  max-width:100%;
+  border:1px solid rgba(130,159,172,.28);
+  border-radius:999px;
+  background:rgba(43,57,68,.7);
+  box-shadow:0 8px 20px rgba(0,0,0,.14);
+  transition:border-radius .2s ease,background .2s ease,box-shadow .2s ease;
+}
+.employee-root .polish-inline-run .polish-clip-island.is-open {
+  width:100%;
+  border-color:rgba(120,171,154,.5);
+  border-radius:14px;
+  background:rgba(27,42,45,.92);
+  box-shadow:0 14px 30px rgba(0,0,0,.2);
+}
+.employee-root .polish-inline-run .polish-clip-island-trigger {
+  display:flex;
+  min-width:0;
+  align-items:center;
+  gap:7px;
+  border:0;
+  border-radius:999px;
+  background:transparent;
+  color:#cae0e5;
+  padding:7px 11px;
+  cursor:pointer;
+}
+.employee-root .polish-inline-run .polish-clip-island-trigger svg { width:14px; height:14px; color:#a5d6d2; }
+.employee-root .polish-inline-run .polish-clip-island-trigger b { font-size:11px; }
+.employee-root .polish-inline-run .polish-clip-island-trigger span { overflow:hidden; color:#8da4ae; font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
+.employee-root .polish-inline-run .polish-clip-island-content { padding:0 10px 10px; }
+.employee-root .polish-inline-run .polish-clip-rail { display:flex; flex-wrap:wrap; gap:7px; padding:6px 0 9px; }
+.employee-root .polish-inline-run .polish-clip {
+  display:inline-flex;
+  overflow:hidden;
+  border:1px solid rgba(132,158,173,.32);
+  border-radius:999px;
+  background:rgba(255,255,255,.045);
+}
+.employee-root .polish-inline-run .polish-clip button {
+  display:inline-flex;
+  align-items:center;
+  border:0;
+  background:transparent;
+  color:#d9e6e9;
+  cursor:pointer;
+}
+.employee-root .polish-inline-run .polish-clip button:first-child { max-width:170px; padding:6px 8px 6px 10px; font-size:10px; }
+.employee-root .polish-inline-run .polish-clip button:first-child span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.employee-root .polish-inline-run .polish-clip button:last-child { border-left:1px solid rgba(255,255,255,.12); padding:5px 7px; }
+.employee-root .polish-inline-run .polish-clip svg { width:12px; height:12px; }
+.employee-root .polish-inline-run .polish-clip.color-blue { border-color:rgba(101,157,204,.65); }
+.employee-root .polish-inline-run .polish-clip.color-green { border-color:rgba(91,171,130,.65); }
+.employee-root .polish-inline-run .polish-clip.color-gold { border-color:rgba(202,165,96,.65); }
+.employee-root .polish-inline-run .polish-clip.color-rose { border-color:rgba(198,111,130,.68); }
+.employee-root .polish-inline-run .polish-clip-new {
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  border:1px dashed rgba(156,185,191,.5);
+  border-radius:999px;
+  background:transparent;
+  color:#b9d5d8;
+  padding:6px 10px;
+  font-size:10px;
+  font-weight:700;
+  cursor:pointer;
+}
+.employee-root .polish-inline-run .polish-clip-new svg { width:12px; height:12px; }
+.employee-root .polish-inline-run .polish-clip-editor {
+  display:grid;
+  gap:8px;
+  padding:10px;
+  border-top:1px solid rgba(150,178,187,.2);
+}
+.employee-root .polish-inline-run .polish-clip-editor > header { display:flex; align-items:center; justify-content:space-between; }
+.employee-root .polish-inline-run .polish-clip-editor > header b { color:#dceff0; font-size:11px; }
+.employee-root .polish-inline-run .polish-clip-editor > header button { border:0; background:transparent; color:#8fb3b6; font-size:10px; cursor:pointer; }
+.employee-root .polish-inline-run .polish-clip-editor input,
+.employee-root .polish-inline-run .polish-clip-editor textarea { width:100%; box-sizing:border-box; margin:0; }
+.employee-root .polish-inline-run .polish-clip-editor textarea { min-height:64px; resize:vertical; }
+.employee-root .polish-inline-run .polish-clip-editor > div { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+.employee-root .polish-inline-run .polish-clip-editor > div > span { margin-right:3px; color:#92abb1; font-size:10px; }
+.employee-root .polish-inline-run .polish-clip-editor .color-blue,
+.employee-root .polish-inline-run .polish-clip-editor .color-green,
+.employee-root .polish-inline-run .polish-clip-editor .color-gold,
+.employee-root .polish-inline-run .polish-clip-editor .color-rose {
+  border:1px solid rgba(151,174,181,.32);
+  border-radius:999px;
+  background:transparent;
+  color:#cbdadd;
+  padding:4px 8px;
+  font-size:10px;
+  cursor:pointer;
+}
+.employee-root .polish-inline-run .polish-clip-editor .color-blue.selected { border-color:#6fadd9; color:#bde1fb; }
+.employee-root .polish-inline-run .polish-clip-editor .color-green.selected { border-color:#72b993; color:#c4edd4; }
+.employee-root .polish-inline-run .polish-clip-editor .color-gold.selected { border-color:#c9a35f; color:#f3d99b; }
+.employee-root .polish-inline-run .polish-clip-editor .color-rose.selected { border-color:#c87d8d; color:#f1bcc6; }
+.employee-root .polish-inline-run .polish-clip-editor .polish-clip-save {
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  margin-left:auto;
+  border:1px solid rgba(115,176,153,.5);
+  border-radius:7px;
+  background:rgba(54,127,91,.7);
+  color:#effbf4;
+  padding:6px 9px;
+  font-size:10px;
+  font-weight:800;
+  cursor:pointer;
+}
+.employee-root .polish-inline-run .polish-clip-editor .polish-clip-save:disabled { opacity:.45; cursor:not-allowed; }
+.employee-root .polish-inline-run .polish-clip-editor .polish-clip-save svg { width:12px; height:12px; }
+
+@media (max-width:760px) {
+  .employee-root .polish-inline-run .polish-source-page-row { grid-template-columns:1fr; }
+  .employee-root .polish-inline-run .polish-source-page-preview { min-height:150px; border-right:0; border-bottom:1px solid rgba(145,169,182,.2); }
+  .employee-root .polish-inline-run .polish-source-page-preview img { min-height:150px; }
+  .employee-root .polish-inline-run .polish-save-page-note { align-self:stretch; justify-content:center; }
+}
+
+/* 逐页提示词中已套用的夹子：独立展示名称，避免和提示词输入区混在一起。 */
+.employee-root .polish-inline-run .polish-applied-clip-list {
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 10px;
+  padding: 7px 9px;
+  border: 1px solid rgba(117, 155, 178, 0.25);
+  border-radius: 12px;
+  background: rgba(29, 43, 54, 0.72);
+  gap: 7px;
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list > span {
+  padding: 0 3px 0 1px;
+  color: #9ebed0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip {
+  display: inline-flex;
+  min-width: 112px;
+  max-width: 260px;
+  min-height: 30px;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 7px 4px 11px;
+  border-radius: 9px;
+  color: #ecf5fa;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip i {
+  display: block;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  padding-left: 6px;
+  border-left: 1px solid currentColor;
+  opacity: 0.68;
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip:hover svg { opacity: 1; }
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip.color-blue {
+  border-color: rgba(110, 175, 219, 0.68);
+  background: rgba(43, 100, 142, 0.3);
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip.color-rose {
+  border-color: rgba(215, 130, 153, 0.66);
+  background: rgba(121, 55, 73, 0.27);
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip.color-amber {
+  border-color: rgba(214, 169, 95, 0.66);
+  background: rgba(116, 79, 33, 0.28);
+}
+
+@media (max-width:600px) {
+  .employee-root .polish-inline-run .polish-applied-clip-list { width: 100%; }
+  .employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip { min-width: 0; max-width: 100%; flex: 1 1 150px; }
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip.color-green {
+  border-color: rgba(119, 185, 147, 0.66);
+  background: rgba(48, 105, 76, 0.28);
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip.color-gold {
+  border-color: rgba(214, 169, 95, 0.66);
+  background: rgba(116, 79, 33, 0.28);
+}
+
+/* 已套用夹子沿用“夹子”本身的紧凑胶囊，而不是额外包一层浮动容器。 */
+.employee-root .polish-inline-run .polish-applied-clip-list {
+  width: auto;
+  max-width: none;
+  min-height: 0;
+  margin-top: 9px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 8px;
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list > span {
+  padding: 0;
+  color: #8faab9;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip {
+  min-width: 0;
+  max-width: 220px;
+  min-height: 32px;
+  gap: 7px;
+  padding: 4px 9px 4px 12px;
+  border-radius: 999px;
+  background: rgba(39, 71, 91, 0.42);
+  box-shadow: none;
+  font-size: 11px;
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip svg {
+  width: 13px;
+  height: 13px;
+  margin-left: 1px;
+  padding-left: 7px;
+  border-left: 1px solid rgba(185, 211, 225, 0.36);
+  color: #d9a7af;
+}
+
+.employee-root .polish-inline-run .polish-clip.is-applied button:last-child {
+  color: #e2a7b0;
+}
+
+.employee-root .polish-inline-run .polish-clip.is-applied button:last-child:hover {
+  color: #ffe0e4;
+}
+
+@media (max-width:600px) {
+  .employee-root .polish-inline-run .polish-applied-clip-list { width: auto; }
+  .employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip { flex: 0 1 auto; }
+}
+
+/* 名称以自身内容撑开；空间不足时让整枚夹子换行，不能挤成“第…”。 */
+.employee-root .polish-inline-run .polish-applied-clip-list {
+  align-content: flex-start;
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip {
+  width: max-content;
+  max-width: 100%;
+  flex: 0 0 auto;
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-name {
+  display: block;
+  min-width: max-content;
+  max-width: 200px;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width:600px) {
+  .employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-chip { flex: 0 0 auto; }
+  .employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-name { max-width: min(200px, calc(100vw - 142px)); }
+}
+
+.employee-root .polish-inline-run .polish-applied-clip-list .polish-applied-clip-name {
+  min-width: 0;
+  width: fit-content;
+  flex: 0 1 auto;
+}

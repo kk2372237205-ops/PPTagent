@@ -18,7 +18,7 @@ import type { CSSProperties, DragEvent } from "react";
 import { Check, FileText, ImagePlus, LoaderCircle, Sparkles, Upload, X } from "lucide-react";
 import { employeeApi } from "@/lib/employee-api";
 import type { DeckGenerationRun, Service } from "@/lib/employee-api-types";
-import { deckAdvancedLayoutPacks, deckStylePacks, defaultDeckUnityOptions } from "@/lib/employee-deck-constants";
+import { deckAdvancedLayoutPacks, deckDefaultStylePackId, deckStylePacks, defaultDeckUnityOptions } from "@/lib/employee-deck-constants";
 
 function formatDeckFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -35,7 +35,7 @@ export function DeckGenerationForm({ service, notify, onCreated }: {
   const [projectName, setProjectName] = useState(service.title);
   const [projectType, setProjectType] = useState("");
   const [pageCount, setPageCount] = useState(12);
-  const [stylePack, setStylePack] = useState("blue-gold-tech");
+  const [stylePack, setStylePack] = useState(deckDefaultStylePackId);
   const [brief, setBrief] = useState("");
   const [referenceText, setReferenceText] = useState("");
   const [outlineText, setOutlineText] = useState("");
@@ -113,7 +113,7 @@ export function DeckGenerationForm({ service, notify, onCreated }: {
   return <section className="deck-generation-form deck-create-form">
     <div className="deck-version-switch" role="tablist" aria-label="生成版本">
       <button type="button" className={generationMode === "quick" ? "active" : ""} onClick={() => setGenerationMode("quick")}>
-        <Sparkles/><span><b>快速版</b><small>少填写，自动整理完整方案</small></span>
+        <Sparkles/><span><b>快速版（测试阶段，误用）</b><small>少填写，自动整理完整方案</small></span>
       </button>
       <button type="button" className={generationMode === "advanced" ? "active" : ""} onClick={() => setGenerationMode("advanced")}>
         <FileText/><span><b>高级版</b><small>按你的逐页结构，从大量资料取材</small></span>
@@ -156,7 +156,7 @@ export function DeckGenerationForm({ service, notify, onCreated }: {
       </div>
       {paletteMode === "preset" ? <label>风格包<select value={stylePack} onChange={event => setStylePack(event.target.value)}>{deckStylePacks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label> : <>
         <div className="deck-theme-reference" onClick={() => themeInputRef.current?.click()} onDragOver={event => event.preventDefault()} onDrop={(event: DragEvent<HTMLDivElement>) => { event.preventDefault(); chooseTheme(event.dataTransfer.files?.[0]); }}>
-          {themePreview ? <><img src={themePreview} alt="配色参考"/><div><b>{themeReference?.name}</b><span>将提取背景、文字、强调色及使用比例，并把原图直接交给 Image2</span></div></> : <><ImagePlus/><div><b>上传一张配色参考图</b><span>PNG、JPEG 或 WebP，不要求它是 PPT</span></div></>}
+          {themePreview ? <><img src={themePreview} alt="配色参考"/><div><b>{themeReference?.name}</b><span>仅提取背景、文字、强调色及使用比例；原图不交给 Image2</span></div></> : <><ImagePlus/><div><b>上传一张配色参考图</b><span>PNG、JPEG 或 WebP，不要求它是 PPT</span></div></>}
           <input ref={themeInputRef} type="file" hidden accept=".png,.jpg,.jpeg,.webp" onChange={event => chooseTheme(event.target.files?.[0])}/>
         </div>
         {generationMode === "advanced" && <label className="deck-layout-language">版式语言（不含配色）<select value={stylePack} onChange={event => setStylePack(event.target.value)}>{deckAdvancedLayoutPacks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select><small>参考图决定全部颜色；这里选择信息组织、图文关系、留白和节奏，不是文字密度。</small></label>}

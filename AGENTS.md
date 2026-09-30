@@ -20,8 +20,10 @@
 | `components/employee-app.tsx` | 只剩壳、常量与 4 处 design-agent 调用 | 只做小改，不要再往里堆功能 |
 | `app/employee/employee.css` | 样式入口，只有 `@import` 列表 | 不要往这里加规则 |
 | `app/employee/styles/*.css` | 按模块拆开的样式，顺序由入口文件固定 | 只改自己模块那份 |
-| `scripts/*.mjs` | 后台执行脚本，互相不 import | **可以分别派人改** |
-| `skills/deck-generation/**` | 生成 PPT 的提示词规则 | 改提示词优先改这里 |
+| `scripts/*.mjs` | **启动与运维脚本**（`dev.mjs`、`dev-lite.mjs`、`agent-workers.mjs`、`init-db.mjs` 等） | **可以分别派人改** |
+| `scripts/workers/<模式>/*.mjs` | **后台执行脚本按模式分目录**：`deck-generation/`（生成 PPT）、`ppt-polish/`（美化 PPT）、`design-agent/`（生图 + 单页设计）、`image-explode/`（图片炸开）、`shared/`（共用网络层） | **按模式分别派人改**；`shared/` 改动要回归全部 worker |
+| `skills/deck-generation/**` | 生成 PPT 的提示词规则（**只服务生成 PPT**）；美化 PPT 与生图**都不读任何 skill**（2026-09-27 决定、2026-09-30 收紧） | 改提示词优先改这里 |
+| `skills/ppt-polish/**` | 美化 PPT 的说明（**刻意没有任何规则文件**）；美化的提示词只由用户在界面上写的内容组成，`ppt-polish-worker.mjs` 里不得再注入预设画面规则 | 改美化行为改代码或让用户自己写要求 |
 
 ## 派活模板（给别人或给 AI 派任务时照抄）
 
@@ -161,7 +163,7 @@ npm start
 - 高级版由用户决定每页大标题，也可继续规定小标题和想讲的内容；系统读取最多 30 份、合计 500MB 的 PDF、Word、Excel、PPT、文本和图片资料。
 - 高级版由 GPT-5.6 按用户大纲从文字资料中逐页取材，一次生成包含页面任务、正文、结论、来源和画面方向的完整方案；用户只确认这一份方案，确认后才开始生图。
 - 内容资料图片只在普通解析文字不足时用于 GPT-5.6 OCR/语义补救，不提取、不裁切、不复用为页面素材，也不交给 Image2。配色参考图仍只控制颜色关系。
-- 高级版初次生成每页只调用一次 Image2，最多 6 页并发，不做逐页 GPT 看图或自动返工；全部页面完成后只做一次后台交付安全检查，只有致命异常才提示。
+- 高级版初次生成每页只调用一次 Image2，最多 6 页并发，不做逐页 GPT 看图或自动返工；**全部页面完成后不再有任何额外模型调用**（原先的"后台交付安全检查"已于 2026-09-30 删除，成图直接进入预览）。
 - 用户可选择内置配色或上传配色参考图；参考图只提取背景、文字、强调色和比例关系，不照抄版式。
 - 页面内容要保留来源文件和页码、幻灯片号或工作表位置，数字、日期和专名不能脱离已读取资料。
 - 用户确认预览后再生成 PPT/PDF；不要在方案或内容未确认时直接进入最终转化。
@@ -173,10 +175,11 @@ npm start
 - 美化 PPT 的后端接口位于：
   `app/api/employee/services/[id]/ppt-polish/runs`
   以及其下的 `confirm`、`retry`、`slides/[slideIndex]/image`、`slides/[slideIndex]/regenerate`、`pdf`、`ppt`。
-- 美化 PPT worker 为 `scripts/ppt-polish-worker.mjs`，健康检查在 `lib/ppt-polish-worker-health.ts`。
+- 美化 PPT worker 为 `scripts/workers/ppt-polish/ppt-polish-worker.mjs`，健康检查在 `lib/ppt-polish-worker-health.ts`。
 - `npm run dev`、`npm run dev:lite` 和 `npm run agent:workers` 都应包含美化 PPT worker。
 - 美化 PPT 生成页图时并发数为 2；排队和生成中的预览卡都要有动态反馈。
-- 封面页和结尾页应强情绪、少文字、风格突出；中间页要保持统一色彩、统一版式语言和上下文连贯。
+- **美化的提示词只由用户在界面上写的内容组成**（整套方向 + 逐页要求 + 保护项 + 返工指令），代码里**不得再注入任何预设画面规则**。"封面强情绪、少文字""每页必须有主导插图""默认写实"这类要求曾写进美化提示词，2026-09-30 全部删除——它们和用户"文字图片内容不变、用蓝白科技风"直接冲突，是"不听话"的根因。
+- 中间页的统一色彩、版式语言与上下文连贯，现在**只能靠用户自己在要求里写**（或后续把源页图片接进重绘来保证），不要再靠提示词里偷偷加规则。
 - 预览区不应在用户什么都没写、没有确认方案时展示“生成页面中”的旧占位栏。
 
 ### 图片转 PPT
@@ -325,9 +328,10 @@ node scripts/employee-visual-test.mjs
 - `main` 只保存已经完成验证、可以随时恢复和部署的稳定版本；禁止直接在 `main` 上开发新功能。
 - 每次开始一个新功能或独立修复，必须先从最新 `main` 创建一个 `codex/<功能名>` 分支，再开始修改。
 - 开发过程只提交并推送当前功能分支，不得提前把未验证代码推入 `main`。
-- 功能分支至少通过与改动风险相匹配的检查；**统一使用 `npm run verify`**（= `tsc --noEmit` + `eslint . --max-warnings 11` + `prisma validate` + `next build --webpack`）。涉及界面时还要完成对应视觉与交互验收。
+- 功能分支至少通过与改动风险相匹配的检查；**统一使用 `npm run verify`**（= `node scripts/check-style-packs.mjs` + `tsc --noEmit` + `eslint . --max-warnings 0` + `prisma validate` + `next build --webpack`）。涉及界面时还要完成对应视觉与交互验收。
 - `npm run verify:check` 只跑静态检查，改代码过程中随时可用；`npm run verify:build` 只跑生产构建，交付前必跑。
-- eslint 的 11 条历史警告（全部在 `scripts/design-agent-worker.mjs`）是基线；`--max-warnings 11` 会拦住任何新增警告。
+- **风格包 id 只有一处真源：`lib/employee-deck-packs.mjs`**（2026-09-27 收敛，此前散在 8 处）。新增/删除风格包只改它 + `skills/deck-generation/style-packs.md`（参考图配色模式再加 `advanced-layout-profiles.md`）；`scripts/check-style-packs.mjs` 会逐 id 校验并阻止已删 id 复活，**不要在任何地方再抄一份 id 列表**。
+- **eslint 警告基线是 0**（2026-09-27 收紧，历史 11 条已清理）。`--max-warnings 0` 会拦住任何新增警告——这是刻意的，包括未使用的 import 和删代码留下的孤儿函数。
 - 功能确认稳定后再合并到 `main` 并推送；合并后保留功能分支作为开发记录，除非项目 owner 明确要求删除。
 - `.env`、API Key、`prisma/dev.db`、`uploads/`、`.codex-tmp/`、构建缓存和本地生成文件禁止提交或上传。
 - 项目 owner 不需要操作 Git 命令。以后只需说明要开发的功能，Codex 负责创建分支、验证、提交、推送，并在准备合并 `main` 时说明验证结果。
@@ -336,6 +340,7 @@ node scripts/employee-visual-test.mjs
 
 - 仓库已于 2026-09-14 初始化：基线提交 `8e2f313`，标签 `baseline`，183 个受控文件，仓库体积约 3.29 MB。
 - 基线状态：`npm run verify` 全绿（tsc 通过、eslint 0 error / 11 warning、prisma validate 通过、webpack 生产构建通过）。
+  > 2026-09-27：eslint 基线已收紧到 **0 warning**（清理了 `scripts/workers/design-agent/design-agent-worker.mjs` 里 31 个零引用声明）。上面这条是当天的历史记录。
 - 未纳入版本控制（按 `.gitignore`）：`.env`、`prisma/dev.db`、`uploads/`（约 6.4 GB 业务与创作文件）、`node_modules/`、`.next*`、`.npm-cache/`、`.artifacts/`、`tmp/`、`__pycache__/`。
 - **重要**：`uploads/` 不在 Git 里，因此没有版本回退保护；它包含客户资料、工作文稿和生成结果，必须单独做备份（外置硬盘或对象存储），不能依赖 Git 恢复。
 - 本机 PowerShell 执行策略禁止直接运行 `npm`/`npx`：如需手工执行，可用 `node node_modules/<工具>/bin/...` 直调，或临时 `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`。

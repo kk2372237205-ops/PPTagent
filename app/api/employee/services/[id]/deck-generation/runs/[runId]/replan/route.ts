@@ -1,16 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { authorizeEmployeeService } from "@/lib/employee-auth";
-
-const allowedStylePacks = new Set([
-  "blue-gold-tech",
-  "white-green-tech",
-  "black-gold-business",
-  "blue-purple-ai",
-  "red-white-government",
-  "minimal-academic",
-  "vivid-roadshow"
-]);
+import { deckStylePackIds } from "@/lib/employee-deck-constants";
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string; runId: string }> }) {
   const { id, runId } = await context.params;
@@ -27,7 +18,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     return NextResponse.json({ error: "只有方案阶段可以重新生成方案" }, { status: 400 });
   }
   const stylePack = String(body.stylePack || run.stylePack);
-  if (!allowedStylePacks.has(stylePack)) return NextResponse.json({ error: "风格包无效" }, { status: 400 });
+  if (!deckStylePackIds.has(stylePack)) return NextResponse.json({ error: "风格包无效" }, { status: 400 });
 
   await db.deckGenerationSlide.deleteMany({ where: { runId: run.id } });
   const advancedNeedsSourceRetry = run.generationMode === "advanced" && (

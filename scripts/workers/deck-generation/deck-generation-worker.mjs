@@ -1,11 +1,19 @@
 import { existsSync, readFileSync } from "fs";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { createHash } from "crypto";
+import { execFile } from "child_process";
 import path from "path";
 import sharp from "sharp";
 import { PrismaClient } from "@prisma/client";
 import { FormData } from "undici";
 import { buildEvidenceChunks, parseDeckSourceFile } from "./deck-source-parser.mjs";
+import {
+  DECK_DEFAULT_LAYOUT_PROMPT_LABEL,
+  DECK_DEFAULT_STYLE_PACK_LABEL,
+  DECK_LAYOUT_PACK_NAMES,
+  DECK_STYLE_PACK_NAMES,
+  DECK_STYLE_PACK_PALETTES
+} from "../../../lib/employee-deck-packs.mjs";
 import {
   aiImageConfig,
   aiTextConfig,
@@ -16,7 +24,7 @@ import {
   textEndpoint,
   textFromResponse,
   textRequestBody
-} from "./ai-service-client.mjs";
+} from "../shared/ai-service-client.mjs";
 
 const root = process.cwd();
 loadEnv();
@@ -29,9 +37,24 @@ const deckSourceRoot = path.join(workspaceRoot, "deck-generation", "sources");
 const deckThemeRoot = path.join(workspaceRoot, "deck-generation", "themes");
 const deckEvidenceRoot = path.join(workspaceRoot, "deck-generation", "evidence");
 const skillRoot = path.join(root, "skills", "deck-generation");
-const pollMs = Math.max(1200, Number(process.env.DECK_GENERATION_POLL_MS || 2500));
+// 轮询间隔：一轮只做"派发"，很便宜，所以默认收紧到 1.2 秒，
+// 让状态切换（解析完成 → 出方案 → 可确认 → 开始出图）少等一会。
+const pollMs = Math.max(600, Number(process.env.DECK_GENERATION_POLL_MS || 1200));
+// 任务级并发（默认关闭，保持既有串行行为不变）。
+// 打开后：一个任务在画图时，另一个任务照样能解析资料、出方案，不再排队等别人画完。
+// 实测串行时的浪费：确认后 336 秒才开始画第一页（前一个任务还在画），上传解析也等过 215 秒。
+const parallelRunsEnabled = process.env.DECK_PARALLEL_RUNS === "1";
+// 同时推进的任务数上限（只有打开任务级并发时才生效）。
+const parallelRunLimit = Math.max(1, Math.min(8, Number(process.env.DECK_PARALLEL_RUN_LIMIT || 3)));
+// 全局图片闸门：所有任务加起来，同时进行的 Image2 调用不超过这个数。
+// 串行时不需要它（一个任务的并发上限就是全局上限）；并行时必须要有，
+// 否则 3 个任务同时出图就是 9 张图一起打中转站，会撞容量错误。
+const globalImageConcurrency = Math.max(1, Math.min(12, Number(process.env.DECK_GLOBAL_IMAGE_CONCURRENCY || 5)));
 const deckGenerationConcurrency = Math.min(4, Math.max(1, Number(process.env.DECK_GENERATION_CONCURRENCY || 2)));
-const advancedDeckGenerationConcurrency = Math.min(6, Math.max(1, Number(process.env.DECK_ADVANCED_GENERATION_CONCURRENCY || 6)));
+// Image2 requests are expensive and the relay queues aggressively when too many
+// page renders arrive together. Three is the stable default; deployments that
+// have measured spare relay capacity may still explicitly raise this to six.
+const advancedDeckGenerationConcurrency = Math.min(6, Math.max(1, Number(process.env.DECK_ADVANCED_GENERATION_CONCURRENCY || 3)));
 const advancedSourceReadConcurrency = Math.min(3, Math.max(1, Number(process.env.DECK_ADVANCED_SOURCE_CONCURRENCY || 3)));
 const maxAdvancedVisualEvidence = 4;
 const advancedImageReferencesEnabled = process.env.DECK_ADVANCED_REFERENCE_IMAGES !== "0";
@@ -39,6 +62,17 @@ const advancedImageReferencesEnabled = process.env.DECK_ADVANCED_REFERENCE_IMAGE
 // are intentionally not reused as final-slide artwork.
 const advancedSourceVisualReuseEnabled = false;
 const protectedEvidenceMasksEnabled = false;
+// Public-web visual references are a third, deliberately separate input class:
+// they may guide a new Image2 rendering, but are never user-source evidence or
+// palette-reference pixels. Set to 0 only when the deployment cannot reach
+// Wikimedia Commons.
+const advancedWebVisualReferencesEnabled = process.env.DECK_ADVANCED_WEB_VISUAL_REFERENCES !== "0";
+const advancedWebVisualReferenceTimeoutMs = Math.max(8_000, Number(process.env.DECK_ADVANCED_WEB_VISUAL_REFERENCE_TIMEOUT_MS || 25_000));
+// Public visual research must never hold a page indefinitely. When this total
+// page budget expires, Image2 still receives the deck style strip and the page
+// text contract, just without a public-image semantic reference.
+const advancedWebVisualReferencePageBudgetMs = 5 * 60_000;
+const maxAdvancedWebVisualReferences = 3;
 const advancedVisualTimeoutMs = Math.max(120000, Number(process.env.DECK_ADVANCED_VISUAL_TIMEOUT_MS || 180000));
 // The final advanced plan is the only GPT call that must consider every confirmed page together.
 // It keeps a longer budget without extending unrelated text requests.
@@ -58,6 +92,29 @@ const textRequest = createServiceFetch(textService);
 const advancedTextRequest = createServiceFetch(advancedTextService);
 const imageRequest = createServiceFetch(imageService);
 const externalRequest = createServiceFetch({ serviceName: "Codia", proxyUrl: process.env.CODIA_PROXY_URL || "" });
+// Image2 的全局闸门。
+//
+// 为什么需要：processAdvancedGeneratingRun 里的并发上限是「每个任务」3 张；
+// 串行调度时全局最多也就是 3 张，没问题；一旦允许多个任务同时出图，
+// 就会变成 6 张、9 张一起打到中转站，触发容量错误（No available compatible accounts）。
+// 所以这里限制的是「全局同时进行的 Image2 调用数」，所有任务共用一个信号量。
+function createImageSemaphore(limit) {
+  let active = 0;
+  const waiters = [];
+  return async function withImageSlot(task) {
+    if (active >= limit) await new Promise(resolve => waiters.push(resolve));
+    active += 1;
+    try {
+      return await task();
+    } finally {
+      active -= 1;
+      const next = waiters.shift();
+      if (next) next();
+    }
+  };
+}
+// 串行模式下不设闸门（保持既有行为一字不差）；并行模式下按全局上限收敛。
+const imageSlot = parallelRunsEnabled ? createImageSemaphore(globalImageConcurrency) : async task => task();
 const codiaBaseUrl = trimSlash(process.env.CODIA_BASE_URL || "https://openapi.codia.ai");
 
 function loadEnv() {
@@ -130,19 +187,37 @@ function readSkill(name) {
   return readFileSync(path.join(skillRoot, name), "utf8").trim();
 }
 
-function skillBundle(options = {}) {
+function escapeRegExp(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function selectedPackSkill(fileName, stylePack) {
+  const skill = readSkill(fileName);
+  const heading = new RegExp(`^##\\s+${escapeRegExp(stylePack)}\\s*[：:].*$`, "m");
+  const match = heading.exec(skill);
+  if (!match) return skill;
+  const firstPack = skill.search(/^##\s+[a-z0-9-]+\s*[：:]/m);
+  const nextPack = skill.slice(match.index + match[0].length).search(/^##\s+[a-z0-9-]+\s*[：:]/m);
+  const sectionEnd = nextPack < 0 ? skill.length : match.index + match[0].length + nextPack;
+  return [
+    skill.slice(0, firstPack < 0 ? 0 : firstPack).trim(),
+    skill.slice(match.index, sectionEnd).trim()
+  ].filter(Boolean).join("\n\n");
+}
+
+function skillBundle(run, options = {}) {
   return [
     readSkill("SKILL.md"),
-    ...(options.colorNeutral ? [readSkill("advanced-layout-profiles.md")] : [readSkill("style-packs.md")]),
+    selectedPackSkill(options.colorNeutral ? "advanced-layout-profiles.md" : "style-packs.md", run.stylePack),
     readSkill("visual-identity.md"),
     readSkill("visual-storyboard.md"),
     readSkill("slide-image-specs.md"),
+    readSkill("illustration-system.md"),
     readSkill("regeneration-controls.md"),
     readSkill("source-grounding.md"),
     readSkill("outline-control.md"),
     readSkill("content-density.md"),
-    readSkill("palette-reference.md"),
-    readSkill("quality-audit.md")
+    readSkill("palette-reference.md")
   ].join("\n\n---\n\n");
 }
 
@@ -163,6 +238,14 @@ function providerError(result, fallback) {
       return "gpt-image-2 图片中转账户余额不足。请补充 AI_IMAGE_API_KEY 所属账户或分组的余额后重试本页。";
     }
     return "YZStudio 已收到 GPT-5.6 请求，但返回文字账户余额不足；这不是配置缺项。请在 YZStudio 为 AI_TEXT_API_KEY 所属文字分组兑换或补充额度，确认套餐、每日额度和永久额度可用后，再点击“重新分析资料”。";
+  }
+  // 中转站没有可用上游账号：这是中转站侧的容量/分组问题，不是本机配置或提示词问题。
+  // 不解释清楚的话，用户会以为是自己的配置或资料出了问题。
+  if (/no available compatible accounts|no available account|no upstream account/i.test(message)) {
+    if (/图片/.test(fallback)) {
+      return "图片中转站当前没有可用的上游账号（这是中转站侧的容量或分组问题，不是本机配置问题）。稍等片刻再点“重新生成本页”通常就能通过。若持续出现，请在 YZStudio 确认 AI_IMAGE_API_KEY 所属分组是否包含 gpt-image-2、以及该分组的账号额度是否耗尽。";
+    }
+    return "文字中转站当前没有可用的上游账号（中转站侧容量或分组问题）。稍等片刻后重试。";
   }
   return message;
 }
@@ -232,6 +315,15 @@ async function openAdvancedAiJson(prompt, options = {}) {
 }
 
 async function openAiImage(prompt, timeoutMs = 300000) {
+  // 生图也走瞬态重试。文字调用一直有 withTransientRetry，图片调用没有，
+  // 于是中转站一旦出现连接级抖动（例如 HTTP/2 拒绝流 NGHTTP2_REFUSED_STREAM、
+  // socket 重置、502/503）就直接把整页判失败，只能由用户手动点"重新生成本页"。
+  // transientAiFailure 已排除超时，所以不会因为等太久而重复计费。
+  // 每次尝试单独占一个全局名额：重试不应该长期占着名额不干活。
+  return withTransientRetry(() => imageSlot(() => requestImageOnce(prompt, timeoutMs)), [1200, 3000, 6000]);
+}
+
+async function requestImageOnce(prompt, timeoutMs = 300000) {
   requireImageService(imageService);
   const response = await imageRequest(`${imageService.baseUrl}/images/generations`, {
     method: "POST",
@@ -251,13 +343,6 @@ async function openAiImage(prompt, timeoutMs = 300000) {
     return Buffer.from(await download.arrayBuffer());
   }
   throw new Error("图片中转服务没有返回图片内容");
-}
-
-function imageMimeType(fileName) {
-  const extension = path.extname(fileName).toLowerCase();
-  if (extension === ".jpg" || extension === ".jpeg") return "image/jpeg";
-  if (extension === ".webp") return "image/webp";
-  return "image/png";
 }
 
 async function imageBufferFromResult(result) {
@@ -1116,9 +1201,14 @@ async function restoreProtectedEvidence(output, input, regions, postprocess = nu
 }
 
 async function openAiImageWithReferences(prompt, references, options = {}) {
+  // 与 openAiImage 同样加瞬态重试：参考图链路（/images/edits）在并发下更容易被中转站拒绝流。
+  return withTransientRetry(() => imageSlot(() => requestImageWithReferencesOnce(prompt, references, options)), [1200, 3000, 6000]);
+}
+
+async function requestImageWithReferencesOnce(prompt, references, options = {}) {
   requireImageService(imageService);
   if (!advancedImageReferencesEnabled) {
-    throw new Error("高级版参考图输入已被 DECK_ADVANCED_REFERENCE_IMAGES 关闭，不能静默退回文字生图。");
+    throw new Error("高级版参考图输入已被 DECK_ADVANCED_REFERENCE_IMAGES 关闭，不能静默退回纯文字生图。");
   }
   const requestEdit = async (files, mask = null) => {
     const form = new FormData();
@@ -1158,35 +1248,54 @@ async function openAiImageWithReferences(prompt, references, options = {}) {
   return { buffer: await imageBufferFromResult(attempt.result), transport };
 }
 
+// 风格包 id → 中文名。清单来自 lib/employee-deck-packs.mjs（全项目唯一真源），
+// 这里不再自带一份副本，否则界面上删掉的风格包会在提示词里复活。
 function stylePackName(id) {
-  return ({
-    "blue-gold-tech": "蓝金科技",
-    "white-green-tech": "白绿科技",
-    "black-gold-business": "黑金商务",
-    "blue-purple-ai": "蓝紫 AI",
-    "red-white-government": "红白政企",
-    "minimal-academic": "极简学术",
-    "vivid-roadshow": "活力路演"
-  })[id] || id || "蓝金科技";
+  return DECK_STYLE_PACK_NAMES[id] || id || DECK_DEFAULT_STYLE_PACK_LABEL;
 }
 
 function advancedLayoutName(id) {
-  return ({
-    "blue-gold-tech": "图文叙事版式",
-    "white-green-tech": "清晰技术说明版式",
-    "black-gold-business": "结论先行商务版式",
-    "blue-purple-ai": "系统关系图解版式",
-    "red-white-government": "庄重层级汇报版式",
-    "minimal-academic": "极简学术论证版式",
-    "vivid-roadshow": "活力路演叙事版式"
-  })[id] || "图文叙事版式";
+  return DECK_LAYOUT_PACK_NAMES[id] || DECK_DEFAULT_LAYOUT_PROMPT_LABEL;
 }
 
 function runStyleDirection(run) {
-  if (run.generationMode === "advanced" && run.paletteMode === "reference") {
+  // 参考图配色模式下，风格包只能提供版式语言，不得泄漏它的颜色含义。
+  // 这个判断原本只覆盖高级版，导致快速版选了参考图配色时仍然把"蓝金科技"这类
+  // 带颜色的风格名写进风格指纹，与配色合同直接冲突。
+  if (run.paletteMode === "reference") {
     return `${advancedLayoutName(run.stylePack)}；这里只规定信息结构与视觉节奏，颜色完全服从参考图配色合同和实际输入图片`;
   }
   return stylePackName(run.stylePack);
+}
+
+function builtInPaletteContract(run) {
+  const palette = DECK_STYLE_PACK_PALETTES[run.stylePack];
+  if (!palette) {
+    throw new Error(`内置配色风格包不存在固定色值：${run.stylePack || "未选择"}`);
+  }
+  return { ...palette };
+}
+
+function paletteContractForRun(run) {
+  return JSON.stringify(run.paletteMode === "reference"
+    ? safeJson(run.paletteContractJson, {})
+    : builtInPaletteContract(run));
+}
+
+function lockedVisualIdentity(run, value) {
+  const identity = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  if (run.paletteMode === "reference") return identity;
+  const { colors, color_system: colorSystem, color_usage: colorUsage, palette: ignoredPalette, ...neutralIdentity } = identity;
+  void colors;
+  void colorSystem;
+  void colorUsage;
+  void ignoredPalette;
+  return {
+    ...neutralIdentity,
+    style_name: `${stylePackName(run.stylePack)}（固定内置配色）`,
+    palette: builtInPaletteContract(run),
+    palette_rule: "Use only the fixed built-in palette. Do not infer colours from the project topic or introduce extra brand colours."
+  };
 }
 
 function normalizeArray(value) {
@@ -1343,7 +1452,7 @@ function normalizePlan(plan, run) {
   }
   return {
     outline: normalizeOutline(plan, run, slides),
-    visual_identity: plan.visual_identity || {},
+    visual_identity: lockedVisualIdentity(run, plan.visual_identity),
     visual_storyboard: normalizeStoryboard(plan, slides),
     slide_image_specs: { slides }
   };
@@ -1365,6 +1474,290 @@ function sourceFilePath(source) {
 
 function visualEvidenceFilePath(storedName) {
   return path.join(deckEvidenceRoot, path.basename(storedName));
+}
+
+function plainMetadataText(value) {
+  return String(value || "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&(?:nbsp|amp|quot|lt|gt);/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isSafeCommonsImageUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return url.protocol === "https:" && (url.hostname === "wikimedia.org" || url.hostname.endsWith(".wikimedia.org"));
+  } catch {
+    return false;
+  }
+}
+
+function windowsWebReferenceFallback(url, timeoutMs = advancedWebVisualReferenceTimeoutMs) {
+  if (!windowsWebReferenceFallbackEnabled || !isSafeCommonsImageUrl(url)) return Promise.resolve(null);
+  // On this Windows deployment, the system web stack can use the configured
+  // enterprise route while Node/Undici may have no direct route to Commons.
+  // The URL is passed through an environment variable (not a shell command)
+  // and has already been constrained to Wikimedia HTTPS hosts above.
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    "$uri = $env:WZLCF_WEB_REFERENCE_URL",
+    "if ([string]::IsNullOrWhiteSpace($uri)) { throw 'missing visual reference URL' }",
+    `$response = Invoke-WebRequest -UseBasicParsing -Uri $uri -TimeoutSec ${Math.max(1, Math.ceil(timeoutMs / 1000))} -Headers @{ 'User-Agent' = 'WZLCF-Presentation-Studio/1.0 visual-reference-research' }`,
+    "$content = $response.Content",
+    "if ($content -is [byte[]]) { $bytes = $content } else { $bytes = [System.Text.Encoding]::UTF8.GetBytes([string]$content) }",
+    "[Console]::Out.Write(([string]$response.StatusCode) + '|' + [Convert]::ToBase64String($bytes))"
+  ].join("; ");
+  const encoded = Buffer.from(script, "utf16le").toString("base64");
+  return new Promise(resolve => {
+    execFile("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded], {
+      windowsHide: true,
+      timeout: Math.max(1_000, timeoutMs + 500),
+      maxBuffer: 24 * 1024 * 1024,
+      env: { ...process.env, WZLCF_WEB_REFERENCE_URL: url }
+    }, (error, stdout) => {
+      if (error) return resolve(null);
+      const separator = String(stdout || "").indexOf("|");
+      if (separator < 1) return resolve(null);
+      const status = Number(String(stdout).slice(0, separator));
+      const data = String(stdout).slice(separator + 1).trim();
+      if (!Number.isInteger(status) || !data) return resolve(null);
+      try {
+        const buffer = Buffer.from(data, "base64");
+        if (!buffer.length) return resolve(null);
+        resolve({
+          ok: status >= 200 && status < 300,
+          status,
+          headers: { get: () => null },
+          text: async () => buffer.toString("utf8"),
+          arrayBuffer: async () => buffer
+        });
+      } catch {
+        resolve(null);
+      }
+    });
+  });
+}
+
+async function commonsVisualFetch(url, init = {}, timeoutMs = advancedWebVisualReferenceTimeoutMs) {
+  const startedAt = Date.now();
+  const requestTimeout = Math.max(1_000, timeoutMs);
+  let directError = null;
+  if (!commonsDirectRouteUnavailable) {
+    try {
+      return await commonsVisualRequest(url, init, requestTimeout);
+    } catch (error) {
+      directError = error;
+      commonsDirectRouteUnavailable = true;
+    }
+  }
+  const remainingMs = Math.max(0, requestTimeout - (Date.now() - startedAt));
+  if (remainingMs < 1_000) {
+    if (directError) throw directError;
+    throw new Error("Wikimedia Commons visual reference request exceeded its page research budget.");
+  }
+  const fallback = await windowsWebReferenceFallback(url, remainingMs);
+  if (fallback) return fallback;
+  if (directError) throw directError;
+  throw new Error("Wikimedia Commons 直连路由当前不可用，Windows 系统网络回退也没有返回内容。");
+}
+
+function isReusableCommonsLicense(value) {
+  const license = plainMetadataText(value).toLowerCase();
+  return /(?:public domain|cc0|cc by(?:-sa)?)/.test(license) && !/(?:-nc|-nd|noncommercial|no derivatives)/.test(license);
+}
+
+function isUnsafeCommonsVisualTitle(value) {
+  return /(?:\.(?:pdf|djvu|svg|webm|og[gv]|tiff?)$|\b(?:portrait|headshot|selfie|person|people|human|man|woman|child|student|employee|technician|worker|engineer|logo|brand|emblem|coat of arms|seal|certificate|contract|invoice|passport|identity card|id card|report|document|screenshot|dashboard|signage|sign board|street sign|poster|advertisement)\b)/i.test(String(value || ""));
+}
+
+function webReferencePlan(contract, slide) {
+  if (!advancedWebVisualReferencesEnabled || slide.role === "cover" || slide.role === "ending") return null;
+  const source = contract?.director_contract?.web_visual_search;
+  if (!source || source.enabled === false) return null;
+  const queries = normalizeArray(source.queries).map((item, index) => {
+    const entry = item && typeof item === "object" && !Array.isArray(item) ? item : {};
+    const query = String(entry.query || "").replace(/\s+/g, " ").trim().slice(0, 180);
+    if (!query) return null;
+    return {
+      query,
+      role: String(entry.role) === "supporting" ? "supporting" : index === 0 ? "primary" : "supporting",
+      requiredSubjects: cleanStringList(entry.required_subjects, 6).map(subject => subject.slice(0, 100))
+    };
+  }).filter(Boolean).slice(0, maxAdvancedWebVisualReferences);
+  return queries.length ? { queries, selectionRule: String(source.selection_rule || "").slice(0, 800) } : null;
+}
+
+function commonsSearchTerms(search) {
+  const terms = [];
+  const add = value => {
+    const term = String(value || "").replace(/\s+/g, " ").trim().slice(0, 120);
+    if (term && !terms.includes(term)) terms.push(term);
+  };
+  add(search.query);
+  for (const subject of normalizeArray(search.requiredSubjects)) add(subject);
+  // Commons' full-text file search often ranks scanned PDFs above photographs
+  // for a long natural-language query. Fall back to the concrete English nouns
+  // supplied by the director, never to an institution, person, or brand name.
+  const stopWords = new Set(["natural", "light", "close", "outdoor", "work", "scene", "generic", "anonymous", "realistic", "equipment", "tools", "material", "materials", "process", "background", "environment", "with", "and", "the", "for"]);
+  for (const source of [search.query, ...normalizeArray(search.requiredSubjects)]) {
+    for (const word of String(source || "").toLowerCase().match(/[a-z][a-z-]{3,}/g) || []) {
+      if (!stopWords.has(word)) add(word);
+    }
+  }
+  return terms.slice(0, 8);
+}
+
+function runtimeWebVisualReferences(contract) {
+  return normalizeArray(contract?.runtime_web_visual_references).filter(item => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+    const storedName = String(item.stored_name || "");
+    return storedName && !isUnsafeCommonsVisualTitle(item.source_title) && existsSync(visualEvidenceFilePath(storedName));
+  }).slice(0, maxAdvancedWebVisualReferences);
+}
+
+async function searchCommonsVisualCandidates(query, timeoutMs) {
+  const params = new URLSearchParams({
+    action: "query",
+    generator: "search",
+    gsrsearch: query,
+    gsrnamespace: "6",
+    gsrlimit: "8",
+    prop: "imageinfo",
+    iiprop: "url|size|mime|extmetadata",
+    iiurlwidth: "1600",
+    iiurlheight: "1200",
+    format: "json",
+    formatversion: "2",
+    origin: "*"
+  });
+  try {
+    const response = await commonsVisualFetch(`https://commons.wikimedia.org/w/api.php?${params.toString()}`, {
+      headers: { Accept: "application/json", "User-Agent": "WZLCF-Presentation-Studio/1.0 visual-reference-research" }
+    }, timeoutMs);
+    if (!response.ok) return [];
+    const result = safeJson(await response.text(), {});
+    const pages = Array.isArray(result?.query?.pages)
+      ? result.query.pages
+      : Object.values(result?.query?.pages || {});
+    return pages.map(page => {
+      const image = normalizeArray(page?.imageinfo)[0] || {};
+      const metadata = image.extmetadata && typeof image.extmetadata === "object" ? image.extmetadata : {};
+      const license = plainMetadataText(metadata.LicenseShortName?.value || metadata.UsageTerms?.value || "");
+      const sourceUrl = String(image.thumburl || image.url || "");
+      return {
+        title: String(page?.title || "").slice(0, 240),
+        sourceUrl,
+        license,
+        attribution: plainMetadataText(metadata.Artist?.value || metadata.Credit?.value || "").slice(0, 500),
+        mimeType: String(image.mime || "").toLowerCase(),
+        width: Number(image.thumbwidth || image.width || 0),
+        height: Number(image.thumbheight || image.height || 0)
+      };
+    }).filter(item =>
+      item.title &&
+      isSafeCommonsImageUrl(item.sourceUrl) &&
+      isReusableCommonsLicense(item.license) &&
+      item.mimeType.startsWith("image/") &&
+      !isUnsafeCommonsVisualTitle(item.title)
+    );
+  } catch (error) {
+    console.warn(`[deck-generation] Wikimedia Commons search unavailable for "${query.slice(0, 80)}":`, error instanceof Error ? error.message : String(error));
+    return [];
+  }
+}
+
+async function downloadCommonsVisualReference(candidate, timeoutMs) {
+  try {
+    const response = await commonsVisualFetch(candidate.sourceUrl, {
+      headers: { Accept: "image/avif,image/webp,image/apng,image/png,image/jpeg;q=0.9,*/*;q=0.6", "User-Agent": "WZLCF-Presentation-Studio/1.0 visual-reference-research" }
+    }, timeoutMs);
+    if (!response.ok) return null;
+    const declaredLength = Number(response.headers.get("content-length") || 0);
+    if (declaredLength > 12 * 1024 * 1024) return null;
+    const raw = Buffer.from(await response.arrayBuffer());
+    if (!raw.length || raw.length > 12 * 1024 * 1024) return null;
+    const metadata = await sharp(raw, { animated: false }).metadata();
+    const width = Number(metadata.width || 0);
+    const height = Number(metadata.height || 0);
+    if (width < 600 || height < 400) return null;
+    const buffer = await sharp(raw, { animated: false })
+      .rotate()
+      .resize(1600, 1200, { fit: "inside", withoutEnlargement: true })
+      .png({ compressionLevel: 9 })
+      .toBuffer();
+    const normalized = await sharp(buffer).metadata();
+    return {
+      buffer,
+      width: Number(normalized.width || width),
+      height: Number(normalized.height || height)
+    };
+  } catch (error) {
+    console.warn(`[deck-generation] skipped Wikimedia Commons reference ${candidate.title}:`, error instanceof Error ? error.message : String(error));
+    return null;
+  }
+}
+
+async function ensureWebVisualReferences(run, slide, contract) {
+  const plan = webReferencePlan(contract, slide);
+  if (!plan) return runtimeWebVisualReferences(contract);
+  const existing = runtimeWebVisualReferences(contract);
+  if (existing.length) return existing;
+
+  const saved = [];
+  const usedUrls = new Set();
+  const deadline = Date.now() + advancedWebVisualReferencePageBudgetMs;
+  const remainingMs = () => Math.min(advancedWebVisualReferenceTimeoutMs, deadline - Date.now());
+  for (const search of plan.queries) {
+    if (saved.length >= maxAdvancedWebVisualReferences || remainingMs() < 1_000) break;
+    let candidate = null;
+    let download = null;
+    for (const term of commonsSearchTerms(search)) {
+      const searchTimeoutMs = remainingMs();
+      if (searchTimeoutMs < 1_000) break;
+      const candidates = await searchCommonsVisualCandidates(term, searchTimeoutMs);
+      for (const item of candidates) {
+        const downloadTimeoutMs = remainingMs();
+        if (downloadTimeoutMs < 1_000) break;
+        if (usedUrls.has(item.sourceUrl)) continue;
+        const fetched = await downloadCommonsVisualReference(item, downloadTimeoutMs);
+        usedUrls.add(item.sourceUrl);
+        if (!fetched) continue;
+        candidate = item;
+        download = fetched;
+        break;
+      }
+      if (candidate && download) break;
+    }
+    if (!candidate || !download) continue;
+    const storedName = nowName("png");
+    await writeFile(visualEvidenceFilePath(storedName), download.buffer);
+    saved.push({
+      stored_name: storedName,
+      source_url: candidate.sourceUrl,
+      source_title: candidate.title,
+      source_license: candidate.license,
+      source_attribution: candidate.attribution,
+      query: search.query,
+      role: search.role,
+      required_subjects: search.requiredSubjects,
+      width: download.width,
+      height: download.height
+    });
+  }
+  if (remainingMs() < 1_000 && saved.length < maxAdvancedWebVisualReferences) {
+    console.warn(`[deck-generation] slide ${slide.slideIndex} public visual research reached the 5-minute limit; rendering with ${saved.length ? "the references already found" : "only the style strip and text contract"}.`);
+  }
+  if (!saved.length) return existing;
+  const updatedContract = {
+    ...contract,
+    runtime_web_visual_references: saved
+  };
+  await db.deckGenerationSlide.update({
+    where: { id: slide.id },
+    data: { renderContractJson: JSON.stringify(updatedContract) }
+  });
+  return saved;
 }
 
 function normalizeSourceFocusBox(value) {
@@ -1671,6 +2064,10 @@ function transientAiFailure(error, options = {}) {
   const message = error instanceof Error ? error.message : String(error);
   if (/This operation was aborted|请求超过\s*\d+\s*秒，本机已停止等待/i.test(message)) return false;
   if (options.noRetryHeadersTimeout && /UND_ERR_HEADERS_TIMEOUT|headers timeout/i.test(message)) return false;
+  // 中转站容量类错误必须按瞬态处理：它只表示"这一刻没有可用的上游账号"，隔几秒重试通常就能过。
+  // 实测（2026-09-22）"No available compatible accounts" 以前认不出来，于是整页直接判失败，
+  // 用户只能一页页手动点"重新生成本页"。
+  if (/no available compatible accounts|no available account|no upstream account|上游服务异常|请稍后重试|速率限制|rate ?limit|overloaded|capacity/i.test(message)) return true;
   return /temporar(?:y|ily)|upstream|service unavailable|bad gateway|gateway timeout|request timeout|too many requests|fetch failed|network|socket|tls|econn|enotfound|etimedout|(?:^|\D)(?:408|425|429|500|502|503|504)(?:\D|$)/i.test(message);
 }
 
@@ -2363,6 +2760,68 @@ function fallbackPageArchetype(page) {
   return "solution-system";
 }
 
+function normalizeWebVisualSearch(value, page, requestedBrief) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  // Covers and closing pages are deliberately authored from the project's own
+  // emotional theme. Public-web photo references would pull those sparse pages
+  // back toward a documentary collage.
+  if (page.role === "cover" || page.role === "ending") {
+    return { enabled: false, queries: [], selection_rule: "封面和结尾页不用网络图片参考，直接围绕项目主题生成强情绪主视觉。" };
+  }
+  const rawQueries = Array.isArray(source.queries)
+    ? source.queries
+    : Array.isArray(source.visual_queries)
+      ? source.visual_queries
+      : source.query || source.search_query
+        ? [source]
+        : [];
+  const limit = maxAdvancedWebVisualReferences;
+  const queries = rawQueries.slice(0, limit).map((item, index) => {
+    const entry = item && typeof item === "object" && !Array.isArray(item) ? item : { query: item };
+    const query = String(entry.query || entry.search_query || entry.terms || "")
+      .replace(/[\r\n]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 180);
+    const requiredSubjects = cleanStringList(entry.required_subjects || entry.subjects, 6)
+      .map(subject => subject.slice(0, 100));
+    if (!query) return null;
+    return {
+      query,
+      role: String(entry.role) === "supporting" ? "supporting" : index === 0 ? "primary" : "supporting",
+      required_subjects: requiredSubjects
+    };
+  }).filter(Boolean);
+  // GPT-5.6 is instructed to produce concrete English search terms. The
+  // fallback preserves a usable route when an older cached plan lacks them;
+  // it is intentionally only one query so it cannot turn a page into a collage.
+  if (!queries.length && requestedBrief) {
+    queries.push({
+      query: String(requestedBrief).replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 180),
+      role: "primary",
+      required_subjects: []
+    });
+  }
+  return {
+    enabled: source.enabled !== false && queries.length > 0,
+    queries,
+    selection_rule: String(source.selection_rule || "仅选择不含可辨认人物、Logo、机构招牌、可读标签、公文或截图的通用物体、材料、工艺或环境画面；它只用于一次 Image2 重绘的视觉语义参考。").slice(0, 800)
+  };
+}
+
+function dedupeDirectorMainVisualBrief(value) {
+  let brief = String(value || "").replace(/\s+/g, " ").trim();
+  // A plan can be re-entered through the editable page-plan route. Keep the
+  // system-owned clauses idempotent even if a model echoes them on a replan.
+  brief = brief.replace(/(网络视觉参考方向：[^。]*地点身份。)(?:\s*\1)+/g, "$1");
+  brief = brief.replace(/封面级情绪收束：以\s*封面级情绪收束：以\s*/g, "封面级情绪收束：以 ");
+  const closingRule = "为基础，使用一个有力量的象征性主题画面，主体占据大部分画面；为一句收束性结论留出大面积空白。不得制作信息图、路线图、数据图、卡片或纪实证明场景。";
+  const firstClosingRule = brief.indexOf(closingRule);
+  const secondClosingRule = firstClosingRule < 0 ? -1 : brief.indexOf(closingRule, firstClosingRule + closingRule.length);
+  if (secondClosingRule >= 0) brief = brief.slice(0, secondClosingRule).trim();
+  return brief.slice(0, 1200);
+}
+
 function normalizeDirectorContract(value, page) {
   const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   const visualEvidence = jsonArray(page.visualEvidenceJson);
@@ -2397,6 +2856,22 @@ function normalizeDirectorContract(value, page) {
   }).filter(item => item.supports && item.form);
   const fallbackArchetype = fallbackPageArchetype(page);
   const ending = page.role === "ending";
+  const bodyPage = !["cover", "ending"].includes(page.role);
+  const bodyPictureFrameDirection = bodyPage
+    ? "正文页的写实插图必须是可替换的完整图片框：明确使用 16:9、4:3、方形或指定比例的矩形画面，保留主体完整、自然且不透明；图片与页面背景之间是清晰硬边，可用细实线或小圆角。禁止渐变蒙版、羽化、透明叠色、蓝色蒙层、图片向背景渐隐，以及在图片上压正文文字；标题、标签和连线放在图片框外。"
+    : "";
+  const bodyPictureFrameIntegration = bodyPage
+    ? "写实图片作为完整硬边图片框参与阅读路径，可用邻近文字或连线建立关系；不得将图片溶解成背景、长条渐隐图或文字底图。"
+    : "";
+  const bodyPictureQuantityDirection = bodyPage
+    ? "这里的正文插图指可单独替换的照片类硬边图片框，不是图表、时间线、图标或技术图。只要本页有可具体描绘的物体、工艺、环境或应用情境，默认使用至少两张不同插图：一张主视图和一张不同的细节、工序或语境图，不能裁同一场景凑数；两个或三个独立内容块则各有一张。纯事实图表、数据表或完整标注的技术机制图才可少于两张。最多三张插图，不能用一张无关配图装饰多个论点。"
+    : "";
+  const bodyPictureQuantityIntegration = bodyPage
+    ? "每张插图都必须是完整硬边照片框，并只服务一个具名内容块；主图与辅助图展示不同主体、细节、工序或语境，保持一条主阅读路径和一个主视觉锚点，不做无关拼贴。"
+    : "";
+  const bodyLayoutVariationDirection = bodyPage
+    ? "正文版式必须在 layout_blueprint.silhouette 中命名并执行合适的轮廓：主图加细节、三联故事带、照片锚点流程、双图对照、全景加证据带、图解加照片嵌图或纵向图片脊柱。相邻正文不得重复“左侧图解或卡片＋右侧一张竖图”。"
+    : "";
   const requestedArchetypeRaw = String(source.page_archetype || "");
   const requestedArchetype = requestedArchetypeRaw === "evidence-wall" && !visualEvidence.length
     ? "proof-summary"
@@ -2422,7 +2897,11 @@ function normalizeDirectorContract(value, page) {
     const matched = visualEvidence.find(item => need.evidence.test(visualEvidenceTextForPage(page, item)));
     return matched ? { label: need.label, evidence_id: matched.id, locator: matched.locator || "" } : null;
   }).filter(Boolean);
-  const requestedBrief = String(source.main_visual_brief || source.director_notes || `${page.title} 的主题化主视觉，服务于本页唯一结论`).slice(0, 1200);
+  const requestedBrief = dedupeDirectorMainVisualBrief(source.main_visual_brief || source.director_notes || `${page.title} 的主题化主视觉，服务于本页唯一结论`);
+  const webVisualSearch = normalizeWebVisualSearch(source.web_visual_search || source.web_visual_research, page, requestedBrief);
+  const webReferenceDirection = webVisualSearch.enabled && !requestedBrief.includes("网络视觉参考方向：")
+    ? `网络视觉参考方向：${webVisualSearch.queries.map(item => `${item.role === "primary" ? "主" : "辅"}视觉 ${item.required_subjects.length ? item.required_subjects.join("、") : item.query}`).join("；")}。参考只用于在同一次整页生成中重绘通用物体、材质、工艺或环境，不复制原图构图、文字、人物、Logo、机构或地点身份。`
+    : "";
   const endingLayout = {
     silhouette: "cover-level emotional close with one dominant thematic visual",
     title_zone: "标题或收束句置于大留白区，保持克制",
@@ -2436,8 +2915,10 @@ function normalizeDirectorContract(value, page) {
     proof_goal: String(source.proof_goal || page.purpose || page.conclusion || "让本页结论得到资料证据支持").slice(0, 700),
     visual_strategy: effectiveVisualStrategy,
     main_visual_brief: ending
-      ? `封面级情绪收束：以 ${requestedBrief} 为基础，使用一个有力量的象征性主题画面，主体占据大部分画面；为一句收束性结论留出大面积空白。不得制作信息图、路线图、数据图、卡片或纪实证明场景。`.slice(0, 1400)
-      : requestedBrief,
+      ? (requestedBrief.startsWith("封面级情绪收束：")
+        ? requestedBrief
+        : `封面级情绪收束：以 ${requestedBrief} 为基础，使用一个有力量的象征性主题画面，主体占据大部分画面；为一句收束性结论留出大面积空白。不得制作信息图、路线图、数据图、卡片或纪实证明场景。`).slice(0, 1400)
+      : [bodyPictureFrameDirection, bodyPictureQuantityDirection, bodyLayoutVariationDirection, requestedBrief, webReferenceDirection].filter(Boolean).join(" ").slice(0, 1400),
     visual_weight: visualWeight,
     visual_units: visualUnits.length || effectiveVisualStrategy === "typography"
       ? visualUnits
@@ -2450,7 +2931,12 @@ function normalizeDirectorContract(value, page) {
         relationship: effectiveVisualStrategy === "comparison" ? "contrast" : effectiveVisualStrategy === "process" || effectiveVisualStrategy === "timeline" ? "sequence" : "context",
         importance: "primary"
       }],
-    integration_rule: String(source.integration_rule || "让每个画面单元紧邻或贯穿其所支撑的文字，按本页语义建立一条阅读路径；不得把画面统一塞入固定的底部、右侧或背景图片区。").trim().slice(0, 1200),
+    integration_rule: [
+      bodyPictureFrameIntegration,
+      bodyPictureQuantityIntegration,
+      bodyLayoutVariationDirection,
+      String(source.integration_rule || "让每个画面单元紧邻或贯穿其所支撑的文字，按本页语义建立一条阅读路径；不得把画面统一塞入固定的底部、右侧或背景图片区。").trim()
+    ].filter(Boolean).join(" ").slice(0, 1200),
     primary_evidence_id: primaryEvidenceId,
     secondary_evidence_ids: secondaryEvidenceIds,
     evidence_priority: cleanStringList(source.evidence_priority, 6),
@@ -2466,6 +2952,7 @@ function normalizeDirectorContract(value, page) {
     protected_evidence_layout: protectedEvidenceLayout,
     icon_policy: page.role === "cover" || page.role === "ending" ? "none" : iconPolicy,
     card_policy: ending ? "avoid" : cardPolicy,
+    web_visual_search: webVisualSearch,
     authenticity_policy: String(source.authenticity_policy || "用户资料图片不进入最终页面；生成视觉只能作为主题化表达，不能冒充真实机构、产品、人物、客户现场或证明材料").slice(0, 800),
     forbidden_fabrication: Array.from(new Set([
       ...cleanStringList(source.forbidden_fabrication, 20),
@@ -2514,7 +3001,7 @@ async function planAdvancedRun(run, expectedUpdatedAt = null) {
     orderBy: { pageIndex: "asc" }
   });
   const pagePayload = pages.map(pagePlanPayload);
-  const prompt = `${skillBundle({ colorNeutral: run.paletteMode === "reference" })}
+  const prompt = `${skillBundle(run, { colorNeutral: run.paletteMode === "reference" })}
 
 --- 高级版单页导演 ---
 
@@ -2526,7 +3013,7 @@ ${advancedDirectorSkillBundle()}
 用途：${run.projectType || "未填写"}
 版式语言：${runStyleDirection(run)}
 用户整套高优先级要求：${run.referenceText || "无"}
-主题配色合同：${run.paletteContractJson}
+主题配色合同：${paletteContractForRun(run)}
 统一元素选项：${run.unityOptionsJson}
 逐页内容包：${JSON.stringify(pagePayload)}
 
@@ -2535,7 +3022,7 @@ ${advancedDirectorSkillBundle()}
   "outline":{"title":"","slides":[]},
   "visual_identity":{},
   "visual_storyboard":{"slides":[]},
-  "slide_image_specs":{"slides":[{"slide_index":1,"composition":"","main_visual":"","director_contract":{"unique_takeaway":"","page_archetype":"","proof_goal":"","visual_strategy":"conceptual-illustration|editorial-composition|fact-based-chart|timeline|process|comparison|typography","main_visual_brief":"","visual_weight":"text-led|balanced|visual-led","visual_units":[{"supports":"","form":"","relationship":"context|sequence|cause|contrast|mechanism|result|evidence","importance":"primary|supporting"}],"integration_rule":"","layout_blueprint":{},"icon_policy":"none|functional-only|limited-semantic","card_policy":"avoid|limited|justified-grid","authenticity_policy":"","forbidden_fabrication":[],"director_notes":""}}]}
+  "slide_image_specs":{"slides":[{"slide_index":1,"composition":"","main_visual":"","director_contract":{"unique_takeaway":"","page_archetype":"","proof_goal":"","visual_strategy":"conceptual-illustration|editorial-composition|fact-based-chart|timeline|process|comparison|typography","main_visual_brief":"","visual_weight":"text-led|balanced|visual-led","visual_units":[{"supports":"","form":"","relationship":"context|sequence|cause|contrast|mechanism|result|evidence","importance":"primary|supporting"}],"integration_rule":"","layout_blueprint":{},"icon_policy":"none|functional-only|limited-semantic","card_policy":"avoid|limited|justified-grid","web_visual_search":{"queries":[{"query":"concise English concrete object or process nouns for Wikimedia Commons","role":"primary|supporting","required_subjects":[""]}],"selection_rule":""},"authenticity_policy":"","forbidden_fabrication":[],"director_notes":""}}]}
 }
 
 要求：
@@ -2544,9 +3031,13 @@ ${advancedDirectorSkillBundle()}
 - sparse 用于封面和最后一页；standard 为普通正文；compact 必须做成高密度但有清楚分区的专业汇报页。最后一页无论包含价值、落地、路线、证据、指标或下一步，都必须压缩为有情绪力量的一句收束性结论和最多一条支撑语；只有用户明确锁定的原文例外。
 - 所有数字、日期和专名只能来自逐页内容包的 evidence。
 - 每页 director_contract 必须给出明确的 unique_takeaway、visual_strategy、main_visual_brief、visual_weight、visual_units、integration_rule 和版式骨架，让 Image2 只负责执行，不再自行理解原始资料。
-- 适合图像表达的正文页优先规划 1-3 个画面单元，高密度页最多 4 个；纯文字论证可以为 0 个。每个 visual_unit 必须明确支撑逐页内容包中的哪条正文、阶段、对比、机制、背景或结果，不能只写“配图”“科技图片”或情绪词。
+- 仅正文页的 director_contract 必须给出 web_visual_search：按本页 structure、main_visual_brief 和 visual_units 写 1–3 条简短英文检索词，供系统到公开图片库寻找“物体、材质、工艺或通用环境”的视觉参考。每条 query 必须是具体名词，不能是抽象气质词、机构名、人名、品牌、校名或事实声明；不得检索肖像、人物、Logo、机构招牌、公文、证书、报告、仪表盘或截图。封面与结尾页 queries 必须为空。
+- 网络图只会作为 Image2 在这一次完整页面生成中的视觉语义参考：它会被重新绘制、融合到新页面，而不是原图贴入、事实证据或第二次生图。把其主体、景别、材料和光线方向同时落实进 main_visual_brief；不要把检索字段当作观众可见文字。
+- 正文页的写实插图必须规划为一张或数张完整可替换的图片框：在 main_visual_brief 与 integration_rule 中写明 16:9、4:3、方形或指定比例的独立矩形区域、完整主体、自然不透明颜色与清晰硬边。严禁渐变蒙版、羽化、透明叠色、蓝色蒙层、向页面背景渐隐或在照片上压正文文字；文字、标签和连线放在图片框外。封面和结尾页不受此限制，继续采用强情绪的整合式主视觉。
+- 这里的“正文插图”专指可独立替换的完整照片类硬边图片框，不是流程图、时间线、图表、图标或装饰几何。只要本页有可具体描绘的物体、材料、工艺、环境或应用情境，必须默认规划至少两张不同插图：主视图加一张不同的细节、工序或语境图，不能裁同一场景凑数；有两个或三个彼此独立的具体痛点、阶段、案例或应用情境时，为每项规划一张不同插图。纯事实图表、纯数据表或已完整标注的技术机制图才可少于两张。照片类插图最多三张，不得用一张无关配图代替多个独立论点，也不得随机拼贴。
+- 适合图像表达的正文页优先规划 2-4 个画面单元，高密度页最多 4 个；普通具体内容页至少两个 unit 必须是上述照片类插图，纯文字论证、纯事实图表或完整技术机制图可以减少。每个 visual_unit 必须明确支撑逐页内容包中的哪条正文、阶段、对比、机制、背景或结果，不能只写“配图”“科技图片”或情绪词。使用多张照片类图片框时，最多为三个不同的具体主体各写一条英文 web_visual_search query。
 - 所有画面单元与文字必须在同一次 Image2 请求的一张完整页面图中共同构图。位置由 sequence、cause、contrast、mechanism、context、result 或 evidence 关系决定，不得固定为左文右图、上文下图或统一底部图片区。
-- 多个画面单元必须形成一个主次清楚的语义构图，不得拼贴互不相关的图片，也不得默认改成等权卡片阵列。
+- layout_blueprint.silhouette 必须从主图加细节、三联故事带、照片锚点流程、双图对照、全景加证据带、图解加照片嵌图或纵向图片脊柱中选择并具体说明；相邻正文页不得重复“左侧图解或卡片＋右侧一张竖图”。多个画面单元必须形成一个主次清楚的语义构图，不得拼贴互不相关的图片，也不得默认改成等权卡片阵列。
 - 用户上传资料中的图片只用于 GPT-5.6 读取文字和含义，不作为最终页面素材，不得输出 visual_evidence、protected_evidence_layout 或证据裁片计划。
 - problem-diagnosis 问题诊断页不得提前使用创新思路、技术路线或完整解决方案。证明、专利、合同和报告页应把已确认事实整理成克制的文字与数据叙事，不生成仿真的证书、合同或报告截图。
 - 严肃汇报、比赛和技术页面的通用装饰图标默认设为 none；真实证据不足时使用排版和中性几何，不生成假证据场景。
@@ -2573,7 +3064,7 @@ ${advancedDirectorSkillBundle()}
       title: page.title,
       role: page.role,
       content_summary: [page.purpose, ...blocks.map(block => [block.subtitle, block.content || block.instruction].filter(Boolean).join("：")), page.conclusion].filter(Boolean).join("\n").slice(0, 6000),
-      composition: `版式类型：${page.layoutType}；信息密度：${page.density}。 ${slide.composition}`,
+      composition: `版式类型：${page.layoutType}；信息密度：${page.density}。 ${slide.composition}${!["cover", "ending"].includes(page.role) ? " 正文写实插图使用完整、独立且可替换的硬边图片框；不得使用渐变蒙版、羽化、透明叠色或向背景渐隐。" : ""}`,
       text_density: density,
       must_include: audienceMustInclude(mustInclude.map(String), page.title).slice(0, 30),
       evidence: jsonArray(page.evidenceJson),
@@ -2666,7 +3157,7 @@ async function matchAdvancedRun(run) {
 }
 
 function planPrompt(run, sourceContext = "") {
-  return `${skillBundle()}
+  return `${skillBundle(run, { colorNeutral: run.paletteMode === "reference" })}
 
 你是 WZLCF 的 PPT 图组导演。请根据下面输入，先生成方案，不要生成图片。
 
@@ -2684,7 +3175,7 @@ ${run.referenceText || "无"}
 ${sourceContext || "无上传资料"}
 
 主题配色合同：
-${run.paletteContractJson || "{}"}
+${paletteContractForRun(run)}
 
 
 请返回 JSON object，结构必须是：
@@ -2707,6 +3198,7 @@ ${run.paletteContractJson || "{}"}
 - 不能编造资料中没有的数字、日期、人物、荣誉和结论。资料不足时宁可减少事实，也不能猜测。
 - 每页内容必须服务于明确结论，避免只有大标题、几个空泛卡片和大量无意义留白。
 - 使用配色参考图时只吸收色彩职责和气质，不照抄参考图的版式和内容。
+- 内置配色时，主题配色合同是固定色值的硬约束，不得根据项目主题、行业联想或“科技感”自行改成别的颜色。
 - 必须体现组图连续性和风格统一。`;
 }
 
@@ -2991,6 +3483,7 @@ async function processPptRun(run) {
 
 function buildStyleFingerprint(run, plan) {
   const identity = plan.visual_identity && typeof plan.visual_identity === "object" ? plan.visual_identity : {};
+  const paletteContract = run.paletteMode === "reference" ? safeJson(run.paletteContractJson, {}) : builtInPaletteContract(run);
   return {
     version: "wzlcf-style-contract-v1",
     project: run.projectName,
@@ -3001,7 +3494,7 @@ function buildStyleFingerprint(run, plan) {
       palette_source: run.paletteMode === "reference" ? "uploaded-reference-image" : "built-in-style-pack"
     },
     style_pack: runStyleDirection(run),
-    palette_contract: safeJson(run.paletteContractJson, {}),
+    palette_contract: paletteContract,
     unity_options: safeJson(run.unityOptionsJson, {}),
     palette: identity.palette || identity.colors || {},
     typography: identity.typography || identity.type_system || {},
@@ -3013,9 +3506,9 @@ function buildStyleFingerprint(run, plan) {
     spacing_and_grid: identity.spacing || identity.grid || {},
     locked_system: {
       rule: "所有页面必须共享同一配色职责、字体层级、页眉页脚位置、安全边距、网格、图片处理和几何语言；单页导演不得覆盖这些字段。",
-      ...(run.paletteMode === "reference" ? {
-        palette_enforcement: "只允许 palette_contract 中列出的颜色承担页面背景、文字、线条、几何和强调职责。不得从版式包、内容证据或模型偏好新增金、黄、橙、红、绿、紫等未列颜色。"
-      } : {}),
+      palette_enforcement: run.paletteMode === "reference"
+        ? "只允许 palette_contract 中列出的颜色承担页面背景、文字、线条、几何和强调职责。不得从版式包、内容证据或模型偏好新增金、黄、橙、红、绿、紫等未列颜色。"
+        : "内置配色的固定色值是硬约束。不得从项目主题、行业联想、写实插图或模型偏好新增未列颜色。",
       generic_icon_default: "zero for serious reports and competitions",
       equal_weight_card_grid_default: "forbidden unless page semantics require peer-level modules"
     },
@@ -3037,6 +3530,23 @@ function collectHexColors(value, colors = []) {
     Object.values(value).forEach(item => collectHexColors(item, colors));
   }
   return colors;
+}
+
+/**
+ * 参考图配色模式的色值清单校验。
+ *
+ * 参考图配色只以「本地提取出的色值 + 文字提示词」的方式生效，用户上传的参考图原文件
+ * 不作为 Image2 的输入。所以这里校验的是"本地是否成功提取出颜色"，而不是"有没有图可发"。
+ *
+ * 缺少色值时必须明确报错，不能静默退回内置配色或随机配色（见 palette-reference.md）。
+ */
+function requireReferencePalette(run, identity = {}) {
+  if (run.paletteMode !== "reference") return [];
+  const allowed = collectHexColors([safeJson(run.paletteContractJson, {}), identity]).slice(0, 8);
+  if (!allowed.length) {
+    throw new Error("参考图配色没有可用的色值清单：配色参考图未能解析出颜色。请返回修改任务资料并重新上传配色参考图。");
+  }
+  return allowed;
 }
 
 async function createDeckStyleStrip(fingerprint) {
@@ -3154,20 +3664,25 @@ function pageRenderContract(run, slide, planSlide, pagePlan, fingerprint, allSli
       instruction: "只延续全局色彩、字体气质、页眉页脚、背景纹理、卡片与装饰语言；不得复制相邻页内容。"
     },
     visual_reference_policy: {
-      palette_reference: run.paletteMode === "reference" ? "实际配色参考图会直接作为 Image2 输入，只学习颜色关系、明暗比例、饱和度和气质，不照抄内容或版式。" : "无上传配色参考图。",
+      palette_reference: run.paletteMode === "reference" ? "配色参考图原文件绝不作为 Image2 输入；仅使用本地提取并写入 palette_lock 的色值、明暗比例与文字规则。" : "无上传配色参考图。",
       deck_style_strip: "所有页面使用同一张本地生成的全局风格条带；它只表达配色职责、页眉页脚、网格、线条和几何语言，不含页面内容。",
       page_evidence: "用户资料图片只用于必要的 OCR 和语义理解，不作为 Image2 的页面素材；事实、数字和来源通过文字任务书传递。",
+      external_web_visual_references: run.generationMode === "advanced"
+        ? "仅正文页可按 director_contract.web_visual_search 从公开图片库取少量视觉参考。它们只让 Image2 理解通用物体、材质、工艺、景别和自然光，并在同一次整页请求中重新绘制融合；绝不贴入原像素、证明事实、传递原图文字/Logo/人物/地点身份，也不适用于封面或结尾页。"
+        : "快速版不检索或传入网络视觉参考。",
       generated_visuals: run.generationMode === "advanced"
         ? "可以依据 director_contract.main_visual_brief 和 visual_units，在同一次完整页面生成中创建一至多个主题化、象征性或概念性画面，也可以根据已确认数字绘制图表；每个画面必须服务其 supports 内容并遵守 integration_rule，不得冒充真实机构、真实产品、真实人物、真实客户现场或证明材料。"
         : "可以依据 director_contract.main_visual_brief 生成主题化、象征性或概念性视觉，也可以根据已确认数字绘制图表；不得冒充真实机构、真实产品、真实人物、真实客户现场或证明材料。",
       unprotected_area: "完整页面由 Image2 根据文字任务书构图。真实机构名称、Logo、校名招牌、产品型号、证书、合同、报告截图和新闻页面不得由模型虚构。",
       previous_slide: "只有用户点击更贴近上一页时才额外输入上一页成图，只对齐视觉语言。"
     },
-    palette_lock: run.paletteMode === "reference" ? {
-      mode: "exact-reference-palette",
+    palette_lock: {
+      mode: run.paletteMode === "reference" ? "exact-reference-palette" : "exact-built-in-palette",
       allowed_presentation_colors: allowedPalette,
-      rule: "页面背景、文字、线条、几何和强调色只能使用 allowed_presentation_colors；证据照片保留自身颜色，但不得从证据中抽取新颜色用于页面系统。禁止任何未列金色、黄色、橙色、红色、绿色或紫色强调。"
-    } : { mode: "built-in-style-pack" },
+      rule: run.paletteMode === "reference"
+        ? "页面背景、文字、线条、几何和强调色只能使用 allowed_presentation_colors；证据照片保留自身颜色，但不得从证据中抽取新颜色用于页面系统。禁止任何未列金色、黄色、橙色、红色、绿色或紫色强调。"
+        : "页面背景、文字、线条、几何和强调色只能使用 allowed_presentation_colors；不得根据项目主题、行业联想或模型偏好新增颜色。"
+    },
     render_rules: [
       "只生成一张完整 16:9 PPT 页面图片。",
       "标题和重要内容距离四边至少 6%，不得裁切。",
@@ -3182,12 +3697,15 @@ function pageRenderContract(run, slide, planSlide, pagePlan, fingerprint, allSli
       ] : []),
       "不得生成假产品、假人物、假现场、假实验、假合同、假证书、假奖项、假界面、假新闻或假客户证明。",
       "用户资料中的图片不得作为页面裁片或背景复用。概念视觉必须服从 main_visual_brief，并与事实文字明确区分。",
-      "不得生成可读的机构招牌、校名、Logo、产品铭牌、证书、合同、报告截图或客户证明；未提供真实图片时只能做象征性表达，不能伪装成纪实照片。",
+      "概念视觉默认真实写实：设备、工具、线缆、机械结构、自然环境、工艺流程、作业场景都要画得像真实存在的实物，禁止卡通、扁平矢量吉祥物、Q 版和剪贴画。",
+      "不得生成可读的机构招牌、校名、Logo、产品铭牌、公文（证书、合同、检测报告、专利页、盖章文件）、官方截图或客户证明；不得生成可辨认的真实人物肖像。写实画面表达的是“这个装置/工艺长什么样”，不是“这是我们现场的实拍记录”，因此画面中不得出现公章、文件抬头、可读编号等会让人误认为是凭证的元素。",
       endingSlide
         ? "本页是整份 PPT 的结尾：必须封面级强视觉、重情绪、少文字。除 immutable_content 中明确逐字锁定的内容外，只呈现一句收束性结论和最多一条短支撑语；禁止把路线、指标、证据、行动清单或正文段落堆入结尾页。"
         : "封面少文字、强视觉；正文页必须有清楚的信息层级。",
       `正文可见文字服从预算：最多约 ${visibleTextBudget.max_body_characters} 个中文字符、${visibleTextBudget.max_supporting_blocks} 个辅助内容区；先压缩 polish/direction 内容，不得缩成难读小字。`,
-      ...(run.paletteMode === "reference" ? [`参考图色板为硬约束：页面系统只允许 ${allowedPalette.join(", ")}。未列颜色不得用于标题、数字、线条、卡片或装饰，尤其不得自行添加金色、黄色、橙色或紫色。`] : []),
+      run.paletteMode === "reference"
+        ? `参考图色板为硬约束：页面系统只允许 ${allowedPalette.join(", ")}。未列颜色不得用于标题、数字、线条、卡片或装饰，尤其不得自行添加金色、黄色、橙色或紫色。`
+        : `内置色板为硬约束：页面系统只允许 ${allowedPalette.join(", ")}。不得根据主题自行添加其它颜色。`,
       `页码只能是统一页脚或角落的小号辅助信息，若出现必须准确写成 ${slide.slideIndex}/${allSlides.length}，不能成为标题旁的大号装饰。`,
       "只能渲染 immutable_content 和 editable_content 中提供的受众可见内容；不得把 JSON 字段名、证据文件名、来源位置、页面角色、内部说明或“资料中的明确证据/现场照片/待匹配资料”等制作备注画到页面上。",
       "除非 exact_visible_text 明确要求，不得自行添加 1)、2)、5)、6) 等步骤编号、页面内序号或重复标题；页码只能使用规定的小号 n/N 格式。"
@@ -3290,59 +3808,115 @@ async function openAiVisionBuffersJson(rawImages, instruction, options = {}) {
   }
 }
 
-async function openAiVisionBufferJson(raw, instruction, options = {}) {
-  return openAiVisionBuffersJson([raw], instruction, options);
+const maxQuickImagePromptBytes = 30_000;
+
+function compactQuickSlideSpec(value) {
+  const spec = value && typeof value === "object" ? value : {};
+  return {
+    title: compactPromptText(spec.title, 300),
+    role: compactPromptText(spec.role, 80),
+    content_summary: compactPromptText(spec.content_summary, 1800),
+    composition: compactPromptText(spec.composition, 1200),
+    main_visual: compactPromptText(spec.main_visual, 900),
+    text_density: compactPromptText(spec.text_density, 80),
+    white_space: compactPromptText(spec.white_space, 300),
+    must_include: compactPromptTextList(spec.must_include, { maxItems: 10, maxItemBytes: 300 }),
+    must_avoid: compactPromptTextList(spec.must_avoid, { maxItems: 8, maxItemBytes: 220 })
+  };
+}
+
+function compactQuickContinuity(value) {
+  const slide = value && typeof value === "object" ? value : {};
+  return {
+    slide_index: slide.slide_index,
+    title: compactPromptText(slide.title, 180),
+    role: compactPromptText(slide.role, 80),
+    composition: compactPromptText(slide.composition, 360),
+    main_visual: compactPromptText(slide.main_visual, 320)
+  };
+}
+
+function compactQuickVisualIdentity(run, value) {
+  const identity = lockedVisualIdentity(run, value);
+  return {
+    style_name: compactPromptText(identity.style_name, 180),
+    palette: { allowed_presentation_colors: run.paletteMode === "reference" ? requireReferencePalette(run, identity) : collectHexColors(builtInPaletteContract(run)) },
+    palette_rule: compactPromptText(identity.palette_rule, 280),
+    typography: compactPromptText(JSON.stringify(identity.typography || identity.type_system || {}), 500),
+    background: compactPromptText(JSON.stringify(identity.background || identity.background_system || {}), 500),
+    header_footer: compactPromptText(JSON.stringify(identity.header_footer || identity.headerFooter || {}), 360),
+    cards_and_shapes: compactPromptText(JSON.stringify(identity.card_system || identity.cards || identity.geometry || {}), 500),
+    motifs: compactPromptTextList(identity.motifs || identity.decorative_elements, { maxItems: 6, maxItemBytes: 140 }),
+    image_language: compactPromptText(JSON.stringify(identity.image_language || identity.imagery || {}), 500)
+  };
 }
 
 function slidePrompt(run, slide, instruction = "") {
-  const identity = safeJson(run.visualIdentityJson, {});
+  const identity = lockedVisualIdentity(run, safeJson(run.visualIdentityJson, {}));
   const storyboard = safeJson(run.visualStoryboardJson, {});
   const allSpecs = safeJson(run.slideImageSpecsJson, {});
   const spec = safeJson(slide.specJson, {});
   const previous = allSpecs.slides?.find(item => item.slide_index === slide.slideIndex - 1) || null;
   const next = allSpecs.slides?.find(item => item.slide_index === slide.slideIndex + 1) || null;
-  const finalSlideRule = run.generationMode === "advanced" && slide.role === "ending"
-    ? "- This is the advanced-mode final slide: make it a cover-level, emotionally conclusive close. Keep it sparse: one memorable closing statement and at most one short support line unless the slide explicitly locks exact text. Use one dominant symbolic thematic visual with generous whitespace. Never turn it into a roadmap, metric, evidence, card, chart, process, or body-content page."
-    : "- If this is the final slide or Role is ending, it must be a minimal emotional closing page like a cover: sparse content, strong closure, strong memory point, one headline-level takeaway, optional short subtitle, and no dense cards, charts, feature lists, process diagrams, or new arguments.";
-  return `Create one complete, premium 16:9 PPT slide image.
+  // 参考图配色：配色是本地从参考图里算出来的色值，只以文字形式随提示词发给模型，
+  // 参考图原文件不作为 Image2 的页面输入（两条链路一致）。
+  // 抽取逻辑与高级版 pageRenderContract 的 palette_lock.allowed_presentation_colors 保持一致。
+  const allowedPalette = run.paletteMode === "reference"
+    ? requireReferencePalette(run, identity)
+    : collectHexColors(builtInPaletteContract(run));
+  const paletteSource = run.paletteMode === "reference" ? "extracted from the user's reference image" : "the selected built-in style pack";
+  const prompt = `Create one complete, premium 16:9 PPT slide image.
 
 Project: ${run.projectName}
 Use case: ${run.projectType || "presentation"}
 Style pack: ${stylePackName(run.stylePack)}
 Slide ${slide.slideIndex}/${run.pageCount}: ${slide.title}
 Role: ${slide.role}
-
+Palette lock is exact. The theme palette is ${paletteSource}, and these are the only colors allowed on this page:
+${allowedPalette.join(", ")}
+Use them for backgrounds, surfaces, text, lines, geometry and accents. Never introduce a color outside
+this list — especially no gold, yellow, orange, red, green or purple accent that is not listed.
 Visual identity for the whole deck:
-${JSON.stringify(identity)}
+${JSON.stringify(compactQuickVisualIdentity(run, identity))}
 
 Storyboard for continuity:
-${JSON.stringify(storyboard)}
+${JSON.stringify({ rhythm: compactPromptText(storyboard.rhythm, 220), current_slide: compactQuickContinuity(storyboard.slides?.[slide.slideIndex - 1]) })}
 
 Current slide spec:
-${JSON.stringify(spec)}
+${JSON.stringify(compactQuickSlideSpec(spec))}
 
 Previous slide summary:
-${previous ? JSON.stringify(previous) : "start"}
+${previous ? JSON.stringify(compactQuickContinuity(previous)) : "start"}
 
 Next slide summary:
-${next ? JSON.stringify(next) : "end"}
+${next ? JSON.stringify(compactQuickContinuity(next)) : "end"}
 
 Regeneration instruction:
-${instruction || slide.lastInstruction || "none"}
+${compactPromptText(instruction || slide.lastInstruction || "none", 700)}
+
+Quick illustration rules (authoritative):
+${readSkill("quick-slide-rendering.md")}
 
 Hard requirements:
 - Output a full 16:9 PPT page, not a poster, not an isolated illustration.
+- **Every page must carry one dominant illustration occupying at least 25% of the canvas, and it must be the largest single element on the page.** Only two cases may go without: a chart page where the chart itself is the visual, and a pure data-table page. A page made only of text and small icons is a failure.
+- **Name the illustration's subject with concrete nouns taken from this page's spec.** Abstract nouns such as growth, innovation, cooperation or future are not valid subjects; they produce generic decorative shapes instead of a real picture.
+- **Render the illustration realistically by default** — photorealistic for equipment, sites, materials and processes, with a precise technical diagram when the page explains a mechanism. **Never cartoon, flat-vector, mascot or clip-art style.** Never fabricate documents (certificates, contracts, reports, patent pages, official seals, software screenshots), institution signage, logos, or identifiable real people.
 - The page must look like a real polished presentation slide with layout, title area, content hierarchy, refined background, and controlled whitespace.
-- Keep style consistent with the visual identity, including palette, card system, motifs, header/footer feel, and typography feel.
+- Keep style consistent with the visual identity, including palette, card system, motifs, header/footer feel, typography feel, and image language.
 - Keep continuity with the previous and next slide while still making this page visually distinct.
 - The visible slide title must not include page numbers or numeric prefixes. Do not render "05", "Page 5", "第5页", "5.", or similar large number badges beside the title.
 - If a page number is needed, make it a tiny consistent footer or corner detail only, never the main title element.
 - Keep every important title, chart, icon, and bottom banner inside a safe area at least 6% away from all edges. Nothing important may touch or be cut off by the canvas edge.
 - If the regeneration instruction says closer to the previous slide, only align header/footer, palette, background texture, card chrome, and decorative rhythm; never copy the previous slide's content, main visual, chart data, or full layout.
-${finalSlideRule}
+- If this is the final slide or Role is ending, it must be a minimal emotional closing page like a cover: sparse content, strong closure, strong memory point, one headline-level takeaway, optional short subtitle, and no dense cards, charts, feature lists, process diagrams, or new arguments.
 - Avoid gibberish blocks, watermarks, model signatures, random logos, copyrighted marks, and unrelated characters.
-- Use concise designed text only when needed. Prefer clean information blocks over long paragraphs.
+- Prefer concise designed text over long paragraphs. If space is tight, cut text — never shrink the illustration to make room for more text.
 - No browser UI, no chat UI, no screenshot frame unless the slide spec explicitly asks for it.`;
+  if (Buffer.byteLength(prompt, "utf8") > maxQuickImagePromptBytes) {
+    throw new Error("快速版页面制作说明超过 Image2 安全字节预算；请缩短本页可见文字后重新生成。本次未调用 Image2。");
+  }
+  return prompt;
 }
 
 async function generateSlide(run, slide, instruction = "") {
@@ -3352,6 +3926,8 @@ async function generateSlide(run, slide, instruction = "") {
     data: { status: "generating", error: null, lastInstruction: effectiveInstruction }
   });
   const prompt = slidePrompt(run, slide, effectiveInstruction);
+  // 参考图配色只以「本地提取出的色值 + 文字提示词」的方式生效（见 slidePrompt 的 Palette lock）。
+  // 参考图原文件不作为 Image2 的页面输入：实测过把资料图塞进成图会让页面与后贴图互相干扰。
   const raw = await openAiImage(prompt);
   const normalized = await sharp(raw)
     .resize(1920, 1080, { fit: "contain", background: "#061525" })
@@ -3379,6 +3955,17 @@ async function processGeneratingRun(run) {
     where: { runId: run.id },
     orderBy: { slideIndex: "asc" }
   });
+  // 重启恢复：同 processAdvancedGeneratingRun，见那里的说明。
+  const quickStaleBefore = Date.now() - (advancedImageTimeoutMs + 60_000);
+  const quickStaleSlides = slides.filter(slide => slide.status === "generating" && new Date(slide.updatedAt).getTime() < quickStaleBefore);
+  if (quickStaleSlides.length) {
+    console.warn(`Recovering ${quickStaleSlides.length} stale generating slide(s) for run ${run.id}`);
+    await Promise.all(quickStaleSlides.map(slide => db.deckGenerationSlide.update({
+      where: { id: slide.id },
+      data: { status: "queued", error: "" }
+    })));
+    for (const slide of quickStaleSlides) slide.status = "queued";
+  }
   const activeCount = slides.filter(slide => slide.status === "generating").length;
   const slots = Math.max(0, deckGenerationConcurrency - activeCount);
   const queued = slides.filter(slide => ["waiting", "queued"].includes(slide.status)).slice(0, slots);
@@ -3398,20 +3985,9 @@ async function processGeneratingRun(run) {
 
 async function advancedVisualReferences(run, slide, instruction) {
   const references = [];
-  if (run.paletteMode === "reference") {
-    const theme = await db.deckGenerationSource.findFirst({
-      where: { runId: run.id, kind: "theme", status: "completed" },
-      orderBy: { createdAt: "desc" }
-    });
-    if (!theme) throw new Error("高级版选择了参考图配色，但没有可交给 Image2 的有效配色参考图。请返回修改任务资料并重新上传。");
-    references.push({
-      buffer: await readFile(sourceFilePath(theme)),
-      mime: imageMimeType(theme.originalName || theme.storedName),
-      name: theme.originalName || "palette-reference.png",
-      storedName: theme.storedName,
-      role: "palette reference; learn colors, contrast, saturation and visual mood only"
-    });
-  }
+  // 参考图配色不在这里注入参考图原文件：配色只以本地提取出的色值与文字提示词生效。
+  // 这里只校验色值清单确实存在，缺少时明确报错。
+  requireReferencePalette(run);
 
   if (run.styleStripStoredName) {
     references.push({
@@ -3424,6 +4000,33 @@ async function advancedVisualReferences(run, slide, instruction) {
   }
 
   const contract = safeJson(slide.renderContractJson, {});
+  // This is intentionally not part of the user-source evidence route below.
+  // The source-reuse and protected-evidence switches stay false: public-web
+  // references can only teach Image2 a generic visual subject before it draws
+  // a new complete slide in this same request.
+  const webVisualReferences = await ensureWebVisualReferences(run, slide, contract);
+  for (const item of webVisualReferences) {
+    const storedName = String(item.stored_name || "");
+    if (!storedName || !existsSync(visualEvidenceFilePath(storedName))) continue;
+    references.push({
+      buffer: await readFile(visualEvidenceFilePath(storedName)),
+      mime: "image/png",
+      name: `web-${String(item.role) === "supporting" ? "supporting" : "primary"}-visual-reference.png`,
+      storedName,
+      kind: "external-web-reference",
+      width: Number(item.width || 0),
+      height: Number(item.height || 0),
+      webReference: {
+        sourceUrl: String(item.source_url || ""),
+        sourceTitle: String(item.source_title || ""),
+        license: String(item.source_license || ""),
+        attribution: String(item.source_attribution || ""),
+        query: String(item.query || ""),
+        role: String(item.role || "primary")
+      },
+      role: `external public-web ${String(item.role) === "supporting" ? "supporting" : "PRIMARY"} visual reference; learn only generic subject form, materials, scale, camera distance and natural-light direction, then redraw a new non-documentary visual for this page. Never copy its pixels, text, people, logos, labels, recognizable location, identity or complete composition; it is not factual evidence.`
+    });
+  }
   const primaryEvidenceId = String(contract?.director_contract?.primary_evidence_id || "");
   const secondaryEvidenceIds = normalizeArray(contract?.director_contract?.secondary_evidence_ids).map(String);
   const coverageByEvidenceId = new Map(normalizeArray(contract?.director_contract?.evidence_coverage)
@@ -3510,10 +4113,171 @@ async function advancedVisualReferences(run, slide, instruction) {
   return Array.from(new Map(references.map(reference => [reference.storedName, reference])).values());
 }
 
+const maxAdvancedImagePromptBytes = 30000;
+
+function compactPromptText(value, maximumBytes) {
+  const text = String(value || "").trim();
+  if (!text || Buffer.byteLength(text, "utf8") <= maximumBytes) return text;
+  const suffix = "…";
+  const usableBytes = Math.max(0, maximumBytes - Buffer.byteLength(suffix, "utf8"));
+  let result = "";
+  let usedBytes = 0;
+  for (const character of text) {
+    const characterBytes = Buffer.byteLength(character, "utf8");
+    if (usedBytes + characterBytes > usableBytes) break;
+    result += character;
+    usedBytes += characterBytes;
+  }
+  return result + suffix;
+}
+
+function compactPromptTextList(value, { maxItems, maxItemBytes }) {
+  return normalizeArray(value)
+    .slice(0, maxItems)
+    .map(item => compactPromptText(item, maxItemBytes))
+    .filter(Boolean);
+}
+
+function compactPromptLayout(value, level) {
+  const layout = value && typeof value === "object" ? value : {};
+  const itemBytes = level === 0 ? 320 : 180;
+  return {
+    silhouette: compactPromptText(layout.silhouette, itemBytes),
+    title_zone: compactPromptText(layout.title_zone, itemBytes),
+    primary_zone: compactPromptText(layout.primary_zone, itemBytes),
+    support_zone: compactPromptText(layout.support_zone, itemBytes),
+    reading_order: compactPromptTextList(layout.reading_order, {
+      maxItems: level === 0 ? 7 : 5,
+      maxItemBytes: itemBytes
+    })
+  };
+}
+
+function compactPromptStyle(value, level) {
+  const style = value && typeof value === "object" ? value : {};
+  const groupBytes = level === 0 ? 1500 : 700;
+  const compactGroup = key => compactPromptText(JSON.stringify(style[key] || {}), groupBytes);
+  return {
+    palette_contract: compactGroup("palette_contract"),
+    palette: compactGroup("palette"),
+    typography: compactGroup("typography"),
+    background: compactGroup("background"),
+    header_footer: compactGroup("header_footer"),
+    cards_and_shapes: compactGroup("cards_and_shapes"),
+    motifs: compactGroup("motifs"),
+    image_language: compactGroup("image_language"),
+    spacing_and_grid: compactGroup("spacing_and_grid"),
+    locked_system: compactGroup("locked_system")
+  };
+}
+
+function compactAdvancedImage2Contract(contract, level = 0) {
+  const strict = level > 0;
+  const immutable = contract?.immutable_content || {};
+  const editable = contract?.editable_content || {};
+  const visualIntent = contract?.visual_intent || {};
+  const director = contract?.director_contract || {};
+  const fingerprint = contract?.global_style_fingerprint || {};
+  const project = contract?.project || {};
+  const continuitySummary = item => {
+    if (!item || typeof item !== "object") return null;
+    return {
+      slide_index: item.slide_index,
+      title: compactPromptText(item.title, strict ? 80 : 120),
+      role: compactPromptText(item.role, 80),
+      key_message: compactPromptText(item.key_message || item.content_summary || item.story_goal, strict ? 220 : 420),
+      visual_change: compactPromptText(item.visual_change || item.composition, strict ? 140 : 240),
+      main_visual: compactPromptText(item.main_visual, strict ? 180 : 360)
+    };
+  };
+  const visualUnitBytes = strict ? 260 : 620;
+  const blocks = normalizeArray(editable.blocks).slice(0, strict ? 3 : 4).map(block => ({
+    subtitle: compactPromptText(block?.subtitle, strict ? 110 : 180),
+    instruction: compactPromptText(block?.instruction, strict ? 180 : 360),
+    content: compactPromptText(block?.content, strict ? 500 : 1100)
+  }));
+
+  return {
+    project: {
+      name: compactPromptText(project.name, strict ? 160 : 300),
+      use_case: compactPromptText(project.use_case, strict ? 180 : 420),
+      slide_index: project.slide_index,
+      total_slides: project.total_slides,
+      role: compactPromptText(project.role, 80)
+    },
+    user_priority_requirements: compactPromptText(contract?.user_priority_requirements?.deck_wide, strict ? 500 : 1100),
+    immutable_content: {
+      title: compactPromptText(immutable.title, strict ? 240 : 480),
+      exact_visible_text: compactPromptTextList(immutable.exact_visible_text, {
+        maxItems: strict ? 24 : 36,
+        maxItemBytes: strict ? 180 : 420
+      }),
+      warnings: compactPromptTextList(immutable.warnings, {
+        maxItems: strict ? 3 : 5,
+        maxItemBytes: strict ? 180 : 420
+      })
+    },
+    editable_content: {
+      purpose: compactPromptText(editable.purpose, strict ? 380 : 800),
+      blocks,
+      conclusion: compactPromptText(editable.conclusion, strict ? 380 : 800),
+      visible_text_budget: editable.visible_text_budget || {}
+    },
+    visual_intent: {
+      composition: compactPromptText(visualIntent.composition, strict ? 500 : 1000),
+      main_visual: compactPromptText(visualIntent.main_visual, strict ? 500 : 1000),
+      text_density: compactPromptText(visualIntent.text_density, 60),
+      white_space: compactPromptText(visualIntent.white_space, strict ? 220 : 480),
+      must_avoid: compactPromptTextList(visualIntent.must_avoid, {
+        maxItems: strict ? 6 : 12,
+        maxItemBytes: strict ? 150 : 300
+      })
+    },
+    director_contract: {
+      unique_takeaway: compactPromptText(director.unique_takeaway, strict ? 360 : 760),
+      page_archetype: compactPromptText(director.page_archetype, 100),
+      proof_goal: compactPromptText(director.proof_goal, strict ? 460 : 900),
+      visual_strategy: compactPromptText(director.visual_strategy, 100),
+      main_visual_brief: compactPromptText(director.main_visual_brief, strict ? 1000 : 2200),
+      visual_weight: compactPromptText(director.visual_weight, 100),
+      visual_units: normalizeArray(director.visual_units).slice(0, strict ? 3 : 5).map(unit => ({
+        supports: compactPromptText(unit?.supports, visualUnitBytes),
+        form: compactPromptText(unit?.form, visualUnitBytes),
+        relationship: compactPromptText(unit?.relationship, 80),
+        importance: compactPromptText(unit?.importance, 80)
+      })),
+      integration_rule: compactPromptText(director.integration_rule, strict ? 520 : 1100),
+      layout_blueprint: compactPromptLayout(director.layout_blueprint, level),
+      icon_policy: compactPromptText(director.icon_policy, 100),
+      card_policy: compactPromptText(director.card_policy, 100),
+      authenticity_policy: compactPromptText(director.authenticity_policy, strict ? 440 : 900),
+      forbidden_fabrication: compactPromptTextList(director.forbidden_fabrication, {
+        maxItems: strict ? 10 : 18,
+        maxItemBytes: strict ? 160 : 340
+      }),
+      director_notes: compactPromptText(director.director_notes, strict ? 280 : 650)
+    },
+    global_style_fingerprint: compactPromptStyle(fingerprint, level),
+    palette_lock: {
+      mode: compactPromptText(contract?.palette_lock?.mode, 80),
+      allowed_presentation_colors: compactPromptTextList(contract?.palette_lock?.allowed_presentation_colors, {
+        maxItems: 20,
+        maxItemBytes: 40
+      })
+    },
+    continuity: {
+      previous_slide: continuitySummary(contract?.continuity?.previous_slide),
+      next_slide: continuitySummary(contract?.continuity?.next_slide),
+      instruction: compactPromptText(contract?.continuity?.instruction, strict ? 180 : 400)
+    }
+  };
+}
+
 function advancedSlidePrompt(run, slide, contract, instruction, references = [], options = {}) {
   const pixelLockedReferences = references.filter(reference => /authentic page evidence/i.test(reference.role) && reference.pixelLockRequired !== false);
   const groundedRedrawReferences = references.filter(reference => reference.renderMode === "grounded-redraw");
   const styleGuideReferences = references.filter(reference => /palette reference|deck-wide style strip/i.test(reference.role));
+  const externalWebReferences = references.filter(reference => reference.kind === "external-web-reference");
   const referenceRoles = options.protectedEvidence
     ? [
       "1. protected evidence canvas: its locked areas already contain exact source evidence; do not cover, redraw, recolor, recreate, or replace them.",
@@ -3527,33 +4291,43 @@ function advancedSlidePrompt(run, slide, contract, instruction, references = [],
   const evidenceWallRule = String(contract?.director_contract?.page_archetype || "").toLowerCase() === "evidence-wall"
     ? "- This is an evidence wall. The complete evidence-wall body zone is already locked and final. Render only a clean title/subtitle above it and at most one concise conclusion/footer below it. Do not create cards, labels, icons, connectors, text, or decoration behind, between, beside, or over the locked evidence body."
     : "";
-  const paletteRule = run.generationMode === "advanced" && run.paletteMode === "reference"
+  const paletteRule = run.paletteMode === "reference"
     ? "- Palette lock is exact. Use only palette_lock.allowed_presentation_colors for presentation backgrounds, text, lines, geometry, and accents. Evidence photos may retain their own colors, but never borrow gold, yellow, orange, red, green, purple, or any other unlisted color for slide chrome or emphasis."
-    : "- Follow the global style fingerprint palette.";
+    : "- Palette lock is exact. Use only palette_lock.allowed_presentation_colors for presentation backgrounds, text, lines, geometry, and accents. Do not derive colours from the project subject, industry, style name, public-web visual references, or model preference. Any unlisted blue, gold, yellow, orange, red, green, or purple slide chrome is a failure.";
   const roleRule = slide.role === "ending"
     ? "- This is the final slide: make it a cover-level, emotionally conclusive close. Keep it sparse: one memorable closing statement and at most one short support line unless immutable exact text requires more. Use one dominant symbolic thematic visual with generous whitespace. Never turn it into a roadmap, metric, evidence, card, chart, process, or body-content page."
     : slide.role === "cover"
       ? "- This is the cover: keep it minimal and project-identifying, with one strong thematic hero visual and no body-page information grid. The hero may be symbolic or conceptual, but must not impersonate a real campus, product, customer site, institution sign, or logo."
       : "- This is a body slide: honor the contract's density and proof goal; keep enough substantive evidence to support the conclusion instead of forcing a sparse closing-page treatment.";
+  const bodyPictureFrameRule = !["cover", "ending"].includes(slide.role)
+    ? "- Body-page photorealistic visuals must be complete, replaceable picture frames: use an explicit 16:9, 4:3, square, or contract-specified rectangular crop with the full subject inside it, natural opaque colour, and a crisp hard edge against the slide background. A subtle solid border or small corner radius is allowed. Never use gradient masks, feathering, transparency, blue colour washes, image-to-background fades, or body copy over the image pixels. Put titles, labels, data, and connectors in the surrounding layout. A frame may be large or touch an outer edge, but it must remain a distinct complete asset rather than an atmospheric background. Keep technical diagrams and charts in equally clean hard-edged regions."
+    : "";
+  const bodyPictureQuantityRule = !["cover", "ending"].includes(slide.role)
+    ? "- A body-page photo insert means a separate complete, replaceable, photo-like hard-edged picture frame; it is not a diagram, timeline node, chart, icon, or decorative geometry. If this page has concrete objects, materials, processes, environments, or application contexts, render at least two distinct photo inserts: one primary view plus a different context, process, or detail view. Do not crop or repeat the same scene to meet the count. For two or three independent concrete cases, stages, pain points, or applications, give each named block its own distinct insert. Only a pure confirmed fact chart/data table or a fully annotated technical mechanism may have fewer than two. Use no more than three photo-like frames, retain one primary visual anchor, and never use one unrelated photo to decorate several independent claims."
+    : "";
   const visualCompositionRules = [
     "- Follow director_contract.visual_weight when balancing visible copy and imagery.",
     "- Generate every director_contract.visual_unit as part of this same complete slide image. There is no later image insertion or second visual-generation pass.",
     "- Bind each visual unit to the copy named in supports, and use relationship plus integration_rule to determine placement. Do not collect all visuals into a fixed bottom, right-side, or background media area.",
     "- Multiple visual units are allowed only when they form one semantic composition with a clear primary-secondary hierarchy. Never create an unrelated stock-image collage or an equal card grid by default.",
+    "- Execute director_contract.layout_blueprint.silhouette as a specific composition. Keep the deck-wide identity consistent but make adjacent body-page silhouettes visibly different; never default the deck to a left diagram/cards area plus one tall photo on the right.",
     "- Treat user_priority_requirements as high-priority production direction, never as audience-facing copy, factual evidence, or permission to violate palette and authenticity rules."
   ];
-  return [
+  const buildPrompt = image2Contract => [
     "Create one complete, premium 16:9 PPT slide image.",
     "",
     "This JSON is the complete handoff contract prepared by GPT-5.6. Follow it exactly. Do not reinterpret source documents and do not invent content:",
-    JSON.stringify(contract),
+    JSON.stringify(image2Contract),
     "",
     "Current regeneration or correction instruction:",
-    instruction || "none",
+    compactPromptText(instruction, 1200) || "none",
     "",
     "Input image reference roles in upload order:",
     referenceRoles,
-    "Palette references and the deck style strip are visual constraints only; never copy their text, facts, logos, people, or complete composition.",
+    "Input reference images are visual constraints only; never copy their text, facts, logos, people, or complete composition.",
+    externalWebReferences.length
+      ? "Public-web references are semantic visual research only. Re-render their generic objects, material texture, scale, camera distance and natural-light logic into a new anonymous scene or technical visual that serves this contract. Do not reproduce any reference pixels, caption, readable mark, person, architecture, site identity, distinctive layout or documentary claim. They are never evidence that the depicted thing belongs to this project."
+      : "",
     advancedSourceVisualReuseEnabled
       ? "References marked authentic page evidence are factual source material for this page. Preserve their identity and meaning."
       : "Uploaded content-source images are intentionally not supplied. Build the page from the confirmed text contract and art direction; never pretend a generated scene, document, product, person, campus, or customer site is authentic evidence.",
@@ -3568,6 +4342,8 @@ function advancedSlidePrompt(run, slide, contract, instruction, references = [],
     "- Never invent numbers, dates, names, awards, claims, logos, watermarks, signatures, or unrelated characters.",
     "- Make director_contract.unique_takeaway and director_contract.proof_goal visually clear. Execute director_contract.main_visual_brief with a deliberate focal point, framing, scale and whitespace direction.",
     ...visualCompositionRules,
+    bodyPictureFrameRule,
+    bodyPictureQuantityRule,
     "- Generated visuals are communication devices, not proof. Never add readable school or institution signage, logos, product labels, certificates, contracts, reports, dashboards, customer photos, awards, or news coverage that were not explicitly supplied as exact visible text.",
     "- Follow director_contract.icon_policy and card_policy. Generic decorative icons are zero by default; equal-weight card grids are not the default composition.",
     "- Only render user-facing text found inside immutable_content or editable_content. Never render JSON keys, evidence filenames, source locators, role names, prompt instructions, or invented navigation labels.",
@@ -3582,8 +4358,20 @@ function advancedSlidePrompt(run, slide, contract, instruction, references = [],
     "- Do not add internal sequence labels such as 1), 2), 5), 6), or repeat the title as a second heading unless exact_visible_text explicitly requires it.",
     paletteRule,
     roleRule,
-    "- Project: " + run.projectName + "; slide " + slide.slideIndex + "/" + run.pageCount + "."
+    "- Project: " + compactPromptText(run.projectName, 240) + "; slide " + slide.slideIndex + "/" + run.pageCount + "."
   ].join("\n");
+  // Contracts retain complete sources and provenance for auditability. Image2
+  // needs only the concise execution handoff. Keeping every render request
+  // below the relay's 32 KiB ceiling prevents a long factual source trail from
+  // spending minutes in the provider queue before it is rejected.
+  let prompt = buildPrompt(compactAdvancedImage2Contract(contract));
+  if (Buffer.byteLength(prompt, "utf8") > maxAdvancedImagePromptBytes) {
+    prompt = buildPrompt(compactAdvancedImage2Contract(contract, 1));
+  }
+  if (Buffer.byteLength(prompt, "utf8") > maxAdvancedImagePromptBytes) {
+    throw new Error("页面制作说明超过 Image2 安全字节预算；请缩短本页固定可见文字后重新生成。本次未调用 Image2。");
+  }
+  return prompt;
 }
 
 async function claimImageCall(run, slide, endpoint, referenceCount) {
@@ -3659,12 +4447,12 @@ async function generateAdvancedSlide(run, slide, instruction = "") {
   const image2References = references.filter(reference => reference.renderMode !== "grounded-redraw");
   const image2ReferenceCount = protectedEvidence ? 1 : image2References.length;
   const endpoint = image2ReferenceCount ? "/images/edits" : "/images/generations";
-  const imageCall = await claimImageCall(run, slide, endpoint, image2ReferenceCount);
-  let referenceTransport = "none";
-  let evidencePixelsRestored = false;
   const finalPrompt = advancedSlidePrompt(run, slide, contract, initialInstruction, references, {
     protectedEvidence
   });
+  const imageCall = await claimImageCall(run, slide, endpoint, image2ReferenceCount);
+  let referenceTransport = "none";
+  let evidencePixelsRestored = false;
   let finalImage;
   try {
     await db.deckGenerationSlide.update({
@@ -3737,6 +4525,17 @@ async function generateAdvancedSlide(run, slide, instruction = "") {
       grounded_redraw_sources_qa_only: references
         .filter(reference => reference.renderMode === "grounded-redraw")
         .map(reference => ({ evidence_id: reference.evidenceId, locator: reference.locator, source_name: reference.sourceName })),
+      external_web_visual_references: image2References
+        .filter(reference => reference.kind === "external-web-reference")
+        .map(reference => ({
+          query: reference.webReference?.query || "",
+          role: reference.webReference?.role || "primary",
+          source_title: reference.webReference?.sourceTitle || "",
+          source_url: reference.webReference?.sourceUrl || "",
+          source_license: reference.webReference?.license || "",
+          source_attribution: reference.webReference?.attribution || "",
+          use: "semantic reference only; re-rendered in the same final Image2 slide request"
+        })),
       protected_evidence: protectedEvidence ? {
         enabled: true,
         input_base: protectedEvidence.base,
@@ -3790,83 +4589,6 @@ async function generateAdvancedSlide(run, slide, instruction = "") {
   }
 }
 
-function xmlText(value) {
-  return String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-async function buildDeckContactSheet(slides) {
-  const columns = Math.min(4, Math.max(1, slides.length));
-  const tileWidth = 480;
-  const imageHeight = 270;
-  const labelHeight = 34;
-  const rows = Math.ceil(slides.length / columns);
-  const composites = [];
-  for (let index = 0; index < slides.length; index += 1) {
-    const slide = slides[index];
-    const raw = await readFile(path.join(imageRoot, path.basename(slide.storedName)));
-    const thumb = await sharp(raw).resize(tileWidth, imageHeight, { fit: "cover" }).png().toBuffer();
-    const left = (index % columns) * tileWidth;
-    const top = Math.floor(index / columns) * (imageHeight + labelHeight);
-    const label = Buffer.from(
-      '<svg width="' + tileWidth + '" height="' + labelHeight + '" xmlns="http://www.w3.org/2000/svg">' +
-      '<rect width="100%" height="100%" fill="#11161b"/>' +
-      '<text x="14" y="23" fill="#f4efe6" font-family="Arial" font-size="16">Slide ' +
-      String(slide.slideIndex).padStart(2, "0") + ' · ' + xmlText(slide.title).slice(0, 54) +
-      '</text></svg>'
-    );
-    composites.push({ input: thumb, left, top });
-    composites.push({ input: label, left, top: top + imageHeight });
-  }
-  return sharp({
-    create: {
-      width: columns * tileWidth,
-      height: rows * (imageHeight + labelHeight),
-      channels: 4,
-      background: "#11161b"
-    }
-  }).composite(composites).png().toBuffer();
-}
-
-function normalizeDeckAudit(result) {
-  const requested = String(result?.status || "").toLowerCase();
-  const status = requested === "pass" ? "pass" : requested === "manual_review" ? "manual_review" : "revise";
-  return {
-    version: "wzlcf-deck-audit-v1",
-    status,
-    score: Math.max(0, Math.min(100, Number(result?.score || 0))),
-    checks: result?.checks && typeof result.checks === "object" ? result.checks : {},
-    outlier_slides: normalizeArray(result?.outlier_slides).slice(0, 12).map(item => ({
-      slide_index: Number(item?.slide_index || 0),
-      severity: ["critical", "high", "medium", "low"].includes(String(item?.severity)) ? String(item.severity) : "medium",
-      issues: cleanStringList(item?.issues, 12),
-      correction_instruction: String(item?.correction_instruction || "").slice(0, 4000)
-    })).filter(item => Number.isInteger(item.slide_index) && item.slide_index > 0),
-    summary: String(result?.summary || "").slice(0, 2400),
-    checked_at: new Date().toISOString()
-  };
-}
-
-async function auditDeckConsistency(run, slides) {
-  const sheet = await buildDeckContactSheet(slides);
-  const summary = slides.map(slide => ({
-    slide_index: slide.slideIndex,
-    title: slide.title,
-    role: slide.role
-  }));
-  const instruction = [
-    "你是 GPT-5.6，只负责一次安静的 PPT 交付安全检查。图片已经生成，不得提出审美返工，也不得要求重新调用 Image2。",
-    "页面目录：",
-    JSON.stringify(summary),
-    "",
-    "只寻找会让文件无法交付的致命异常：空白或损坏页面、大面积乱码或正文完全不可读、明显伪造的可识别学校/机构招牌与 logo、伪造证书合同报告或产品标签、与页面标题直接冲突的画面、严重裁切导致核心内容消失。",
-    "配色、布局变化、文字多少、普通审美偏差、图标或卡片使用不理想都不属于本检查范围，不要标记。封面与结尾允许明显不同于正文页。",
-    "只有确认存在上述致命异常时才返回 manual_review，并只列出 critical 页面；其他情况一律 pass。不要给 Image2 修正指令。",
-    "只返回 JSON object：",
-    '{"status":"pass|manual_review","score":0,"checks":{"delivery_safety":""},"outlier_slides":[{"slide_index":1,"severity":"critical","issues":[],"correction_instruction":""}],"summary":""}'
-  ].join("\n");
-  return normalizeDeckAudit(await openAiVisionBufferJson(sheet, instruction, advancedTextOptions()));
-}
-
 async function processAdvancedGeneratingRun(run) {
   const slides = await db.deckGenerationSlide.findMany({
     where: { runId: run.id },
@@ -3879,6 +4601,19 @@ async function processAdvancedGeneratingRun(run) {
       data: { status: "completed", qualityStatus: "not_applicable", error: null, pendingImageCallKey: "" }
     })));
     return;
+  }
+  // 重启恢复：进程被杀时留在 generating 的页面，之前会永久占着并发名额
+  //（activeCount 只统计 generating，永远不会减少），于是整个任务再也画不下去。
+  // 判据用"单页超时 + 1 分钟"：活着的调用不可能超过超时时间，所以超过它的必然是孤儿。
+  const staleBefore = Date.now() - (advancedImageTimeoutMs + 60_000);
+  const staleSlides = slides.filter(slide => slide.status === "generating" && new Date(slide.updatedAt).getTime() < staleBefore);
+  if (staleSlides.length) {
+    console.warn(`Recovering ${staleSlides.length} stale generating slide(s) for run ${run.id}`);
+    await Promise.all(staleSlides.map(slide => db.deckGenerationSlide.update({
+      where: { id: slide.id },
+      data: { status: "queued", error: "" }
+    })));
+    for (const slide of staleSlides) slide.status = "queued";
   }
   const activeCount = slides.filter(slide => slide.status === "generating").length;
   const slots = Math.max(0, advancedDeckGenerationConcurrency - activeCount);
@@ -3922,49 +4657,122 @@ async function processAdvancedGeneratingRun(run) {
     return;
   }
 
-  const freshRun = await db.deckGenerationRun.findUnique({ where: { id: run.id } });
-  if (!freshRun) return;
-  const attempt = freshRun.deckQualityAttempts + 1;
-  const reviewRun = await db.deckGenerationRun.update({
+  // 交付安全检查已按 owner 要求删除（2026-09-30）。
+  // 原实现：全部页面完成后把所有页拼成一张缩略图，再调用一次 GPT-5.6 视觉检查。
+  // 删除理由：它只在通过时静默、不产生任何界面可见结果，却要占用串行的后台脚本
+  // 30–90 秒并多花一次视觉调用；发现异常时也只是提示，不修不重绘。
+  // 需要恢复的话看 git 历史（提交 1eeeb2f 及更早）。
+  await db.deckGenerationRun.update({
     where: { id: run.id },
-    data: { status: "review_ready", deckQualityStatus: "checking", finishedAt: new Date(), error: null }
-  });
-  let report;
-  try {
-    report = await auditDeckConsistency(freshRun, slides);
-  } catch (error) {
-    report = {
-      version: "wzlcf-deck-audit-v1",
-      status: "pass",
-      score: 0,
-      checks: { delivery_safety: "后台安全检查本次不可用，页面仍按 Image2 成图正常交付。" },
-      outlier_slides: [],
-      summary: "",
-      audit_error: error instanceof Error ? error.message : String(error),
-      checked_at: new Date().toISOString()
-    };
-  }
-  const criticalOutliers = report.outlier_slides.filter(outlier => outlier.severity === "critical");
-  const finalStatus = criticalOutliers.length ? "manual_review" : "pass";
-  const finalReport = {
-    ...report,
-    status: finalStatus,
-    outlier_slides: criticalOutliers
-  };
-  const criticalMessage = criticalOutliers.length
-    ? `后台安全检查发现第 ${criticalOutliers.map(item => item.slide_index).join("、")} 页存在严重异常，请先查看这些页面。`
-    : null;
-  await db.deckGenerationRun.updateMany({
-    where: { id: run.id, status: "review_ready", updatedAt: reviewRun.updatedAt },
     data: {
-      deckQualityStatus: finalStatus,
-      deckQualityReportJson: JSON.stringify(finalReport),
-      deckQualityAttempts: attempt,
-      error: criticalMessage
+      status: "review_ready",
+      deckQualityStatus: "disabled",
+      deckQualityReportJson: JSON.stringify({
+        version: "wzlcf-deck-audit-removed",
+        status: "disabled",
+        summary: "交付安全检查已于 2026-09-30 按 owner 要求删除，页面按 Image2 成图直接进入预览。"
+      }),
+      finishedAt: new Date(),
+      error: null
     }
   });
 }
+/**
+ * 并行调度器（DECK_PARALLEL_RUNS=1 时才用）。
+ *
+ * 串行版 tick() 的每个分支处理完就 return，而且要把整波出图 await 完才轮到下一个任务；
+ * 于是「别的任务在画图」会阻塞「这个任务解析资料 / 出方案 / 开始画图」。
+ * 这里改成：每一类任务各自认领、立刻返回，真正的工作在后台跑。
+ * inFlight 保证同一个任务不会被重复认领；同一页重复计费由 claimImageCall 的事务认领兜底。
+ */
+const inFlight = new Map();
+
+function launchTask(key, task, onError) {
+  if (inFlight.has(key)) return;
+  const promise = task()
+    .catch(error => onError(error))
+    .finally(() => { inFlight.delete(key); });
+  inFlight.set(key, promise);
+}
+
+async function markRunFailed(run, error) {
+  await db.deckGenerationRun.update({
+    where: { id: run.id },
+    data: { status: "failed", error: error instanceof Error ? error.message : String(error) }
+  }).catch(() => {});
+}
+
+async function tickParallel() {
+  await ensureDirs();
+
+  const sourceRun = await db.deckGenerationRun.findFirst({
+    where: { status: "sources_queued" },
+    orderBy: { createdAt: "asc" }
+  });
+  if (sourceRun) launchTask(`sources:${sourceRun.id}`, () => processSourcesRun(sourceRun), error => markRunFailed(sourceRun, error));
+
+  const matching = await db.deckGenerationRun.findFirst({
+    where: { status: "matching_queued" },
+    orderBy: { createdAt: "asc" }
+  });
+  if (matching) launchTask(`matching:${matching.id}`, () => matchAdvancedRun(matching), error => markRunFailed(matching, error));
+
+  const planning = await db.deckGenerationRun.findFirst({
+    where: { status: "queued" },
+    orderBy: { createdAt: "asc" }
+  });
+  if (planning) launchTask(`planning:${planning.id}`, () => planRun(planning), error => markRunFailed(planning, error));
+
+  // 出图：允许多个任务同时推进，全局张数由 imageSlot 闸门控制。
+  const generating = await db.deckGenerationRun.findMany({
+    where: { status: "generating" },
+    orderBy: { confirmedAt: "asc" },
+    take: parallelRunLimit
+  });
+  for (const run of generating) {
+    launchTask(
+      `generating:${run.id}`,
+      () => (run.generationMode === "advanced" ? processAdvancedGeneratingRun(run) : processGeneratingRun(run)),
+      error => markRunFailed(run, error)
+    );
+  }
+
+  // PDF 与 PPT 转换保持一次一个：它们要跑 Codia 与本地文件组装，
+  // 并发收益小、互相争抢临时文件的风险大。
+  const pdf = await db.deckGenerationRun.findFirst({
+    where: { status: "pdf_queued" },
+    orderBy: { finishedAt: "asc" }
+  });
+  if (pdf) {
+    launchTask(`pdf:${pdf.id}`, () => completePdf(pdf), async error => {
+      await db.deckGenerationRun.update({
+        where: { id: pdf.id },
+        data: { status: "review_ready", error: error instanceof Error ? error.message : String(error) }
+      }).catch(() => {});
+    });
+  }
+
+  const ppt = await db.deckGenerationRun.findFirst({
+    where: { status: { in: ["ppt_queued", "ppt_processing"] } },
+    orderBy: { finishedAt: "asc" }
+  });
+  if (ppt) {
+    launchTask(`ppt:${ppt.id}`, () => processPptRun(ppt), async error => {
+      const rawError = error instanceof Error ? error.message : String(error);
+      const quotaFailure = /insufficient|balance|quota|credit|payment|http 402|http 403|余额|额度/i.test(rawError);
+      const networkFailure = /fetch failed|enotfound|econn|etimedout|socket|tls|certificate|network/i.test(rawError);
+      const userMessage = quotaFailure
+        ? "Codia 账户额度不足，或当前 API Key/套餐无权执行 PDF 转 PPT。充值或修复权限后，可直接点击「重试生成 PPT」；预览图和 PDF 不会丢失。"
+        : networkFailure
+          ? `Codia 网络连接失败：本次没有收到 402/403 响应，因此不能判断为额度问题。请检查 CODIA_BASE_URL、CODIA_PROXY_URL 或网络后点击「重试生成 PPT」。预览图和 PDF 已保留。原始错误：${rawError}`
+          : rawError;
+      await db.deckGenerationRun.update({ where: { id: ppt.id }, data: { status: "failed", error: userMessage } }).catch(() => {});
+    });
+  }
+}
+
 async function tick() {
+
   await ensureDirs();
   const sourceRun = await db.deckGenerationRun.findFirst({
     where: { status: "sources_queued" },
@@ -4088,9 +4896,14 @@ const skipTick = process.env.DECK_GENERATION_SKIP_TICK === "1";
 const runOnce = process.env.DECK_GENERATION_RUN_ONCE === "1";
 if (!skipTick) {
   console.log(runOnce ? "Deck generation worker started in one-shot mode." : "Deck generation worker started.");
+  console.log(
+    parallelRunsEnabled
+      ? `Deck generation parallel mode ON: 最多同时推进 ${parallelRunLimit} 个任务，全局最多 ${globalImageConcurrency} 张图同时生成。`
+      : "Deck generation parallel mode OFF: 一次只处理一个任务（设 DECK_PARALLEL_RUNS=1 打开）。"
+  );
   while (true) {
     try {
-      await tick();
+      await (parallelRunsEnabled ? tickParallel() : tick());
     } catch (error) {
       console.error("Deck generation worker tick failed:", error);
     }

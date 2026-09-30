@@ -1,5 +1,7 @@
 import { existsSync, readFileSync } from "fs";
 import { mkdir, readdir, readFile, writeFile } from "fs/promises";
+import { createHmac } from "crypto";
+import { spawnSync } from "child_process";
 import path from "path";
 import sharp from "sharp";
 import JSZip from "jszip";
@@ -8,7 +10,8 @@ import {
   createServiceFetch,
   imageGenerationBody,
   requireImageService
-} from "./ai-service-client.mjs";
+} from "../shared/ai-service-client.mjs";
+import { createPptPolishSourcePages } from "./ppt-polish-source-pages.mjs";
 
 const root = process.cwd();
 loadEnv();
@@ -17,14 +20,42 @@ const workspaceRoot = path.join(root, "uploads", "employee-workspace");
 const documentRoot = path.join(workspaceRoot, "documents");
 const imageRoot = path.join(workspaceRoot, "images");
 const polishRunRoot = path.join(workspaceRoot, "ppt-polish-runs");
+// 只共享风格包定义（用户可见选项的唯一含义）；画面工程规则不共享，见下方说明。
 const workerHeartbeatPath = path.join(root, ".next-dev", "ppt-polish-worker-heartbeat.json");
-const pollMs = Math.max(1500, Number(process.env.PPT_POLISH_POLL_MS || 3000));
+const pollMs = Math.max(600, Number(process.env.PPT_POLISH_POLL_MS || 1200));
 const staleGeneratingMs = Math.max(60_000, Number(process.env.PPT_POLISH_STALE_GENERATING_MS || 60_000));
 const polishConcurrency = Math.min(4, Math.max(1, Number(process.env.PPT_POLISH_CONCURRENCY || 2)));
+// 任务级并发（默认关闭，保持既有串行行为）。
+// 打开后：一个任务在逐页重绘时，第二个任务也能同时开始，不再排队等前一个跑完。
+const parallelRunsEnabled = process.env.PPT_POLISH_PARALLEL_RUNS === "1";
+const parallelRunLimit = Math.max(1, Math.min(6, Number(process.env.PPT_POLISH_PARALLEL_RUN_LIMIT || 2)));
+// 全局图片闸门：所有任务加起来，同时在跑的 Image2 调用不超过这个数。
+// 每个任务自己的并发上限是 polishConcurrency；并行后总张数会翻倍，必须再有一道全局上限。
+const globalImageConcurrency = Math.max(1, Math.min(8, Number(process.env.PPT_POLISH_GLOBAL_IMAGE_CONCURRENCY || 3)));
 const imageService = aiImageConfig();
 const imageRequest = createServiceFetch(imageService);
 const externalRequest = createServiceFetch({ serviceName: "Codia", proxyUrl: process.env.CODIA_PROXY_URL || "" });
 const codiaBaseUrl = trimSlash(process.env.CODIA_BASE_URL || "https://openapi.codia.ai");
+// Image2 的全局闸门（与生成 PPT 那边同一套做法）。
+// 为什么需要：processGenerating 的并发上限是「每个任务」polishConcurrency 张；
+// 串行调度时全局最多就是这么多，一旦允许多个任务同时出图就会成倍打到中转站。
+function createImageSemaphore(limit) {
+  let active = 0;
+  const waiters = [];
+  return async function withImageSlot(task) {
+    if (active >= limit) await new Promise(resolve => waiters.push(resolve));
+    active += 1;
+    try {
+      return await task();
+    } finally {
+      active -= 1;
+      const next = waiters.shift();
+      if (next) next();
+    }
+  };
+}
+// 串行模式下不设闸门（保持既有行为一字不差）；并行模式下按全局上限收敛。
+const imageSlot = parallelRunsEnabled ? createImageSemaphore(globalImageConcurrency) : async task => task();
 let workerHeartbeatState = "starting";
 let workerHeartbeatTimer;
 
@@ -68,6 +99,19 @@ async function codiaRequest(url, init = {}, timeoutMs = 300000) {
 
 function nowName(extension) {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}.${extension}`;
+}
+
+function sourceFileToken(runId, expiresAt = Date.now() + 10 * 60 * 1000) {
+  const secret = process.env.ONLYOFFICE_JWT_SECRET || "development-onlyoffice-secret";
+  const value = `${runId}.${expiresAt}`;
+  const signature = createHmac("sha256", secret).update(value).digest("base64url");
+  return `${expiresAt}.${signature}`;
+}
+
+function sourceUrlForRun(run) {
+  const baseUrl = trimSlash(process.env.PPT_POLISH_APP_INTERNAL_URL || process.env.APP_INTERNAL_URL || process.env.APP_BASE_URL || "http://host.docker.internal:3000");
+  const token = sourceFileToken(run.id);
+  return `${baseUrl}/api/employee/services/${encodeURIComponent(run.serviceId)}/ppt-polish/runs/${encodeURIComponent(run.id)}/source?token=${encodeURIComponent(token)}`;
 }
 
 async function ensureDirs() {
@@ -147,16 +191,18 @@ function readableExternalFailure(error) {
 }
 
 async function openAiImage(prompt) {
+  // 所有美化出图都从这里走，所以全局闸门挂在这一处即可。
+  return imageSlot(() => requestOpenAiImage(prompt));
+}
+
+async function requestOpenAiImage(prompt) {
   requireImageService(imageService);
   const response = await imageRequest(`${imageService.baseUrl}/images/generations`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${imageService.apiKey}`
-    },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${imageService.apiKey}` },
     body: JSON.stringify(imageGenerationBody(imageService, prompt))
   });
-  const result = await response.json();
+  const result = await response.json().catch(() => ({}));
   if (!response.ok || !result.data?.[0]) throw new Error(providerError(result, "图片中转服务生成失败"));
   const image = result.data[0];
   if (image.b64_json) return Buffer.from(image.b64_json, "base64");
@@ -168,18 +214,24 @@ async function openAiImage(prompt) {
   throw new Error("图片中转服务没有返回图片内容");
 }
 
-function stylePackName(id) {
-  return ({
-    "blue-gold-tech": "蓝金科技",
-    "white-green-tech": "白绿科技",
-    "black-gold-business": "黑金商务",
-    "blue-purple-ai": "蓝紫 AI",
-    "red-white-government": "红白政企",
-    "minimal-academic": "极简学术",
-    "vivid-roadshow": "活力路演"
-  })[id] || id || "蓝金科技";
-}
-
+/**
+ * 美化 PPT 与生成 PPT 的规则边界（2026-09-27 owner 决定；2026-09-30 两轮收紧）
+ *
+ * 生成 PPT、美化 PPT、生图是三条独立产品线，不互相黏连。
+ * 现在的状态：**美化不读任何外部规则文件**，既不读 `skills/deck-generation/`，
+ * 也不读自己曾经的 `skills/ppt-polish/visual-redraw-system.md`（已删除）。
+ * 美化每页的提示词只由三样东西组成：用户写的要求、这一页原有的文字、本页在整套里的位置。
+ *
+ * 为什么连自己的规则也删掉（2026-09-30 owner 原话："这些提示词我都不需要用到这里，
+ * 只听用户的提示词命令"）：那些规则会和用户自己写的指令直接打架，例如
+ *   - 规则说"不要锁定任何风格/不要强制配色"，用户说"用蓝白色科技风"；
+ *   - 规则说"每页必须有 ≥25% 主导插图并出血"，用户说"文字图片内容不变"；
+ *   - 规则说"默认写实摄影、禁扁平矢量"，用户要的是设计感科技风；
+ *   - 规则说封面/结尾"文字极少"、"降低文字密度"，用户说"内容不变"。
+ * 模型会听更长更具体的规则，而不是听用户那两行——这就是"不听话"的根因。
+ *
+ * 要恢复任何一条旧规则，看 git 历史（c484d36 及更早）。
+ */
 function xmlText(value) {
   return String(value || "")
     .replace(/&lt;/g, "<")
@@ -252,118 +304,67 @@ function optionLines(options = {}) {
     decorativeElements: "统一装饰元素",
     reduceText: "降低文字密度，改成更清晰的信息层级"
   };
-  return Object.entries(labels).filter(([key]) => options[key]).map(([, label]) => `- ${label}`).join("\n") || "- 保持页面专业、清晰、统一";
+  return Object.entries(labels).filter(([key]) => options[key]).map(([, label]) => `- ${label}`).join("\n");
 }
 
-function slideRole(run, slide) {
-  if (slide.slideIndex === 1) return "cover";
-  if (slide.slideIndex === run.pageCount) return "ending";
-  return "content";
-}
-
-function visualSystemPrompt(run, slide) {
-  const role = slideRole(run, slide);
-  const base = [
-    "Global visual system lock:",
-    "- Use one consistent deck identity across every page: deep navy base, electric blue light trails, refined gold highlights, glassy dark cards, clean sans-serif Chinese typography, and the same icon stroke style.",
-    "- Keep background texture, header micro-labels, footer rhythm, page numbers, card radius, glow strength, and spacing language consistent with adjacent pages.",
-    "- Do not suddenly switch to a red/black, orange, purple, beige, cartoon, hand-drawn, or poster-only style. Even crisis/risk pages must stay in the blue-gold tech system; red is only a thin warning accent, not the dominant palette.",
-    "- Prefer fewer larger visual ideas over many small blocks. Avoid scattered decorations, mismatched illustration styles, and overloaded tiny text.",
-    "- Treat the deck as one premium conference keynote, not independent posters."
-  ];
-  if (role === "cover") {
-    base.push(
-      "Cover page special direction:",
-      "- Make the cover emotionally strong and eye-catching: one cinematic hero visual, strong depth, confident lighting, and clear focal point.",
-      "- Use very little text: main title, optional short subtitle, and at most three tiny metadata chips. Avoid dense timelines, paragraph cards, and explanatory blocks on the cover.",
-      "- The title should feel memorable and central; the visual should carry most of the impact."
-    );
-  } else if (role === "ending") {
-    base.push(
-      "Ending page special direction:",
-      "- Make the ending page emotional, spacious, and memorable. Use one large closing sentence or slogan as the main focus.",
-      "- Keep text minimal. If supporting points are needed, use no more than three short chips or cards.",
-      "- Use a stronger atmosphere than middle pages while still matching the same blue-gold tech identity."
-    );
-  } else {
-    base.push(
-      "Content page direction:",
-      "- Make the page readable and structured with clear hierarchy, but keep visual energy aligned with the cover and ending.",
-      "- Use charts, cards, timelines, or diagrams only when they help the detected content; avoid unnecessary text-heavy boxes."
-    );
-  }
-  return base.join("\n");
-}
-
-function previousVisualAnchor(slide) {
-  if (!slide?.prompt) return "No generated previous-page style anchor yet; follow the global deck visual system.";
-  const prompt = cleanText(slide.prompt, 1200);
-  return [
-    "Use this previous generated page prompt as a visual style anchor only.",
-    "Borrow its palette discipline, density, header/footer rhythm, glass card language, glow direction, and icon style.",
-    "Do not copy previous-page text, data, charts, characters, or exact composition.",
-    prompt
-  ].join("\n");
-}
-
+/**
+ * 美化单页提示词 = 用户的要求 + 这一页的原文，**不掺任何我们自己的画面规则**。
+ *
+ * 2026-09-30 owner 决定：删掉以前偷偷加进去的那一整套规则
+ *（"不要锁定风格/不要强制配色"、"每页必须有 ≥25% 主导插图并出血"、"默认写实摄影、禁扁平"、
+ *  封面/结尾"文字极少"、"降低文字密度"、"不确定中文就用短标签"、"把并列项改成流程链" 等），
+ * 理由是它们和用户自己写的"文字图片内容不变 / 用蓝白科技风"直接打架，模型会听规则不听用户。
+ *
+ * 现在只剩三段事实：用户要求（最高优先级）、本页原有文字（供参考）、本页在整套里的位置。
+ * 要恢复任何一条旧规则，看 git 历史（c484d36 及更早）。
+ */
 function slidePrompt(run, slide, previous, next) {
   const wantsPreviousAnchor = /Action:\s*closer_previous/i.test(slide.lastInstruction || "");
-  return `Create one complete premium 16:9 PowerPoint slide image.
+  const requirements = [
+    run.note ? `- 整套要求：${run.note}` : "",
+    slide.note ? `- 本页要求：${slide.note}` : "",
+    optionLines(run.options),
+    slide.lastInstruction ? `- 本次返工指令：${slide.lastInstruction}` : ""
+  ].filter(Boolean).join("\n");
+  return `Create one complete 16:9 PowerPoint slide image for this PPT page.
 
-This is a PPT polish/redesign task. Rebuild the current slide as a polished presentation page, not a poster and not a screenshot.
+User requirements (highest priority — follow them exactly; nothing else overrides them):
+${requirements || "- 按原页面内容重绘，保持原有信息、结构与风格。"}
 
-Deck source file: ${run.sourceName}
-Target style: ${stylePackName(run.stylePack)}
-Slide: ${slide.slideIndex}/${run.pageCount}
-Detected slide title/text:
-${slide.originalText || slide.title}
+This page's original text (reference only, so you know what the page contains):
+${slide.originalText || slide.title || "(本页没有可提取的文字)"}
 
-Overall polish direction:
-${run.note || "Make the deck more polished, consistent, readable, and presentation-ready."}
+Page ${slide.slideIndex} of ${run.pageCount}. Source file: ${run.sourceName}.
+Previous page text (context only): ${previous?.originalText || "none"}
+Next page text (context only): ${next?.originalText || "none"}${wantsPreviousAnchor && previous?.prompt ? `
 
-Current slide specific request:
-${slide.note || "No extra page-level request."}
-
-Regeneration instruction:
-${slide.lastInstruction || "None."}
-
-Selected requirements:
-${optionLines(run.options)}
-
-Visual consistency requirements:
-${visualSystemPrompt(run, slide)}
-
-Previous generated page visual anchor:
-${wantsPreviousAnchor ? previousVisualAnchor(previous) : "Use the previous page only for broad continuity; prioritize the current slide request."}
-
-Previous slide context:
-${previous?.originalText || "start"}
-
-Next slide context:
-${next?.originalText || "end"}
-
-Hard requirements:
-- Output exactly one full 16:9 PPT page with refined layout, title hierarchy, content blocks, background, and safe margins.
-- Preserve the original meaning. If numbers, dates, names, or important labels exist in the detected text, keep them readable and do not invent conflicting data.
-- Avoid dense paragraphs. Use concise designed text, cards, diagrams, timelines, charts, or structured blocks where appropriate.
-- Keep all important text and visuals inside a 6% safe area. Nothing important may touch or be cut off by the canvas edge.
-- Keep continuity across pages: same palette, header/footer rhythm, typography feeling, card language, icon style, glow color, and decorative language.
-- For regeneration, obey the requested redesign route. The new page must be visibly different from the previous generated version unless the instruction explicitly asks only for closer continuity.
-- Do not include watermarks, model signatures, browser UI, chat UI, random logos, or unrelated characters.
-- If exact Chinese text is uncertain, use short legible Chinese labels based on the detected text rather than gibberish.`;
+The user asked this page to stay closer to the previous generated page. Previous page prompt (style anchor only, do not copy its text or composition):
+${cleanText(previous.prompt, 1200)}` : ""}`;
 }
 
 async function prepareRun(run) {
   run = await writeRun(run, { status: "planning", error: "" });
-  const extracted = await extractPptxSlides(run.sourceStoredName);
+  const sourcePath = path.join(documentRoot, path.basename(run.sourceStoredName));
+  const sourceSnapshot = run.options?.convertSourcePages === false ? undefined : (run.sourceSnapshot?.pageCount
+    ? run.sourceSnapshot
+    : await createPptPolishSourcePages({
+      run,
+      sourcePath,
+      sourceUrl: sourceUrlForRun(run),
+      runRoot: polishRunRoot,
+      onlyOfficeUrl: process.env.PPT_POLISH_ONLYOFFICE_URL || process.env.ONLYOFFICE_URL || "http://localhost:18080",
+      onlyOfficeSecret: process.env.ONLYOFFICE_JWT_SECRET || "development-onlyoffice-secret"
+    }));
+  const extracted = run.slides?.length ? run.slides : await extractPptxSlides(run.sourceStoredName);
   const slides = extracted.map(slide => ({
     ...slide,
     note: pageNoteFor(slide.slideIndex, run.pageNotes)
   }));
   return writeRun(run, {
-    status: "generating",
+    status: "source_ready",
     pageCount: slides.length,
     slides,
+    sourceSnapshot,
     error: ""
   });
 }
@@ -418,6 +419,7 @@ async function processGenerating(run) {
     const activeSlides = run.slides.filter(slide => activeIndexes.has(slide.slideIndex));
     const results = await Promise.all(activeSlides.map(slide => generateSlideAsset(run, slide)));
     const latest = await readRunFile(`${run.id}.json`).catch(() => run);
+    if (latest.status === "cancelled") return latest;
     const resultMap = new Map(results.map(result => [result.slideIndex, result]));
     const mergedSlides = (latest.slides || []).map(slide => {
       const result = resultMap.get(slide.slideIndex);
@@ -674,6 +676,37 @@ async function processRun(run) {
   }
 }
 
+/**
+ * 并行调度器（PPT_POLISH_PARALLEL_RUNS=1 时才用）。
+ *
+ * 串行版 tick() 一次只挑一个任务，而且要 await 完整个 processRun（可能几十页）才轮到下一个；
+ * 于是「第一个任务没画完，第二个任务根本不会开始」。
+ * 这里改成：每轮挑最多 parallelRunLimit 个任务，各自在后台跑；
+ * inFlight 保证同一个任务不会被重复认领（同一页的重复计费由 staleGeneratingMs 与
+ * run 文件里的 slides 状态兜底）。
+ */
+const inFlight = new Map();
+
+function launchRun(run) {
+  if (inFlight.has(run.id)) return;
+  const promise = processRun(run)
+    .catch(error => { console.error(`PPT polish run ${run.id} failed:`, error); })
+    .finally(() => { inFlight.delete(run.id); });
+  inFlight.set(run.id, promise);
+}
+
+async function tickParallel() {
+  const activeStatuses = new Set(["confirmed", "planning", "generating", "pdf_queued", "ppt_queued", "ppt_processing"]);
+  const runs = (await listRuns()).filter(item => activeStatuses.has(item.status) && canProcessRun(item));
+  const selected = runs.slice(0, parallelRunLimit);
+  if (!selected.length) {
+    await writeWorkerHeartbeat(parallelRunsEnabled ? "parallel-idle" : "idle");
+    return;
+  }
+  for (const run of selected) launchRun(run);
+  await writeWorkerHeartbeat(`parallel:${inFlight.size}/${parallelRunLimit}`);
+}
+
 async function tick() {
   const activeStatuses = new Set(["confirmed", "planning", "generating", "pdf_queued", "ppt_queued", "ppt_processing"]);
   const runs = await listRuns();
@@ -694,11 +727,28 @@ function canProcessRun(run) {
 }
 
 console.log(`PPT polish worker polling ${polishRunRoot}`);
+console.log(
+  parallelRunsEnabled
+    ? `PPT polish parallel mode ON: 最多同时推进 ${parallelRunLimit} 个任务，全局最多 ${globalImageConcurrency} 张图同时生成。`
+    : "PPT polish parallel mode OFF: 一次只处理一个任务（设 PPT_POLISH_PARALLEL_RUNS=1 打开）。"
+);
+// PPT 转 PNG 依赖外部程序 pdftoppm。启动时就把结果打出来：
+// 这个报错以前只在任务跑到一半时才出现，而且原文是 "spawn pdftoppm ENOENT"，很难定位。
+{
+  const pdfToPpm = process.env.PDFTOPPM_PATH || "pdftoppm";
+  const probe = spawnSync(pdfToPpm, ["-v"], { stdio: "ignore", windowsHide: true });
+  const available = !probe.error && probe.status === 0;
+  console.log(
+    available
+      ? `PPT 转 PNG: 可用（${pdfToPpm}）`
+      : `PPT 转 PNG: 不可用 —— 找不到 ${pdfToPpm}。请在 .env 里把 PDFTOPPM_PATH 设为 pdftoppm.exe 的绝对路径后重启本脚本。`
+  );
+}
 await writeWorkerHeartbeat("started");
 startWorkerHeartbeat();
 for (;;) {
   try {
-    await tick();
+    await (parallelRunsEnabled ? tickParallel() : tick());
   } catch (error) {
     console.error("PPT polish worker tick failed:", error);
   }

@@ -4,6 +4,9 @@
 > 本文档的目标：让你打开任何一个文件夹都知道它是干什么的、能不能动、动了影响谁。
 > 配套文档：`AGENTS.md`（规则）、`docs/current-project-memory.md`（当前功能状态）、
 > `components/employee/README.md`（员工端模块索引）。
+>
+> ⭐ **想知道"某个模式有哪些文件"请看 `docs/feature-file-map.md`（功能 → 文件对照表）。**
+> 本文件按**目录**组织（一个文件夹是干什么的）；那份按**功能**组织（一个模式涉及哪些文件）。两者互补。
 
 ---
 
@@ -26,7 +29,7 @@
 ## 二、顶层全景图（16 个目录 + 22 个根文件）
 
 > 数字核对时间：2026-09-14。目录 16 个、根文件 22 个、`lib` 26 个文件、
-> `scripts` 29 个、`components\employee` 21 个、`app\employee\styles` 9 个、
+> `scripts` 29 个、`components\employee` 23 个、`app\employee\styles` 9 个、
 > `docs` 8 个（含本文件）、`skills` 递归 17 个、`app\api` 下 74 个 `route.ts`。
 
 ```
@@ -34,7 +37,7 @@ D:\PPTagent
 │
 ├─ 【界面层】
 │   ├─ app\                     Next.js 页面与 74 条接口  ← 3 文件 + api/ + employee/
-│   ├─ components\              前端界面代码（2 个入口 + employee/ 21 个模块）
+│   ├─ components\              前端界面代码（2 个入口 + employee/ 23 个模块）
 │   └─ public\                  浏览器直接访问的静态文件（品牌图、插件）
 │
 ├─ 【业务层】
@@ -73,8 +76,9 @@ D:\PPTagent
 │   └─ .npm-cache\              792 MB 下载缓存
 │
 ├─ 【遗留 / 旁支】
-│   ├─ supabase\                另一套"报名+预约"业务的建表脚本（未接主链路）
-│   └─ 抠图准备工作skill\        外部技能素材（其中 1 个文件被后台脚本读取，见下）
+│   └─ supabase\                另一套"报名+预约"业务的建表脚本（未接主链路）
+│                               ⚠️ 不要删：scripts\supabase-migrate.mjs 会读它，package.json 有 supabase:migrate / supabase:sync
+│       （原 抠图准备工作skill\ 已于 2026-09-27 删除：只被死代码引用）
 │
 └─ 根目录散文件（清单见第七节）
 ```
@@ -219,7 +223,7 @@ app\api\
 | `components\employee-app.tsx` | 422 | ⭐ **员工工作台外壳**（改造前 3753 行，现在只剩骨架 + 常量 + `DesignStudio`） |
 | `components\README.md` | — | 目录说明，改代码前先读 |
 
-### 4.2 `components\employee\`（21 个模块，2026-09-14 拆出来的）
+### 4.2 `components\employee\`（23 个模块：17 个 .tsx 面板 + 5 个 .ts + README）
 
 这是本项目模块化改造的核心成果。**每一块可以单独派人改，互不影响。**
 
@@ -240,8 +244,10 @@ components\employee\
 │   ├─ onlyoffice-editor.tsx       ONLYOFFICE 在线编辑器外壳（可拖入 PPTX 替换）
 │   ├─ material-rail.tsx           底部素材栏（分页、批量导入、订单素材总库）
 │   ├─ ppt-paste-tray.tsx          粘贴托盘（把图片放进剪贴板，在 PPT 里 Ctrl+V）
-│   ├─ tools-ai-panels.tsx         AI 创作助手 + 图片工具（抠图/图片转 PPT/PPT 提取图片）
-│   └─ tools-ai-types.ts           上面这个模块的类型
+│   ├─ ai-assistant-panel.tsx      生图 / AI 创作助手（2026-09-27 按模式拆出）
+│   ├─ image-tools-panel.tsx       图片工具（抠图 / 图片转 PPT / 提取图片）
+│   ├─ tools-ai-shared.ts          上面两个面板共用的小工具
+│   └─ tools-ai-types.ts           图片工具面板的类型
 │
 ├─ 【生成 PPT 链路】
 │   ├─ deck-generation-form.tsx    创建表单（快速版/高级版、大纲、资料、配色、统一元素）
@@ -283,7 +289,8 @@ components\employee\
 | `use-smart-studio-runs.ts` | 258 | ⭐ 智能模式三条链路（设计/生成/美化）的状态与请求编排 |
 | `employee-permissions.ts` | 63 | 角色与功能的中文名、各角色默认权限 |
 | `employee-deck-shared.ts` | 118 | 生成 PPT 面板共用：状态文案、文件体积格式化、逐页草稿构造 |
-| `employee-deck-constants.ts` | 36 | 风格包与版式语言清单（⚠️ 必须与后台脚本的白名单同步） |
+| `employee-deck-packs.mjs` | 80 | ⭐ **风格包 id 的唯一真源**（4 个风格包 + 4 个版式语言 + 默认值）。`.mjs` 是为了让 `.tsx`/`.ts` 与 `.mjs` worker 都能直接 import；`lib/employee-deck-constants.ts` 只做重新导出 |
+| `employee-deck-constants.ts` | 46 | 界面用常量：从 `employee-deck-packs.mjs` 重新导出风格包/版式语言清单、合法 id `Set`、默认风格包 id，外加"统一元素"默认勾选项 |
 | `ai-providers.ts` | 比较长 | 文字/图片两条 AI 中转的服务端配置边界 |
 | `wechat.ts` / `wecom.ts` | — | 微信、企业微信身份读取（密钥只在服务端） |
 | `employee-workspaces.ts` | 78 | 单学校 / 多学校工作区配置 |
@@ -331,7 +338,7 @@ components\employee\
 
 ## 六、后台层：`scripts\` + `skills\`
 
-### 6.1 `scripts\`（29 个文件）
+### 6.1 `scripts\`（顶层 23 项 + `workers\` 下 7 个脚本）
 
 **A 组｜启动脚本（你日常要用的）**
 
@@ -346,17 +353,26 @@ components\employee\
 | `next-with-env-proxy.mjs` | — | 用项目环境变量启动 Next 的包装 |
 | `init-db.mjs` | `npm run db:init` | ⭐ **建表脚本**（只建表，不塞演示数据） |
 
-**B 组｜后台执行脚本（真正干活的，互相不 import，可以分别派人改）**
+**B 组｜后台执行脚本 `scripts\workers\`（按模式分目录，互相不 import，可以分别派人改）**
 
-| 文件 | 行数 | 作用 |
-| --- | --- | --- |
-| `deck-generation-worker.mjs` | 4093 行 | ⭐ **生成 PPT 全流程**：读资料 → GPT 规划 → Image2 逐页出图 → 合成 PDF → Codia 转 PPTX |
-| `deck-source-parser.mjs` | — | 解析 PDF / Word / Excel / PPTX / 文本，保留来源页码 |
-| `ppt-polish-worker.mjs` | — | 美化 PPT：逐页重绘并出预览图 |
-| `design-agent-worker.mjs` | 1695 行 | 单页智能设计与旧生图链路（**含 11 个从未使用的函数，是 lint 警告的来源**） |
-| `image-explode-worker.mjs` | — | 图片炸开/组件拆图任务 |
-| `ai-service-client.mjs` | 176 行 | 后台脚本共用的 AI 中转调用层 |
-| `design-agent-skills.mjs` | — | 给设计脚本读技能文档的工具 |
+> 2026-09-27 起按**模式**分目录。加脚本时放进对应模式目录，不要平铺回 `scripts\`。
+
+```
+scripts\workers\
+├─ shared\ai-service-client.mjs                    172 行   ⭐ 共用网络层（allowH2:false 在这里）
+├─ deck-generation\
+│   ├─ deck-generation-worker.mjs                  ⭐ 生成 PPT 全流程：读资料 → GPT 规划 → Image2 逐页出图 → PDF → Codia 转 PPTX
+│   └─ deck-source-parser.mjs                      解析 PDF / Word / Excel / PPTX / 文本，保留来源页码
+├─ ppt-polish\
+│   ├─ ppt-polish-worker.mjs                       美化 PPT：源页快照 + 逐页重绘（**不读任何规则文件**，提示词只由用户写的内容组成）
+│   └─ ppt-polish-source-pages.mjs                 把 PPTX 本地转成按页 PNG，作为重绘输入与"原页面"基准
+├─ design-agent\
+│   ├─ design-agent-worker.mjs                     单页智能设计与生图链路
+│   └─ design-agent-skills.mjs                     设计脚本的技能文档读取工具
+└─ image-explode\image-explode-worker.mjs          图片炸开/组件拆图任务
+```
+
+`shared\` 的改动要回归全部 worker；模式目录内的改动只看自己那条链路。
 
 **C 组｜图片拆解相关的本地工具（可选，需要时才用）**
 
@@ -364,36 +380,41 @@ components\employee\
 `setup-sam3-weights.mjs` / `check-sam3.mjs` /
 `setup-grounded-sam2.mjs` / `check-grounded-sam2.mjs` / `check-image-gpu.mjs`
 
-**D 组｜运维与测试脚本**
+**D 组｜运维、检查与测试脚本**
 
+`check-style-packs.mjs`（⭐ 风格包一致性检查，已接入 `npm run verify:check`）、
 `storage-report.mjs`（只读体积报告）、`visual-test.mjs`、`employee-visual-test.mjs`、
 `theme-visual-test.mjs`、`supabase-migrate.mjs`、`supabase-sync-existing.mjs`、`README.md`
 
-### 6.2 `skills\`（递归 17 个文件 / 13 份 Markdown 规则）
+### 6.2 `skills\`（两个规则目录：`deck-generation\` 只服务生成 PPT，`ppt-polish\` 只服务美化 PPT）
 
-这里是**给 AI 读的提示词规则**，不是代码。改生成效果优先改这里，不要改脚本里的长字符串。
+这里是**给 AI 读的提示词规则**，不是代码。改出图效果优先改这里，不要改脚本里的长字符串。
+每个文件被哪条链路读取、以及"哪些文件读了不生效"，看 `skills\README.md` 的对照表。
 
 ```
 skills\
-├─ README.md                              规则总览
+├─ README.md                              规则总览 + 逐文件读取对照表
+├─ ppt-polish\                            美化 PPT 的说明（**没有任何规则文件，这是刻意的**）
+│   └─ README.md                          说明"美化的提示词只由用户写的内容组成"
 └─ deck-generation\
     ├─ SKILL.md                           总规则
-    ├─ style-packs.md                     内置配色的颜色与版式定义
-    ├─ advanced-layout-profiles.md        高级版"版式语言"（不含颜色）
+    ├─ style-packs.md                     内置配色的颜色与版式定义（4 个风格包，仅内置配色模式读）
+    ├─ advanced-layout-profiles.md        高级版"版式语言"（不含颜色，仅参考图配色模式读）
+    ├─ illustration-system.md             ⭐ 插图体系：写实、面积合同、负面清单（生成链路无条件读，美化不读）
     ├─ visual-identity.md                 整套 PPT 的视觉身份
     ├─ visual-storyboard.md               页与页之间的连贯性
     ├─ slide-image-specs.md               单页怎么生成
     ├─ source-grounding.md                事实与数字必须带来源
     ├─ outline-control.md                 高级版大纲解析与两次确认
     ├─ content-density.md                 正文页信息密度
-    ├─ palette-reference.md               参考图只取颜色关系
-    ├─ quality-audit.md                   整套完成后的交付安全检查
+    ├─ palette-reference.md               参考图只取颜色关系（不把原图交给 Image2）
     ├─ regeneration-controls.md           单页返工规则
     └─ advanced-single-slide-director\    高级版单页导演 Skill
         ├─ SKILL.md
-        ├─ agents\openai.yaml
+        ├─ agents\openai.yaml             （⚠️ 没有任何代码读取它）
         └─ references\{evidence-and-authenticity,page-archetypes}.md
 ```
+
 
 ---
 
@@ -411,19 +432,21 @@ public\
     └─ index.html
 ```
 
-### 7.2 `docs\`（8 个文件，含本文件与归档）
+### 7.2 `docs\`（7 个文件，另有 `archive\` 1 个）
 
 | 文件 | 什么时候看 |
 | --- | --- |
 | `current-project-memory.md` | ⭐ **想知道"现在有什么、能不能跑"就看这份** |
-| `project-map.md` | ⭐ 本文件——目录地图与项目管理手册 |
+| `project-map.md` | ⭐ 本文件——目录地图与项目管理手册（**按目录**组织） |
+| `feature-file-map.md` | ⭐ **功能 → 文件对照表（按功能组织）**：某个模式涉及哪些界面/接口/脚本/提示词 |
 | `model-handoff.md` | 换模型/换人接手时的阅读顺序 |
 | `project-control-workflows.md` | 你验收业务流程时看（含每个确认点与交付物） |
-| `readonly-audit-2026-09-14.md` | 完整审计报告（目录脉络、74 条接口、问题清单、改造结果） |
+| `readonly-audit-2026-09-14.md` | 完整审计报告（目录脉络、74 条接口、问题清单、改造结果）。**历史快照，里面的路径引用按当时状态保留** |
 | `README.md` | 文档阅读顺序 |
-| `project-archive-2026-07-03.md` | 历史存档（方案已过时） |
-| `maintenance-audit-2026-07-03.md` | 历史维护审计 |
-| `archive\agents-history.md` | ⭐ 全部历史变更记录（从 `AGENTS.md` 拆出来的，69 KB） |
+| `archive\agents-history.md` | ⭐ 全部历史变更记录（从 `AGENTS.md` 拆出来的，69 KB）。**历史快照** |
+
+> 2026-09-27 减法：删除了 `project-archive-2026-07-03.md` 与 `maintenance-audit-2026-07-03.md`
+> （两者描述的都是**改造前**的状态，文档自己就标着"会误导"；需要追溯可查 git 历史）。
 
 ### 7.3 根目录 22 个文件怎么归类
 
@@ -463,14 +486,15 @@ public\
 | --- | --- | --- |
 | **① 客户端（客户侧）** | `app\page.tsx` + `app\globals.css` + `components\client-app.tsx` + `app\api\auth|me|settings|sessions|consultations|services` | 客户能看到的全部功能 |
 | **② 员工端外壳** | `app\employee\page.tsx` + `app\employee\employee.css` + `app\employee\styles\` + `components\employee-app.tsx` | 员工端的入口与样式 |
-| **③ 员工端界面模块** | `components\employee\`（21 个文件） | 拆出来的 16 个界面块 |
+| **③ 员工端界面模块** | `components\employee\`（23 个文件） | 拆出来的 17 个界面块 |
 | **④ 员工端主干** | `lib\employee-auth.ts` + `employee-api.ts` + `employee-api-types.ts` + `employee-permissions.ts` + `use-smart-studio-runs.ts` | 权限、接口、类型、状态编排 |
-| **⑤ 生成 PPT 一条链路** | `app\api\...\deck-generation\` + `components\employee\deck-*.tsx` + `lib\employee-deck-*.ts` + `scripts\deck-generation-worker.mjs` + `scripts\deck-source-parser.mjs` + `skills\deck-generation\` | **改生成效果要同时想到这 6 处** |
-| **⑥ 美化 PPT 一条链路** | `app\api\...\ppt-polish\` + `components\employee\polish-*.tsx` + `scripts\ppt-polish-worker.mjs` + `lib\ppt-polish-worker-health.ts` | 同上，5 处 |
-| **⑦ 图片炸开一条链路** | `app\api\employee\services\[id]\image-explode\` + `app\api\employee\image-explode\` + `components\employee\explode-*.tsx` + `scripts\image-explode-worker.mjs` + `component-extractor.*` | 后端全在，**入口被停用** |
-| **⑧ 单页智能设计与生图** | `app\api\...\design-agent\` + `app\api\...\generate-images\` + `scripts\design-agent-worker.mjs` + `scripts\design-agent-skills.mjs` + `components\employee\design-run-panel.tsx` | 含 11 处历史 lint 警告 |
+| **⑤ 生成 PPT 一条链路** | `app\api\...\deck-generation\` + `components\employee\deck-*.tsx` + `lib\employee-deck-*.ts` + `lib\employee-deck-packs.mjs` + `scripts\workers\deck-generation\` + `skills\deck-generation\` | **改生成效果要同时想到这 7 处**；只加/删风格包则只改 `.mjs` + 两份 Markdown |
+| **⑥ 美化 PPT 一条链路** | `app\api\...\ppt-polish\` + `components\employee\polish-*.tsx` + `scripts\workers\ppt-polish\`（worker + 源页快照） + `skills\ppt-polish\` + `lib\ppt-polish-worker-health.ts` | 5 处；**不读 `skills\deck-generation\`**（见 `docs\feature-file-map.md` 第十节） |
+| **⑦ 图片炸开一条链路** | `app\api\employee\services\[id]\image-explode\` + `app\api\employee\image-explode\` + `components\employee\explode-*.tsx` + `scripts\workers\image-explode\image-explode-worker.mjs` + `component-extractor.*` | 后端全在，**入口被停用** |
+| **⑧ 单页智能设计与生图** | `app\api\...\design-agent\` + `app\api\...\generate-images\` + `scripts\workers\design-agent\` + `components\employee\design-run-panel.tsx` | 普通生图不读 `skills\` |
+
 | **⑨ ONLYOFFICE 在线编辑** | `app\api\employee\onlyoffice\` + `app\api\employee\work-documents\` + `lib\office.ts` + `lib\onlyoffice-image-bridge.ts` + `lib\pptx-*.ts` + `lib\workspace-storage.ts` + `components\employee\onlyoffice-editor.tsx` + `public\onlyoffice-plugins\` + `onlyoffice\` + `docker-compose.onlyoffice.yml` | 11 处协作，**改动风险最高** |
-| **⑩ AI 服务接入** | `lib\ai-providers.ts` + `scripts\ai-service-client.mjs` + `.env` 里的 `AI_TEXT_*` / `AI_IMAGE_*` / `CODIA_*` / `ARK_*` / `TECHSZ_*` | **两把 Key 不能混用** |
+| **⑩ AI 服务接入** | `lib\ai-providers.ts` + `scripts\workers\shared\ai-service-client.mjs` + `.env` 里的 `AI_TEXT_*` / `AI_IMAGE_*` / `CODIA_*` / `ARK_*` / `TECHSZ_*` | **两把 Key 不能混用** |
 | **⑪ 权限与多学校** | `lib\employee-auth.ts` + `lib\employee-workspaces.ts` + `lib\wechat.ts` + `lib\wecom.ts` + `app\api\employee\auth\` + `app\api\employee\admin\` + `components\employee\employee-admin.tsx` | 改权限只能从 `employee-auth.ts` 入手 |
 | **⑫ 部署** | 根目录 Docker/Caddy 文件 + `onlyoffice\` + `Dockerfile*` + `docker-compose*.yml` | 5 个容器 |
 
@@ -499,12 +523,16 @@ npm run dev
 ### 9.2 改完任何东西：一条命令定生死
 
 ```powershell
-npm run verify        # tsc + eslint(--max-warnings 11) + prisma validate + next build
-npm run verify:check  # 只跑前三项，秒级，改代码过程中随时跑
+npm run verify        # check-style-packs + tsc + eslint(--max-warnings 0) + prisma validate + next build
+npm run verify:check  # 只跑静态检查，秒级，改代码过程中随时跑
 npm run verify:build  # 只跑生产构建，交付前必跑
 ```
 
-**为什么要 `--max-warnings 11`**：这 11 条是历史基线（全在 `scripts\design-agent-worker.mjs`）。这个数字写死的意思是——**你可以不清理旧账，但不许添新账**。它会拦住未使用的 import 这类小问题，这正是它能防止代码腐坏的原因。
+`verify:check` 的第一项 `node scripts/check-style-packs.mjs` 专门守"风格包清单漂移"：它逐 id 比对 `lib\employee-deck-packs.mjs`（真源）与 `skills\deck-generation\` 的两份 Markdown，还会揪出**已经删掉的风格包 id 在代码里复活**、以及**任何消费者文件里又抄了一份 id 字面量**。删风格包时只要漏改一处，这条命令就会带着"该改哪个文件"的提示失败。
+
+**为什么是 `--max-warnings 0`**：2026-09-27 之前基线是 11 条（全在 `scripts\workers\design-agent\design-agent-worker.mjs`），那天把 31 个零引用声明清掉后收紧到 **0**。数字写死的意思是——**不许添新账**。它会拦住未使用的 import 和删代码留下的孤儿函数，这正是它能防止代码腐坏的原因。
+
+> ⚠️ `scripts\workers\design-agent\design-agent-worker.mjs` 里仍有 **5 处前任作者特意标注"为后续工作流保留"** 的旧代码，各带 `eslint-disable-next-line`。**它们是有意保留的，不是垃圾。**
 
 ### 9.3 版本控制：你的"后悔药"
 
@@ -523,7 +551,7 @@ git reset --hard HEAD          # 丢弃当前未提交的改动
 按这个顺序问自己四个问题：
 
 1. **它在 `.gitignore` 里吗？** 在 → 是缓存或数据，删了可能丢数据（`uploads\`、`prisma\dev.db`）。
-2. **`grep` 全仓，有人 import 它吗？** 没有 → 可能是废物，但先确认它不是被脚本路径字符串调用（例如 `抠图准备工作skill\skill.txt` 就是这样被读的）。
+2. **`grep` 全仓，有人 import 它吗？** 没有 → 可能是废物，但先确认它不是**被路径字符串**调用（例如 `scripts\supabase-migrate.mjs` 按路径读取 `supabase\migrations\*.sql`，`grep` 名字能搜到，但 import 关系里看不到）。
 3. **删了之后 `npm run verify` 还过吗？** 不过说明还在用。
 4. **它是"空目录"吗？** 空目录也可能是有意义的**分组壳**（如 `app\api\employee\admin\`），删了会让路由结构变乱。
 
@@ -586,7 +614,8 @@ git reset --hard HEAD          # 丢弃当前未提交的改动
 
 ## 十、当前目录结构与改进建议的对应关系（改造已完成的部分）
 
-作为对照，20 轮改造前后的变化：
+作为对照，20 轮改造前后的变化（**下表是 2026-09-14 的数字，其中"现在"一列已是历史**；
+2026-09-27 拆 UI 后 `components\employee\` 为 23 个文件，见 §4.2）：
 
 | 目录 | 改造前 | 现在 |
 | --- | --- | --- |

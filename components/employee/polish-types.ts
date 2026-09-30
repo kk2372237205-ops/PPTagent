@@ -9,10 +9,17 @@
  */
 
 export type LocalDesignReference = { id: string; file: File; previewUrl: string; source: "upload" | "ppt" };
-export type PolishPageNote = { id: string; pages: string; note: string };
+/**
+ * note 是实际交给后台生图的完整要求；manualNote 只保存用户在文本框写的内容，
+ * clipIds 则记录本页套用的夹子。这样界面能保持简洁，但后台不会遗漏夹子提示词。
+ */
+export type PolishPageNote = { id: string; pages: string; note: string; manualNote?: string; clipIds?: string[] };
+export type PolishPromptClip = { id: string; name: string; prompt: string; color: "blue" | "green" | "gold" | "rose"; createdAt: string; updatedAt: string };
 export type PptPolishSlide = { slideIndex: number; title: string; originalText: string; note: string; status: string; storedName?: string; prompt?: string; lastInstruction?: string; error?: string; updatedAt: string };
+export type PolishSourceSnapshot = { pageCount: number; pages: { pageIndex: number; storedName: string; width: number; height: number; format: string }[]; createdAt: string; manifest: string };
 export type PptPolishRun = {
-  id: string; status: string; sourceMode: "current" | "upload"; sourceName: string; stylePack: string; note: string;
+  id: string; status: string; sourceMode: "current" | "upload"; sourceName: string; note: string;
   options: Record<string, boolean>; pageNotes: PolishPageNote[]; pageCount: number; slides: PptPolishSlide[];
+  sourceSnapshot?: PolishSourceSnapshot;
   pdfStoredName?: string; pptStoredName?: string; coverStoredName?: string; confirmedAt?: string; error?: string; createdAt: string; updatedAt: string;
 };
