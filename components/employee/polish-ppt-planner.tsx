@@ -13,7 +13,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, FileText, Upload, WandSparkles, X } from "lucide-react";
+import { FileText, Upload, WandSparkles, X } from "lucide-react";
 import { employeeApi } from "@/lib/employee-api";
 import type { Service } from "@/lib/employee-api-types";
 import { deckStylePacks } from "@/lib/employee-deck-constants";
@@ -45,8 +45,6 @@ export function PolishPptPlanner({ service, note, setNote, notify, initialRun, o
   const [selectedFileName, setSelectedFileName] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [pageRange, setPageRange] = useState("");
-  const [pageNote, setPageNote] = useState("");
   const [polishRuns, setPolishRuns] = useState<PptPolishRun[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [pageNotes, setPageNotes] = useState<PolishPageNote[]>(() => initialRun
@@ -61,7 +59,7 @@ export function PolishPptPlanner({ service, note, setNote, notify, initialRun, o
     cardStyle: false,
     decorativeElements: false,
     reduceText: true,
-    sourcePageReference: false,
+    convertSourcePages: true,
     ...(initialRun?.options || {})
   });
   const fileRef = useRef<HTMLInputElement>(null);
@@ -98,15 +96,6 @@ export function PolishPptPlanner({ service, note, setNote, notify, initialRun, o
     setSourceMode("upload");
   }
 
-  function addPageNote() {
-    const pages = pageRange.trim();
-    const requirement = pageNote.trim();
-    if (!pages || !requirement) return notify("请填写页码和这一页的修改想法");
-    setPageNotes(current => [...current, { id: `${Date.now()}-${Math.random()}`, pages, note: requirement }]);
-    setPageRange("");
-    setPageNote("");
-  }
-
   function toggleOption(key: keyof typeof options) {
     setOptions(current => ({ ...current, [key]: !current[key] }));
   }
@@ -114,7 +103,6 @@ export function PolishPptPlanner({ service, note, setNote, notify, initialRun, o
   async function submitPolishPlan() {
     if (sourceMode === "current" && !service.workDocument) return notify("当前订单还没有工作文稿，请先上传 PPT");
     if (sourceMode === "upload" && !selectedFile) return notify("请先放入需要美化的 PPT 文件");
-    if (!note.trim() && pageNotes.length === 0) return notify("请填写整套修改方向或逐页修改想法");
     const form = new FormData();
     form.append("sourceMode", sourceMode);
     form.append("stylePack", stylePack);
@@ -150,9 +138,9 @@ export function PolishPptPlanner({ service, note, setNote, notify, initialRun, o
       <input ref={fileRef} hidden type="file" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation" onChange={event => { acceptPpt(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }}/>
       {sourceMode === "current" && service.workDocument ? <FileText/> : <Upload/>}
       <b>{sourceMode === "current" && service.workDocument ? service.workDocument.originalName : selectedFileName || "拖入需要美化的 PPT"}</b>
-      <span>{sourceMode === "current" && service.workDocument ? "确认后自动在本地固化整份 PPT 的有序页面图，不会自动交给 Image2。" : "支持点击选择或直接拖拽 PPTX；确认后自动在本地固化整份页面图。"}</span>
+      <span>{sourceMode === "current" && service.workDocument ? "确认后按所选流程处理当前 PPTX。" : "支持点击选择或直接拖拽 PPTX。"}</span>
     </div>
-    <aside className="polish-source-snapshot-note"><b>原稿页图片集：默认开启</b><span>确认后，系统将整份 PPTX 本地转换为按页 PNG，供你核对原稿和后续处理使用。此步骤不上传 Image2。</span></aside>
+    <aside className={`polish-source-snapshot-note ${options.convertSourcePages ? "is-on" : "is-off"}`}><div><b>PPT转PNG</b><span>系统将整份 PPTX 本地转换为按页 PNG</span></div><button type="button" className="polish-switch" role="switch" aria-checked={options.convertSourcePages} title="关闭后跳过 PPT 转 PNG，供后续直接提供页面图片集的流程使用。" onClick={() => toggleOption("convertSourcePages")}><i/><em>{options.convertSourcePages ? "开启" : "关闭"}</em></button></aside>
     <label>整套修改方向<textarea value={note} onChange={event => setNote(event.target.value)} placeholder="例如：更像发布会、减少文字、强化科技感、统一页眉页脚和图标风格。"/></label>
     <div className="polish-option-grid">
       <label><input type="checkbox" checked={options.keepText} onChange={() => toggleOption("keepText")}/>保留原文字</label>
@@ -163,11 +151,10 @@ export function PolishPptPlanner({ service, note, setNote, notify, initialRun, o
       <label><input type="checkbox" checked={options.cardStyle} onChange={() => toggleOption("cardStyle")}/>卡片样式统一</label>
       <label><input type="checkbox" checked={options.decorativeElements} onChange={() => toggleOption("decorativeElements")}/>装饰元素统一</label>
       <label><input type="checkbox" checked={options.reduceText} onChange={() => toggleOption("reduceText")}/>减少文字密度</label>
-      <label title="试验功能；必须由服务端明确开启，才会把单页原稿上传给 Image2。AI 重绘后仍需人工核对中文、logo、照片和图表。"><input type="checkbox" checked={options.sourcePageReference} onChange={() => toggleOption("sourcePageReference")}/>试验：用原稿页指导 Image2 重绘</label>
     </div>
     <section className="polish-page-notes">
-      <header><div><b>逐页修改想法</b><span>{pageNotes.length} 条页级要求</span></div></header>
-      <div className="polish-page-note-editor"><input value={pageRange} onChange={event => setPageRange(event.target.value)} placeholder="页码，如 3 或 6-8"/><textarea value={pageNote} onChange={event => setPageNote(event.target.value)} placeholder="这一页怎么改，例如：把流程图改成三步时间线，减少底部小字。"/><button type="button" onClick={addPageNote}><Check/>添加</button></div>
+      <header><div><b>逐页修改想法</b><span>{options.convertSourcePages ? "转换完成后，点击页面缩略图添加" : "关闭 PPT转PNG 后不能点选页面"}</span></div></header>
+      {!pageNotes.length && <p className="polish-page-note-hint">先确认方案并完成页面转换，再选择具体页面填写修改要求。</p>}
       <div className="polish-page-note-list">{pageNotes.map(item => <article key={item.id}><b>第 {item.pages} 页</b><p>{item.note}</p><button type="button" onClick={() => setPageNotes(current => current.filter(noteItem => noteItem.id !== item.id))}><X/></button></article>)}</div>
     </section>
     <button type="button" disabled={submitting} onClick={submitPolishPlan}><WandSparkles/>{submitting ? "提交中..." : "生成美化方案"}</button>

@@ -121,6 +121,8 @@ export const employeeApi = {
     create: (serviceId: string, form: FormData) => post(`${employeeBase}/services/${serviceId}/ppt-polish/runs`, form),
     confirm: (serviceId: string, runId: string) =>
       post(`${employeeBase}/services/${serviceId}/ppt-polish/runs/${runId}/confirm`),
+    addPageNotes: (serviceId: string, runId: string, body: ApiBody) =>
+      post(`${employeeBase}/services/${serviceId}/ppt-polish/runs/${runId}/page-notes`, body),
     retry: (serviceId: string, runId: string) =>
       post(`${employeeBase}/services/${serviceId}/ppt-polish/runs/${runId}/retry`),
     createPpt: (serviceId: string, runId: string) =>

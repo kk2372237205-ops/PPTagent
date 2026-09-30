@@ -11,14 +11,15 @@
  * 验证方式：npm run verify。
  */
 
-import { ChevronLeft, Download, LoaderCircle } from "lucide-react";
+import { useState } from "react";
+import { Check, ChevronLeft, Download, LoaderCircle } from "lucide-react";
 import { employeeApi } from "@/lib/employee-api";
 import { deckStylePacks } from "@/lib/employee-deck-constants";
 import { deckStatusText } from "@/lib/employee-deck-shared";
 import type { Service } from "@/lib/employee-api-types";
 import type { PptPolishRun } from "./polish-types";
 
-export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onConfirm, onCreatePpt, onRegenerate, onRetry, onPreview }: {
+export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onConfirm, onCreatePpt, onAddPageNotes, onRegenerate, onRetry, onPreview }: {
   service: Service;
   run: PptPolishRun;
   busy: boolean;
@@ -26,10 +27,13 @@ export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onC
   onBack: () => void;
   onConfirm: () => void;
   onCreatePpt: () => void;
+  onAddPageNotes: (pageIndexes: number[], note: string) => void;
   onRegenerate: (slideIndex: number, action: "reroll" | "closer_previous") => void;
   onRetry: () => void;
   onPreview: (image: { url: string; title: string }) => void;
 }) {
+  const [selectedSourcePages, setSelectedSourcePages] = useState<number[]>([]);
+  const [sourcePageNote, setSourcePageNote] = useState("");
   const done = run.slides?.filter(slide => slide.status === "completed").length || 0;
   const total = run.pageCount || run.slides?.length || 0;
   const workerBlocked = Boolean(workerWarning && ["confirmed", "planning", "generating", "pdf_queued", "ppt_queued", "ppt_processing"].includes(run.status));
@@ -39,6 +43,8 @@ export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onC
   const pptUrl = employeeApi.urls.polish.ppt(service.id, run.id);
   const sourcePages = run.sourceSnapshot?.pages || [];
   const sourcePageCount = run.sourceSnapshot?.pageCount || sourcePages.length;
+  const selectingSourcePages = run.status === "source_ready" && sourcePages.length > 0;
+  const visibleSourcePages = selectingSourcePages ? sourcePages : sourcePages.slice(0, 4);
   const optionLabels = [
     ["keepText", "保留原文字"],
     ["keepNumbers", "保留数字信息"],
@@ -57,7 +63,8 @@ export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onC
         <small>{styleLabel} · {total ? `${done}/${total} 页` : `${run.pageNotes?.length || 0} 条页级要求`} · {new Date(run.createdAt).toLocaleString("zh-CN")}</small>
       </div>
       <div>
-        {run.status === "plan_ready" && <><button className="design-secondary polish-plan-back" onClick={onBack} disabled={busy}><ChevronLeft/>返回修改</button><button className="design-apply" onClick={onConfirm} disabled={busy}>确认生成</button></>}
+        {run.status === "plan_ready" && <><button className="design-secondary polish-plan-back" onClick={onBack} disabled={busy}><ChevronLeft/>返回修改</button><button className="design-apply" onClick={onConfirm} disabled={busy}>确认并转换页面</button></>}
+        {run.status === "source_ready" && <button className="design-apply" onClick={onConfirm} disabled={busy}>开始生成页面</button>}
         {run.status === "failed" && run.slides?.length > 0 && <button className="design-apply" onClick={onRetry} disabled={busy}>继续生成</button>}
         {["review_ready", "pdf_ready"].includes(run.status) && <button className="design-apply" onClick={onCreatePpt} disabled={busy}>转化 PPT</button>}
         {run.pdfStoredName && <a className="design-secondary" href={pdfUrl}><Download/>下载 PDF</a>}
@@ -78,16 +85,18 @@ export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onC
         {run.pageNotes?.length ? <ol>{run.pageNotes.map(item => <li key={item.id}><b>第 {item.pages} 页</b><small>{item.note}</small></li>)}</ol> : <p>暂无单页特殊要求，将按整套修改方向统一处理。</p>}
       </article>
     </section>
-    {sourcePages.length > 0 && <section className="deck-plan-review inline polish-source-pages">
+    {(sourcePages.length > 0 || run.status === "source_ready") && <section className={`deck-plan-review inline polish-source-pages ${selectingSourcePages ? "is-selecting" : ""}`}>
       <article>
-        <span>原稿页面已固化</span>
-        <h3>{sourcePageCount} 页 PNG</h3>
-        <p>页面图仅保存在本次美化任务中，用于人工核对与后续逐页处理；当前不会自动交给 Image2。</p>
+        <span>{selectingSourcePages ? "点选需要修改的页面" : "原稿页面已固化"}</span>
+        <h3>{sourcePageCount ? `${sourcePageCount} 页 PNG` : "已跳过转换"}</h3>
+        <p>{selectingSourcePages ? "点击缩略图选中页面，再写这一页的修改要求。已选页面会带有绿色边框。" : "页面图仅保存在本次美化任务中，用于人工核对与后续逐页处理。"}</p>
       </article>
-      <div className="polish-source-page-strip">{sourcePages.slice(0, 4).map(page => {
+      {selectingSourcePages && <section className="polish-source-page-editor"><div><b>{selectedSourcePages.length ? `已选第 ${selectedSourcePages.join("、")} 页` : "请先点选页面"}</b><textarea value={sourcePageNote} onChange={event => setSourcePageNote(event.target.value)} placeholder="这几页怎么改，例如：第 3 页减少底部小字，主视觉改为图文对照。"/></div><button type="button" disabled={busy || !selectedSourcePages.length || !sourcePageNote.trim()} onClick={() => { onAddPageNotes(selectedSourcePages, sourcePageNote.trim()); setSelectedSourcePages([]); setSourcePageNote(""); }}><Check/>保存本页要求</button></section>}
+      {sourcePages.length > 0 && <div className="polish-source-page-strip">{visibleSourcePages.map(page => {
         const url = employeeApi.urls.polish.sourcePageImage(service.id, run.id, page.pageIndex, run.updatedAt);
-        return <button key={page.pageIndex} type="button" onClick={() => onPreview({ url, title: `原稿第 ${page.pageIndex} 页` })}><img src={url} alt={`原稿第 ${page.pageIndex} 页`}/><span>第 {page.pageIndex} 页</span></button>;
-      })}</div>
+        const selected = selectedSourcePages.includes(page.pageIndex);
+        return <button key={page.pageIndex} type="button" className={selected ? "selected" : ""} onClick={() => selectingSourcePages ? setSelectedSourcePages(current => current.includes(page.pageIndex) ? current.filter(index => index !== page.pageIndex) : [...current, page.pageIndex].sort((a, b) => a - b)) : onPreview({ url, title: `原稿第 ${page.pageIndex} 页` })}><img src={url} alt={`原稿第 ${page.pageIndex} 页`}/><span>{selectingSourcePages ? `${selected ? "已选" : "选择"} · 第 ${page.pageIndex} 页` : `第 ${page.pageIndex} 页`}</span></button>;
+      })}</div>}
     </section>}
     {["generating", "review_ready", "pdf_queued", "pdf_ready", "ppt_queued", "ppt_processing", "ppt_ready", "failed"].includes(run.status) && run.slides?.length > 0 && <section className="deck-slide-review inline polish-slide-review">
       <div className="deck-progress"><b>{done}/{total || "?"}</b><span>{statusText}</span></div>

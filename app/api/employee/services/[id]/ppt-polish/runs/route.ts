@@ -25,7 +25,7 @@ type PolishRun = {
   id: string;
   serviceId: string;
   employeeId: string;
-  status: "plan_ready" | "queued" | "confirmed" | "planning" | "generating" | "review_ready" | "pdf_queued" | "pdf_ready" | "ppt_queued" | "ppt_processing" | "ppt_ready" | "failed";
+  status: "plan_ready" | "queued" | "confirmed" | "planning" | "source_ready" | "generating" | "review_ready" | "pdf_queued" | "pdf_ready" | "ppt_queued" | "ppt_processing" | "ppt_ready" | "failed";
   sourceMode: "current" | "upload";
   sourceName: string;
   sourceStoredName: string;
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   const options = normalizeOptions(String(form.get("options") || "{}"));
   const pageNotes = normalizePageNotes(String(form.get("pageNotes") || "[]"));
   if (!allowedStylePacks.has(stylePack)) return NextResponse.json({ error: "目标风格无效" }, { status: 400 });
-  if (!note && pageNotes.length === 0) return NextResponse.json({ error: "请填写整套修改方向或逐页修改想法" }, { status: 400 });
+  if (!note && pageNotes.length === 0 && options.convertSourcePages === false) return NextResponse.json({ error: "关闭 PPT转PNG 时，请填写整套修改方向。" }, { status: 400 });
 
   await ensurePolishDirectories();
   let sourceName = "";
@@ -165,7 +165,7 @@ function normalizeOptions(value: string) {
     cardStyle: false,
     decorativeElements: false,
     reduceText: true,
-    sourcePageReference: false
+    convertSourcePages: true
   };
   try {
     const parsed = JSON.parse(value);

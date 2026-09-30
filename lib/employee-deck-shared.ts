@@ -47,6 +47,7 @@ export function deckStatusText(status: string) {
     planning: "生成方案中",
     plan_ready: "待确认方案",
     confirmed: "排队执行",
+    source_ready: "请选择需要逐页修改的页面",
     generating: "生成页面中",
     review_ready: "预览待确认",
     pdf_queued: "正在生成 PDF",

@@ -170,7 +170,7 @@ export function useSmartStudioRuns(service: Service, notify: (text: string) => v
       }
       setPolishWorkerWarning("");
       setPolishRun(result.run as PptPolishRun);
-      notify("已确认方案，后台开始生成逐页预览图。");
+      notify(result.run.status === "source_ready" ? "页面图片已准备好，请点选需要修改的页面。" : "已确认方案，后台开始生成逐页预览图。");
     } finally { setBusy(false); }
   }
 
@@ -188,6 +188,18 @@ export function useSmartStudioRuns(service: Service, notify: (text: string) => v
       setPolishWorkerWarning("");
       setPolishRun(result.run as PptPolishRun);
       notify(result.run.status === "ppt_ready" ? "PPT 已生成" : "已进入 PDF / Codia 转化队列");
+    } finally { setBusy(false); }
+  }
+
+  async function addPolishPageNotes(pageIndexes: number[], note: string) {
+    if (!activePolishRun) return;
+    setBusy(true);
+    try {
+      const response = await employeeApi.polish.addPageNotes(service.id, activePolishRun.id, { pageIndexes, note });
+      const result = await responseJson(response);
+      if (!response.ok) return notify(result.error || "逐页修改要求保存失败");
+      setPolishRun(result.run as PptPolishRun);
+      notify("已保存所选页面的修改要求");
     } finally { setBusy(false); }
   }
 
@@ -270,6 +282,6 @@ export function useSmartStudioRuns(service: Service, notify: (text: string) => v
     invalidateDeckLoad,
     setDeckRun, setPolishRun,
     deckActions: { confirmDeckRun, replanDeckRun, createDeckPpt, regenerateDeckSlide },
-    polishActions: { confirmPolishRun, createPolishPpt, regeneratePolishSlide, retryPolishRun }
+    polishActions: { confirmPolishRun, createPolishPpt, addPolishPageNotes, regeneratePolishSlide, retryPolishRun }
   };
 }

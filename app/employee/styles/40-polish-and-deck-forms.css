@@ -34,6 +34,14 @@
   white-space:nowrap;
 }
 
+.employee-root .polish-planner .polish-page-note-hint {
+  margin:0;
+  padding:12px;
+  color:#99acb9;
+  font-size:11px;
+  line-height:1.45;
+}
+
 /* Local source-page snapshots: compact proof that the incoming PPT was rendered
    before any per-page image work begins. */
 .employee-root .polish-inline-run .polish-source-pages {
@@ -41,15 +49,61 @@
 }
 
 .employee-root .polish-planner .polish-source-snapshot-note {
-  display:grid;
-  gap:4px;
-  padding:10px 12px;
-  border:1px solid rgba(111, 157, 188, .35);
+  display:flex;
+  min-height:56px;
+  align-items:center;
+  justify-content:space-between;
+  gap:18px;
+  padding:9px 12px 9px 14px;
+  border:1px solid rgba(139, 164, 177, .30);
   border-radius:10px;
-  background:rgba(75, 119, 150, .10);
+  background:rgba(255,255,255,.025);
+}
+.employee-root .polish-planner .polish-source-snapshot-note > div {
+  min-width:0;
+  display:grid;
+  gap:3px;
 }
 .employee-root .polish-planner .polish-source-snapshot-note b { color:#dbeef7; font-size:12px; }
-.employee-root .polish-planner .polish-source-snapshot-note span { color:#9fb8c7; font-size:11px; line-height:1.55; }
+.employee-root .polish-planner .polish-source-snapshot-note span { color:#9fb8c7; font-size:11px; line-height:1.3; }
+.employee-root .polish-planner .polish-switch {
+  flex:0 0 auto;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  border:0;
+  padding:4px 0 4px 6px;
+  background:transparent;
+  color:#aabac3;
+  font:inherit;
+  cursor:pointer;
+}
+.employee-root .polish-planner .polish-switch i {
+  position:relative;
+  display:block;
+  width:36px;
+  height:20px;
+  border-radius:999px;
+  background:#b34e55;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);
+  transition:background .18s ease;
+}
+.employee-root .polish-planner .polish-switch i::after {
+  position:absolute;
+  top:3px;
+  left:3px;
+  width:14px;
+  height:14px;
+  border-radius:50%;
+  background:#fff;
+  content:"";
+  transition:transform .18s ease;
+}
+.employee-root .polish-planner .polish-source-snapshot-note.is-on .polish-switch i { background:#3d9a69; }
+.employee-root .polish-planner .polish-source-snapshot-note.is-on .polish-switch i::after { transform:translateX(16px); }
+.employee-root .polish-planner .polish-source-snapshot-note.is-on .polish-switch em { color:#8fd5ae; }
+.employee-root .polish-planner .polish-source-snapshot-note.is-off .polish-switch em { color:#e39499; }
+.employee-root .polish-planner .polish-switch em { min-width:24px; font-size:11px; font-style:normal; font-weight:700; }
 
 .employee-root .polish-inline-run .polish-source-page-strip {
   display:grid;
@@ -82,6 +136,42 @@
   font-size:10px;
 }
 
+.employee-root .polish-inline-run .polish-source-pages.is-selecting {
+  grid-template-columns:1fr;
+}
+.employee-root .polish-inline-run .polish-source-page-editor {
+  display:flex;
+  align-items:stretch;
+  gap:10px;
+  padding:10px 12px;
+  border:1px solid rgba(108, 150, 129, .34);
+  border-radius:10px;
+  background:rgba(61, 154, 105, .08);
+}
+.employee-root .polish-inline-run .polish-source-page-editor > div { min-width:0; flex:1; }
+.employee-root .polish-inline-run .polish-source-page-editor b { display:block; margin:1px 0 7px; color:#a9dfbc; font-size:11px; }
+.employee-root .polish-inline-run .polish-source-page-editor textarea { width:100%; min-height:56px; margin:0; resize:vertical; }
+.employee-root .polish-inline-run .polish-source-page-editor button {
+  align-self:center;
+  min-width:104px;
+  min-height:38px;
+  border:1px solid rgba(109, 189, 140, .42);
+  border-radius:8px;
+  background:#2f865b;
+  color:#fff;
+  font-size:11px;
+  font-weight:700;
+  cursor:pointer;
+}
+.employee-root .polish-inline-run .polish-source-page-editor button:disabled { opacity:.45; cursor:not-allowed; }
+.employee-root .polish-inline-run .polish-source-page-strip button.selected {
+  border-color:#66be8a;
+  box-shadow:0 0 0 2px rgba(102,190,138,.25);
+}
+.employee-root .polish-inline-run .polish-source-page-strip button.selected span { color:#a9dfbc; }
+
 @media (max-width:760px) {
   .employee-root .polish-inline-run .polish-source-pages { grid-template-columns:1fr; }
+  .employee-root .polish-inline-run .polish-source-page-editor { flex-direction:column; }
+  .employee-root .polish-inline-run .polish-source-page-editor button { width:100%; }
 }
