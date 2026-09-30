@@ -364,7 +364,7 @@ scripts\workers\
 │   ├─ deck-generation-worker.mjs                  ⭐ 生成 PPT 全流程：读资料 → GPT 规划 → Image2 逐页出图 → PDF → Codia 转 PPTX
 │   └─ deck-source-parser.mjs                      解析 PDF / Word / Excel / PPTX / 文本，保留来源页码
 ├─ ppt-polish\
-│   ├─ ppt-polish-worker.mjs                       美化 PPT：源页快照 + 逐页重绘（规则读 skills\ppt-polish\，不读 skills\deck-generation\）
+│   ├─ ppt-polish-worker.mjs                       美化 PPT：源页快照 + 逐页重绘（**不读任何规则文件**，提示词只由用户写的内容组成）
 │   └─ ppt-polish-source-pages.mjs                 把 PPTX 本地转成按页 PNG，作为重绘输入与"原页面"基准
 ├─ design-agent\
 │   ├─ design-agent-worker.mjs                     单页智能设计与生图链路
@@ -394,9 +394,8 @@ scripts\workers\
 ```
 skills\
 ├─ README.md                              规则总览 + 逐文件读取对照表
-├─ ppt-polish\                            美化 PPT 自己的规则（不读 deck-generation\ 的任何文件）
-│   ├─ README.md
-│   └─ visual-redraw-system.md            页面重绘边界、信息保真、封面/正文/结尾规则
+├─ ppt-polish\                            美化 PPT 的说明（**没有任何规则文件，这是刻意的**）
+│   └─ README.md                          说明"美化的提示词只由用户写的内容组成"
 └─ deck-generation\
     ├─ SKILL.md                           总规则
     ├─ style-packs.md                     内置配色的颜色与版式定义（4 个风格包，仅内置配色模式读）

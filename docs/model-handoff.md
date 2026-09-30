@@ -166,7 +166,7 @@ git diff --stat main...HEAD   # 22 个文件，+4053 / -404
 ### 覆盖陷阱（最容易白干）
 
 6. **`style-packs.md` 只在「内置配色」模式被读取；「参考图配色」模式读的是 `advanced-layout-profiles.md`。** 只改其中一个，另一条配色链路完全不生效。**`illustration-system.md` 在生成链路里是无条件读取的**，生成链路跨两种配色都要生效的规则写在那里最保险。
-   **⚠️ 规则边界（2026-09-27 决定，2026-09-30 合并后收紧）：美化只读自己的 `skills/ppt-polish/visual-redraw-system.md`，不读 `skills/deck-generation/` 的任何文件。** 演变：美化最初不读 skills → 后来注入 `style-packs.md` + `illustration-system.md` → 09-27 保留 `style-packs.md` 共享（当时美化也有风格包下拉框）→ 09-30 美化表单移除风格包后，连它也不再共享。**生成 PPT 的读取面全程没动。**
+   **⚠️ 规则边界（2026-09-27 决定，2026-09-30 两轮收紧）：美化现在什么规则文件都不读。** 它的提示词只有三段——**用户要求**（最高优先级）、**本页原有文字**（参考）、**本页位置**（第几页/来源/前后页）。演变：美化最初不读 skills → 后来注入 `style-packs.md` + `illustration-system.md` → 09-27 只共享 `style-packs.md` → 09-30 表单移除风格包后改为只读自己的 `skills/ppt-polish/visual-redraw-system.md` → **09-30 晚 owner 发现"不听话"，把那份自己的规则文件也删了**（原话："这些提示词我都不需要用到这里，只听用户的提示词命令"）。原因：那些规则和用户指令正面冲突（"不要锁定风格"vs"用蓝白科技风"、"每页必须 ≥25% 主导插图"vs"图片内容不变"、"默认写实摄影"vs 科技风、"封面结尾文字极少"和"降低文字密度"vs"内容不变"），模型会听更长更具体的一方。**不要再给美化接任何规则文件。** 生成 PPT 的读取面全程没动。
 7. **风格包 id 现在只有一处真源：`lib/employee-deck-packs.mjs`。** 2026-09-27 之前它在 8 处重复定义（`lib/employee-deck-constants.ts`、4 个 API 路由、worker 里 2 个映射表、美化 worker 1 个），漏一处就是"界面能选、后台认不出"。现在界面、接口、两个 worker 全部 import 这一个 `.mjs`，**新增/删除风格包只需改 `.mjs` + `skills/deck-generation/style-packs.md`（+ 参考图配色模式还要改 `advanced-layout-profiles.md`）**。`scripts/check-style-packs.mjs` 会逐 id 校验三处一致、阻止已删除的 id 复活，并禁止任何消费者文件再写 id 字面量。**界面名和提示词名是两个字段**（`label` / `promptLabel`），别把"（推荐）"喂进提示词。
 8. **`normalizePlan` 是严格白名单**（`deck-generation-worker.mjs`）。往方案 JSON 里加新字段**不会**进入图片提示词——必须用散文写进 `composition` / `main_visual_brief` 这些自由文本字段。
 

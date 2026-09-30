@@ -14,7 +14,7 @@
 | **`app/api/employee/services/[id]/`** | ✅ **分得很干净** | 一条链路一个目录：`deck-generation/`、`ppt-polish/`、`generate-images/`、`design-agent/`、`image-explode/`、`image-tools/`、`image-to-pptx/` |
 | `components/employee/` | 🟡 **命名分了，目录没分** | 16 个面板平铺在一个目录，靠**文件名前缀**区分（`deck-*` / `polish-*` / `explode-*`） |
 | `scripts/` | ✅ **已按模式分目录** | 后台脚本在 `scripts/workers/<模式>/`（`deck-generation/` / `ppt-polish/` / `design-agent/` / `image-explode/` / `shared/`），顶层只剩启动与运维脚本 |
-| `skills/deck-generation/` | ✅ **边界已划清** | 只服务生成 PPT；美化读自己的 `skills/ppt-polish/`，生图不读任何 skill（见第十节） |
+| `skills/deck-generation/` | ✅ **边界已划清** | 只服务生成 PPT；美化与生图**都不读任何 skill**（见第十节） |
 | `uploads/employee-workspace/` | 🟡 **部分共用** | 生成 PPT 有自己的子目录；**图片产物三条链路共用 `images/`**（按时间戳命名） |
 | `app/employee/styles/` | ❌ **不按模式分** | 9 层样式按"覆盖顺序"分，不是按功能分 |
 
@@ -150,16 +150,20 @@
 | | 内容 | 为什么 |
 | --- | --- | --- |
 | ❌ **不共享** | `skills/deck-generation/**` 全部（含 `style-packs.md`、`illustration-system.md`） | 生成链路是"从零画整页"，美化是"改造已有页面"，画面合同本来就会越走越远。共享一份规则，生成那边的改动就会无声改掉美化的产出 |
-| ✅ **美化自己的** | `skills/ppt-polish/visual-redraw-system.md` | 美化的页面重绘边界、信息保真要求、封面/正文/结尾规则，由美化 worker 直接读自己目录 |
+| ❌ **已删除** | ~~`skills/ppt-polish/visual-redraw-system.md`~~ | 美化自己的规则文件**也已删除**（2026-09-30）。它和用户指令正面冲突：用户说"内容不变 + 蓝白科技风"，它说"不要锁定风格、每页必须有 25% 主导插图、默认写实摄影、封面结尾文字极少"。owner 原话："这些提示词我都不需要用到这里，只听用户的提示词命令" |
 | ✅ **仍然共用（但只被生成用）** | `lib/employee-deck-packs.mjs`（风格包 id 清单） | 界面与接口之间的 id 契约。**2026-09-30 起美化表单不再有"目标风格"**，所以它现在只服务生成链路。详见第十一节 |
 | ❌ **不共享** | 生图链路的提示词 | 普通生图的提示词全在 `design-agent-worker.mjs` 代码里，本来就不读 skills |
 
 **演变过程（避免以后又走回头路）**：
 1. 最早：美化注入 `style-packs.md` + `illustration-system.md`（两条链路焊在一起）。
 2. 2026-09-27：按"性质"划线——`style-packs.md` 保留共享（因为美化当时也有"目标风格"下拉框，同一个 id 必须同一个含义）。
-3. 2026-09-30：美化改成"保护要求 + 逐页修改要求"，**表单里的风格包被移除**，于是连 `style-packs.md` 也不再需要共享。边界收紧为：**美化只读自己的 `skills/ppt-polish/`，不读 `skills/deck-generation/` 的任何文件。**
+3. 2026-09-30：美化改成"保护要求 + 逐页修改要求"，**表单里的风格包被移除**，连 `style-packs.md` 也不再共享。
+4. 2026-09-30 晚：owner 发现美化"不听话"，追查后确认是**我们自己偷偷加的那一整套规则**在压用户的指令——
+   "不要锁定风格"顶撞"用蓝白科技风"、"每页必须有 ≥25% 主导插图并出血"顶撞"图片内容不变"、
+   "默认写实摄影/禁扁平"顶撞科技风、"封面结尾文字极少"和"降低文字密度"顶撞"文字内容不变"。
+   **于是把美化的规则文件与整套 hard requirements 全部删除**，边界收紧到极致。
 
-**已执行**：`ppt-polish-worker.mjs` 里 `readSkill()` / `styleRoot` 那段与 `style-packs.md` 的注入已全部删除，只保留 `polishVisualRules`（读自己的 `skills/ppt-polish/visual-redraw-system.md`）。**生成 PPT 的读取面一个字节都没动。**
+**现在的状态**：美化每页的提示词只由三段组成——**用户要求**（最高优先级）、**本页原有文字**（参考）、**本页位置**（第几页/来源/前后页）。`ppt-polish-worker.mjs` 里不再有任何 `readSkill`、没有 `visualSystemPrompt`、没有 `slideRole`、没有 hard requirements 列表。**生成 PPT 的读取面一个字节都没动。**
 
 **生图链路同理**：`scripts/workers/design-agent/design-agent-skills.mjs` **不能**搬到 `skills/image-generation/`。
 它 7 个常量里 6 个是**拆图 / 抠图 / 重建**规则，只有 1 个是单页渲染规则；搬过去会造成概念混淆。

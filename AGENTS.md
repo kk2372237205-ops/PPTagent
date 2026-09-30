@@ -22,8 +22,8 @@
 | `app/employee/styles/*.css` | 按模块拆开的样式，顺序由入口文件固定 | 只改自己模块那份 |
 | `scripts/*.mjs` | **启动与运维脚本**（`dev.mjs`、`dev-lite.mjs`、`agent-workers.mjs`、`init-db.mjs` 等） | **可以分别派人改** |
 | `scripts/workers/<模式>/*.mjs` | **后台执行脚本按模式分目录**：`deck-generation/`（生成 PPT）、`ppt-polish/`（美化 PPT）、`design-agent/`（生图 + 单页设计）、`image-explode/`（图片炸开）、`shared/`（共用网络层） | **按模式分别派人改**；`shared/` 改动要回归全部 worker |
-| `skills/deck-generation/**` | 生成 PPT 的提示词规则（**只服务生成 PPT**）；美化 PPT 读自己的 `skills/ppt-polish/`、生图不读任何 skill —— **不要把本目录的文件接给它们**（2026-09-27 决定、2026-09-30 收紧） | 改提示词优先改这里 |
-| `skills/ppt-polish/**` | 美化 PPT 自己的提示词规则（`visual-redraw-system.md` 等）；**不得读取 `skills/deck-generation/` 的任何文件** | 改美化提示词改这里 |
+| `skills/deck-generation/**` | 生成 PPT 的提示词规则（**只服务生成 PPT**）；美化 PPT 与生图**都不读任何 skill**（2026-09-27 决定、2026-09-30 收紧） | 改提示词优先改这里 |
+| `skills/ppt-polish/**` | 美化 PPT 的说明（**刻意没有任何规则文件**）；美化的提示词只由用户在界面上写的内容组成，`ppt-polish-worker.mjs` 里不得再注入预设画面规则 | 改美化行为改代码或让用户自己写要求 |
 
 ## 派活模板（给别人或给 AI 派任务时照抄）
 
@@ -178,7 +178,8 @@ npm start
 - 美化 PPT worker 为 `scripts/workers/ppt-polish/ppt-polish-worker.mjs`，健康检查在 `lib/ppt-polish-worker-health.ts`。
 - `npm run dev`、`npm run dev:lite` 和 `npm run agent:workers` 都应包含美化 PPT worker。
 - 美化 PPT 生成页图时并发数为 2；排队和生成中的预览卡都要有动态反馈。
-- 封面页和结尾页应强情绪、少文字、风格突出；中间页要保持统一色彩、统一版式语言和上下文连贯。
+- **美化的提示词只由用户在界面上写的内容组成**（整套方向 + 逐页要求 + 保护项 + 返工指令），代码里**不得再注入任何预设画面规则**。"封面强情绪、少文字""每页必须有主导插图""默认写实"这类要求曾写进美化提示词，2026-09-30 全部删除——它们和用户"文字图片内容不变、用蓝白科技风"直接冲突，是"不听话"的根因。
+- 中间页的统一色彩、版式语言与上下文连贯，现在**只能靠用户自己在要求里写**（或后续把源页图片接进重绘来保证），不要再靠提示词里偷偷加规则。
 - 预览区不应在用户什么都没写、没有确认方案时展示“生成页面中”的旧占位栏。
 
 ### 图片转 PPT
