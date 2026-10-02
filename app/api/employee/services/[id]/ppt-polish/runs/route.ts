@@ -142,19 +142,21 @@ function cleanText(value: string, maxLength: number) {
 
 function normalizeOptions(value: string) {
   const defaults = {
-    keepText: true,
-    keepNumbers: true,
-    mainColor: true,
-    headerFooter: true,
-    backgroundTexture: true,
+    keepText: false,
+    keepNumbers: false,
+    mainColor: false,
+    headerFooter: false,
+    backgroundTexture: false,
     cardStyle: false,
     decorativeElements: false,
-    reduceText: true,
+    reduceText: false,
+    // 美化重绘必须把原 PPT 固化成逐页 PNG，并作为本页图片编辑的输入。
+    // 保留这个字段只为兼容已保存的任务记录；不再允许客户端关掉它。
     convertSourcePages: true
   };
   try {
     const parsed = JSON.parse(value);
-    return Object.fromEntries(Object.entries(defaults).map(([key, fallback]) => [key, Boolean(parsed?.[key] ?? fallback)]));
+    return Object.fromEntries(Object.entries(defaults).map(([key, fallback]) => [key, key === "convertSourcePages" ? true : Boolean(parsed?.[key] ?? fallback)]));
   } catch {
     return defaults;
   }

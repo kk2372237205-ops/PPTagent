@@ -3,6 +3,7 @@ import { readFile, writeFile } from "fs/promises";
 import { NextRequest, NextResponse } from "next/server";
 import JSZip from "jszip";
 import { authorizeEmployeeService } from "@/lib/employee-auth";
+import { aiImageConfig } from "@/lib/ai-providers";
 import { pptPolishWorkerHealth } from "@/lib/ppt-polish-worker-health";
 import { documentRoot, workspaceRoot } from "@/lib/workspace-storage";
 
@@ -22,6 +23,13 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
   const workerHealth = pptPolishWorkerHealth();
   if (!workerHealth.ok) {
     return NextResponse.json({ error: workerHealth.message || "PPT 美化 Worker 未运行/已停止，请重启 npm run dev:lite 或 npm run dev" }, { status: 503 });
+  }
+  const imageService = aiImageConfig();
+  if (!imageService.configured) {
+    return NextResponse.json({ error: "尚未配置 AI_IMAGE_API_KEY，无法按原页图片重绘。" }, { status: 503 });
+  }
+  if (!imageService.supportsEdits) {
+    return NextResponse.json({ error: "美化 PPT 需要把原页 PNG 连同本页要求发送给图片模型。请确认图片中转站支持 /images/edits，并将 AI_IMAGE_SUPPORTS_EDITS 设为 1 后重启服务。" }, { status: 503 });
   }
   const now = new Date().toISOString();
   if (run.status === "source_ready") {

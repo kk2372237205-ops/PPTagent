@@ -43,18 +43,6 @@ export function PolishPptPlanner({ service, notify, initialRun, onRunCreated, on
   const [dragging, setDragging] = useState(false);
   const [polishRuns, setPolishRuns] = useState<PptPolishRun[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [options, setOptions] = useState({
-    keepText: true,
-    keepNumbers: true,
-    mainColor: true,
-    headerFooter: true,
-    backgroundTexture: true,
-    cardStyle: false,
-    decorativeElements: false,
-    reduceText: true,
-    convertSourcePages: true,
-    ...(initialRun?.options || {})
-  });
   const fileRef = useRef<HTMLInputElement>(null);
   const latestPollingStatus = polishRuns[0]?.status || "";
 
@@ -89,16 +77,13 @@ export function PolishPptPlanner({ service, notify, initialRun, onRunCreated, on
     setSourceMode("upload");
   }
 
-  function toggleOption(key: keyof typeof options) {
-    setOptions(current => ({ ...current, [key]: !current[key] }));
-  }
-
   async function submitPolishPlan() {
     if (sourceMode === "current" && !service.workDocument) return notify("当前订单还没有工作文稿，请先上传 PPT");
     if (sourceMode === "upload" && !selectedFile) return notify("请先放入需要美化的 PPT 文件");
     const form = new FormData();
     form.append("sourceMode", sourceMode);
-    form.append("options", JSON.stringify(options));
+    // 逐页提示词只使用员工实际填写的要求与夹子内容；不再提交隐藏的默认勾选项。
+    form.append("options", "{}");
     if (sourceMode === "upload" && selectedFile) form.append("file", selectedFile);
     setSubmitting(true);
     try {
@@ -129,7 +114,7 @@ export function PolishPptPlanner({ service, notify, initialRun, onRunCreated, on
       <b>{sourceMode === "current" && service.workDocument ? service.workDocument.originalName : selectedFileName || "拖入需要美化的 PPT"}</b>
       <span>{sourceMode === "current" && service.workDocument ? "确认后按所选流程处理当前 PPTX。" : "支持点击选择或直接拖拽 PPTX。"}</span>
     </div>
-    <aside className={`polish-source-snapshot-note ${options.convertSourcePages ? "is-on" : "is-off"}`}><div><b>PPT转PNG</b><span>系统将整份 PPTX 本地转换为按页 PNG</span></div><button type="button" className="polish-switch" role="switch" aria-checked={options.convertSourcePages} title="关闭后跳过 PPT 转 PNG，供后续直接提供页面图片集的流程使用。" onClick={() => toggleOption("convertSourcePages")}><i/><em>{options.convertSourcePages ? "开启" : "关闭"}</em></button></aside>
+    <aside className="polish-source-snapshot-note is-on"><div><b>原页图片参考</b><span>系统将整份 PPTX 本地转换为按页 PNG；每页会连同该页要求一对一发送给图片模型。</span></div></aside>
     <button type="button" disabled={submitting} onClick={submitPolishPlan}><WandSparkles/>{submitting ? "提交中..." : "生成美化方案"}</button>
   </section>;
 }

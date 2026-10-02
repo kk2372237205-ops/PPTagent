@@ -8,8 +8,7 @@ import JSZip from "jszip";
 import {
   aiImageConfig,
   createServiceFetch,
-  imageGenerationBody,
-  requireImageService
+  requireImageEdits
 } from "../shared/ai-service-client.mjs";
 import { createPptPolishSourcePages } from "./ppt-polish-source-pages.mjs";
 
@@ -190,17 +189,25 @@ function readableExternalFailure(error) {
   return message || "图片中转服务暂时不可用，请稍后重试。";
 }
 
-async function openAiImage(prompt) {
+async function openAiImage(prompt, sourcePage) {
   // 所有美化出图都从这里走，所以全局闸门挂在这一处即可。
-  return imageSlot(() => requestOpenAiImage(prompt));
+  return imageSlot(() => requestOpenAiImage(prompt, sourcePage));
 }
 
-async function requestOpenAiImage(prompt) {
-  requireImageService(imageService);
-  const response = await imageRequest(`${imageService.baseUrl}/images/generations`, {
+async function requestOpenAiImage(prompt, sourcePage) {
+  // 美化是“原页 PNG + 该页要求”的一对一图片编辑，不允许在参考页缺失时
+  // 静默降级成纯文字生图；那样无法让模型看见原来的图片、版式与文字。
+  requireImageEdits(imageService);
+  const form = new FormData();
+  form.set("model", imageService.model);
+  form.set("prompt", prompt);
+  form.set("n", "1");
+  form.set("size", imageService.size);
+  form.set("image", new Blob([new Uint8Array(sourcePage.buffer)], { type: "image/png" }), sourcePage.name);
+  const response = await imageRequest(`${imageService.baseUrl}/images/edits`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${imageService.apiKey}` },
-    body: JSON.stringify(imageGenerationBody(imageService, prompt))
+    headers: { Authorization: `Bearer ${imageService.apiKey}` },
+    body: form
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok || !result.data?.[0]) throw new Error(providerError(result, "图片中转服务生成失败"));
@@ -293,59 +300,36 @@ function pageNoteFor(index, pageNotes = []) {
   return cleanText(matched.join("；"), 800);
 }
 
-function optionLines(options = {}) {
-  const labels = {
-    keepText: "尽量保留原文字与原语义",
-    keepNumbers: "保留数字、年份、百分比和单位",
-    mainColor: "统一主色",
-    headerFooter: "统一页眉页脚",
-    backgroundTexture: "统一背景质感",
-    cardStyle: "统一卡片样式",
-    decorativeElements: "统一装饰元素",
-    reduceText: "降低文字密度，改成更清晰的信息层级"
-  };
-  return Object.entries(labels).filter(([key]) => options[key]).map(([, label]) => `- ${label}`).join("\n");
-}
-
 /**
- * 美化单页提示词 = 用户的要求 + 这一页的原文，**不掺任何我们自己的画面规则**。
+ * 美化单页提示词只包含用户的要求，**不掺任何我们自己的画面规则**。
  *
  * 2026-09-30 owner 决定：删掉以前偷偷加进去的那一整套规则
  *（"不要锁定风格/不要强制配色"、"每页必须有 ≥25% 主导插图并出血"、"默认写实摄影、禁扁平"、
  *  封面/结尾"文字极少"、"降低文字密度"、"不确定中文就用短标签"、"把并列项改成流程链" 等），
  * 理由是它们和用户自己写的"文字图片内容不变 / 用蓝白科技风"直接打架，模型会听规则不听用户。
  *
- * 现在只剩三段事实：用户要求（最高优先级）、本页原有文字（供参考）、本页在整套里的位置。
- * 要恢复任何一条旧规则，看 git 历史（c484d36 及更早）。
+ * 本页原始 PNG 会作为 /images/edits 的图片输入；原文、前后页文字和位置
+ * 不再塞进提示词。要恢复任何一条旧规则，看 git 历史（c484d36 及更早）。
  */
-function slidePrompt(run, slide, previous, next) {
-  const wantsPreviousAnchor = /Action:\s*closer_previous/i.test(slide.lastInstruction || "");
+function slidePrompt(run, slide) {
   const requirements = [
-    run.note ? `- 整套要求：${run.note}` : "",
-    slide.note ? `- 本页要求：${slide.note}` : "",
-    optionLines(run.options),
-    slide.lastInstruction ? `- 本次返工指令：${slide.lastInstruction}` : ""
+    run.note,
+    slide.note,
+    slide.lastInstruction
   ].filter(Boolean).join("\n");
-  return `Create one complete 16:9 PowerPoint slide image for this PPT page.
-
-User requirements (highest priority — follow them exactly; nothing else overrides them):
-${requirements || "- 按原页面内容重绘，保持原有信息、结构与风格。"}
-
-This page's original text (reference only, so you know what the page contains):
-${slide.originalText || slide.title || "(本页没有可提取的文字)"}
-
-Page ${slide.slideIndex} of ${run.pageCount}. Source file: ${run.sourceName}.
-Previous page text (context only): ${previous?.originalText || "none"}
-Next page text (context only): ${next?.originalText || "none"}${wantsPreviousAnchor && previous?.prompt ? `
-
-The user asked this page to stay closer to the previous generated page. Previous page prompt (style anchor only, do not copy its text or composition):
-${cleanText(previous.prompt, 1200)}` : ""}`;
+  if (!requirements.trim()) {
+    throw new Error(`第 ${slide.slideIndex} 页没有可提交的美化要求。请先填写整套或本页修改要求，再开始生成。`);
+  }
+  // 这里刻意不再拼接原页文字、前后页文字或任何预设画面规则。
+  // 原页 PNG 已作为 /images/edits 的唯一视觉与内容参考；文本只来自用户写入/勾选的要求。
+  return requirements;
 }
 
 async function prepareRun(run) {
   run = await writeRun(run, { status: "planning", error: "" });
   const sourcePath = path.join(documentRoot, path.basename(run.sourceStoredName));
-  const sourceSnapshot = run.options?.convertSourcePages === false ? undefined : (run.sourceSnapshot?.pageCount
+  // 原页 PNG 是美化重绘的必需输入，而不是可关闭的仅供预览附件。
+  const sourceSnapshot = run.sourceSnapshot?.pageCount
     ? run.sourceSnapshot
     : await createPptPolishSourcePages({
       run,
@@ -354,7 +338,7 @@ async function prepareRun(run) {
       runRoot: polishRunRoot,
       onlyOfficeUrl: process.env.PPT_POLISH_ONLYOFFICE_URL || process.env.ONLYOFFICE_URL || "http://localhost:18080",
       onlyOfficeSecret: process.env.ONLYOFFICE_JWT_SECRET || "development-onlyoffice-secret"
-    }));
+    });
   const extracted = run.slides?.length ? run.slides : await extractPptxSlides(run.sourceStoredName);
   const slides = extracted.map(slide => ({
     ...slide,
@@ -370,14 +354,11 @@ async function prepareRun(run) {
 }
 
 async function generateSlideAsset(run, slide) {
-  const slides = run.slides || [];
-  const currentIndex = slides.findIndex(item => item.slideIndex === slide.slideIndex);
-  const previous = currentIndex > 0 ? slides[currentIndex - 1] : null;
-  const next = currentIndex >= 0 && currentIndex < slides.length - 1 ? slides[currentIndex + 1] : null;
-  const prompt = slidePrompt(run, slide, previous, next);
+  const prompt = slidePrompt(run, slide);
   let normalized;
   try {
-    const raw = await openAiImage(prompt);
+    const sourcePage = await sourcePageForSlide(run, slide);
+    const raw = await openAiImage(prompt, sourcePage);
     normalized = await sharp(raw)
       .resize(1920, 1080, { fit: "contain", background: "#061525" })
       .png()
@@ -392,6 +373,25 @@ async function generateSlideAsset(run, slide) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return { ok: false, slideIndex: slide.slideIndex, prompt, error: message, updatedAt: new Date().toISOString() };
+  }
+}
+
+async function sourcePageForSlide(run, slide) {
+  const sourcePage = run.sourceSnapshot?.pages?.find(item => Number(item.pageIndex) === Number(slide.slideIndex));
+  if (!sourcePage?.storedName) {
+    throw new Error(`第 ${slide.slideIndex} 页缺少原始页面 PNG，不能改为纯文字生图。请重新确认任务以生成源页图片。`);
+  }
+  const sourcePath = path.join(polishRunRoot, path.basename(run.id), "source-pages", path.basename(sourcePage.storedName));
+  try {
+    return {
+      buffer: await readFile(sourcePath),
+      name: `source-page-${slide.slideIndex}.png`
+    };
+  } catch (error) {
+    if (error && typeof error === "object" && error.code === "ENOENT") {
+      throw new Error(`第 ${slide.slideIndex} 页的原始页面 PNG 已丢失，不能改为纯文字生图。请重新确认任务以生成源页图片。`);
+    }
+    throw error;
   }
 }
 
