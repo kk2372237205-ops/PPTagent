@@ -89,6 +89,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
   const imageIds = parseImageIds(String(form.get("generatedImageIds") || "[]"));
   const uploadFiles = form.getAll("references").filter((value): value is File => value instanceof File && value.size > 0);
+  // 文生图的安全边界不能只靠前端隐藏上传按钮：任何绕过界面的参考图
+  // 都直接拒绝，确保这一模式只把员工文字（及其明确套用的夹子）交给模型。
+  if (generationMode === "text" && (imageIds.length || uploadFiles.length)) {
+    return NextResponse.json({ error: "文生图模式不接收参考图，请切换到混合模式。" }, { status: 400 });
+  }
   if (imageIds.length + uploadFiles.length > maxReferences) return NextResponse.json({ error: `最多选择 ${maxReferences} 张参考图` }, { status: 400 });
   if (generationMode === "mixed" && imageIds.length + uploadFiles.length === 0) return NextResponse.json({ error: "混合模式至少需要一张参考图" }, { status: 400 });
 

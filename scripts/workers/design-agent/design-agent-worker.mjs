@@ -5,7 +5,7 @@ import sharp from "sharp";
 import { PrismaClient } from "@prisma/client";
 const root = process.cwd();
 import { aiImageConfig, aiTextConfig, createServiceFetch, imageGenerationBody, requireImageEdits, requireImageService, requireTextService, textEndpoint, textFromResponse as textFromServiceResponse, textRequestBody } from "../shared/ai-service-client.mjs";
-import { cleanBackgroundSkill, masterRenderSkill, partCutoutSkill, partDecompositionSkill, rebuildAlignmentSkill, textArtCutoutSkill } from "./design-agent-skills.mjs";
+import { cleanBackgroundSkill, partCutoutSkill, partDecompositionSkill, rebuildAlignmentSkill, textArtCutoutSkill } from "./design-agent-skills.mjs";
 
 loadEnv();
 
@@ -175,7 +175,8 @@ async function openAiImageRaw(plan, vision, mode, references, promptOverride = "
     if (!response.ok && files.length > 1 && !isOpenAiSafetyRejection(result)) {
       const contactSheet = await toContactSheet(files);
       const fallback = multipartBody(
-        { model: openAiImageModel, prompt: `${prompt}\nThe supplied image is a numbered reference board. Consider every tile.`, n: "1", size: openAiPrimaryImageSize },
+        // 这只是多图接口不兼容时的传输回退；提示词仍逐字保持员工提交内容。
+        { model: openAiImageModel, prompt, n: "1", size: openAiPrimaryImageSize },
         [{ field: "image", buffer: contactSheet, name: "all-references.png", mime: "image/png" }]
       );
       response = await imageRequest(`${imageService.baseUrl}/images/edits`, {
@@ -508,36 +509,10 @@ async function legacyProcessRun(_run) {
 function clampBatchCount(value) {
   return Math.max(1, Math.min(4, Number(value) || 1));
 }
-function smartMasterPrompt(run, batchIndex, batchCount) {
-  const referenceSummary = (run.references || [])
-    .sort((a, b) => Number(Boolean(b.isPrimary)) - Number(Boolean(a.isPrimary)) || Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
-    .map((reference, index) => `${index + 1}. ${reference.isPrimary ? "PRIMARY" : "secondary"} reference: ${reference.label || reference.source || "image"}`)
-    .join("\n");
-  const mixedRules = run.generationMode === "mixed" ? `
-Mixed mode reference contract:
-- The supplied images are direct visual inputs to OpenAI for creating this master image.
-- The first supplied image is the PRIMARY reference. Follow its core subject, information intent, rough layout relationships and user-requested content priority.
-- Secondary references only provide supporting style, material, atmosphere, composition hints or detail inspiration.
-- Generate one new complete 16:9 PPT sample image from the prompt plus references. Do not output a collage, contact sheet, screenshot board, pasted image block, raw reference crop, white selection handles or UI screenshot.
-- Do not simply copy the primary reference pixel-for-pixel. Recreate and beautify it as a polished presentation page according to the employee brief.
-- If the employee asks to beautify an uploaded page, preserve the page's intended content hierarchy and key visual meaning while improving design quality.
-Reference order passed to OpenAI:
-${referenceSummary || "(no references)"}
-` : `
-Text-to-image mode: no reference image is passed to OpenAI; create a fresh original presentation sample from the brief.
-`;
-  return `${masterRenderSkill}
-
-Employee brief:
-${run.brief}
-
-Order context:
-${run.service?.title || ""} ${run.service?.category || ""}
-
-${mixedRules}
-
-Candidate ${batchIndex + 1} of ${batchCount}. Make this candidate visually distinct in composition or emphasis, while still following the same brief.
-The result must be a finished 16:9 PPT slide sample image. UI text may be stylized as image content because it will be decomposed later. Keep it premium, precise, and presentation-ready.`;
+function smartMasterPrompt(run) {
+  // 生图模式不再附加任何品牌、版式、订单或“高级感”等隐形规则。
+  // run.brief 是界面手写内容加员工主动套用的夹子，保持原样交给图片模型。
+  return String(run.brief || "").trim();
 }
 // Legacy rebuild helper retained for the later downstream workflow.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -1189,9 +1164,9 @@ async function buildSmartExplodeRun(run, masterImage, masterBuffer, cleanStoredN
   });
   return { explodeRun, reconstructionName, needsReview, warnings: finalWarnings };
 }
-async function createSmartBatch(run, job, batchIndex, batchCount) {
+async function createSmartBatch(run, job, batchIndex) {
   await ensureRunActive(run.id);
-  const masterPrompt = smartMasterPrompt(run, batchIndex, batchCount);
+  const masterPrompt = smartMasterPrompt(run);
   if (run.generationMode === "mixed") {
     const referenceCount = run.references?.length || 0;
     const primary = (run.references || []).find(reference => reference.isPrimary) || run.references?.[0];
@@ -1222,15 +1197,13 @@ async function createSmartBatch(run, job, batchIndex, batchCount) {
 async function processRun(run) {
   await ensureDirs();
   const batchCount = clampBatchCount(run.generationBudget);
-  const skills = ["master_render_skill"];
-  const promptSummary = `${masterRenderSkill}`;
-  await setRun(run.id, { workflowState: "master_render", designIntent: JSON.stringify({ workflow: "openai-smart-image-v1", batchCount, skills }), error: null, generationAttempts: 0, evaluationAttempts: 0 });
-  await logEvent(run.id, "context", "completed", "Loaded prompt and references. Smart mode now stops after high-quality PNG generation.");
-  const job = await db.generationJob.create({ data: { prompt: `${run.brief}\n\n--- WORKFLOW SKILLS ---\n${promptSummary}`, status: "processing", provider: "openai", model: openAiImageModel, serviceId: run.serviceId, employeeId: run.employeeId } });
-  await setRun(run.id, { generatedJobId: job.id, visualPrompt: promptSummary });
+  await setRun(run.id, { workflowState: "image_generation", designIntent: JSON.stringify({ workflow: "employee-prompt-image-v1", batchCount }), error: null, generationAttempts: 0, evaluationAttempts: 0 });
+  await logEvent(run.id, "context", "completed", "已加载员工提交的文字与明确套用的夹子；没有追加预设提示词。");
+  const job = await db.generationJob.create({ data: { prompt: run.brief, status: "processing", provider: "openai", model: openAiImageModel, serviceId: run.serviceId, employeeId: run.employeeId } });
+  await setRun(run.id, { generatedJobId: job.id, visualPrompt: run.brief });
   const batches = [];
   for (let index = 0; index < batchCount; index += 1) {
-    const batch = await createSmartBatch(run, job, index, batchCount);
+    const batch = await createSmartBatch(run, job, index);
     batches.push(batch);
     const first = batches[0];
     await setRun(run.id, { generationAttempts: batches.length, selectedImageId: first.assetFiles.masterImageId, layoutPlan: JSON.stringify({ workflow: "openai-smart-image-v1", title: "Smart mode PNG candidates", batches, assetFiles: first.assetFiles, qa: first.qa }) });

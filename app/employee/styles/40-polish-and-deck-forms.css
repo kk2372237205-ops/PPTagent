@@ -693,3 +693,74 @@
   width: fit-content;
   flex: 0 1 auto;
 }
+
+/* 生图模式复用美化 PPT 的员工级夹子数据，但不在输入框中展示夹子正文。 */
+.employee-root .image-generation-form .design-mode { margin:0 0 13px; padding:0; }
+.employee-root .image-generation-form .design-mode button { min-height:68px; padding:13px; }
+.employee-root .image-generation-form .design-mode span { font-size:12px; font-weight:850; }
+.employee-root .image-generation-form .design-mode span::after { content:none; }
+.employee-root .image-generation-form .design-mode small { display:block; margin-top:4px; color:#8fa6bd; font-size:10px; font-weight:650; }
+.employee-root .image-generation-form .design-mode button.active small { color:#d7cfff; }
+.employee-root .image-generation-form > label textarea { width:100%; margin-bottom:0; }
+
+.employee-root .image-applied-clip-list { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:10px 0 8px; }
+.employee-root .image-applied-clip-list > span { color:#8faab9; font-size:10px; font-weight:700; white-space:nowrap; }
+.employee-root .image-applied-clip-chip { display:inline-flex; align-items:center; min-width:0; max-width:100%; min-height:32px; gap:7px; border:1px solid rgba(133,161,174,.35); border-radius:999px; background:rgba(39,71,91,.42); color:#ecf5fa; padding:4px 9px 4px 12px; font-size:11px; cursor:pointer; }
+.employee-root .image-applied-clip-chip i { display:block; min-width:0; overflow:hidden; font-style:normal; text-align:left; text-overflow:ellipsis; white-space:nowrap; }
+.employee-root .image-applied-clip-chip svg { width:13px; height:13px; flex:0 0 auto; padding-left:7px; border-left:1px solid rgba(185,211,225,.36); color:#d9a7af; }
+.employee-root .image-applied-clip-chip:hover { border-color:rgba(215,130,153,.68); background:rgba(121,55,73,.27); }
+.employee-root .image-applied-clip-chip.color-blue { border-color:rgba(110,175,219,.68); }
+.employee-root .image-applied-clip-chip.color-green { border-color:rgba(119,185,147,.68); }
+.employee-root .image-applied-clip-chip.color-gold { border-color:rgba(214,169,95,.68); }
+.employee-root .image-applied-clip-chip.color-rose { border-color:rgba(215,130,153,.68); }
+
+.employee-root .image-clip-island { max-width:100%; margin-top:8px; border:1px solid rgba(130,159,172,.28); border-radius:999px; background:rgba(43,57,68,.7); box-shadow:0 8px 20px rgba(0,0,0,.14); }
+.employee-root .image-clip-island.is-open { border-color:rgba(120,171,154,.5); border-radius:14px; background:rgba(27,42,45,.92); }
+.employee-root .image-clip-island-trigger { display:flex; align-items:center; min-width:0; gap:7px; border:0; border-radius:999px; background:transparent; color:#cae0e5; padding:7px 11px; cursor:pointer; }
+.employee-root .image-clip-island-trigger svg { width:14px; height:14px; color:#a5d6d2; }
+.employee-root .image-clip-island-trigger b { font-size:11px; }
+.employee-root .image-clip-island-trigger span { overflow:hidden; color:#8da4ae; font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
+.employee-root .image-clip-island-content { padding:0 10px 10px; }
+.employee-root .image-clip-rail { display:flex; flex-wrap:wrap; gap:7px; padding:6px 0 9px; }
+.employee-root .image-clip { display:inline-flex; overflow:hidden; border:1px solid rgba(132,158,173,.32); border-radius:999px; background:rgba(255,255,255,.045); }
+.employee-root .image-clip button { display:inline-flex; align-items:center; border:0; background:transparent; color:#d9e6e9; cursor:pointer; }
+.employee-root .image-clip button:first-child { max-width:170px; padding:6px 8px 6px 10px; font-size:10px; }
+.employee-root .image-clip button:first-child span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.employee-root .image-clip button:last-child { border-left:1px solid rgba(255,255,255,.12); padding:5px 7px; }
+.employee-root .image-clip button:disabled { color:#bfe3d0; cursor:default; opacity:.8; }
+.employee-root .image-clip svg { width:12px; height:12px; }
+.employee-root .image-clip.color-blue { border-color:rgba(101,157,204,.65); }
+.employee-root .image-clip.color-green { border-color:rgba(91,171,130,.65); }
+.employee-root .image-clip.color-gold { border-color:rgba(202,165,96,.65); }
+.employee-root .image-clip.color-rose { border-color:rgba(198,111,130,.68); }
+.employee-root .image-clip-new { display:inline-flex; align-items:center; gap:4px; border:1px dashed rgba(156,185,191,.5); border-radius:999px; background:transparent; color:#b9d5d8; padding:6px 10px; font-size:10px; font-weight:700; cursor:pointer; }
+.employee-root .image-clip-new svg { width:12px; height:12px; }
+
+.employee-root .image-clip-editor { display:grid; gap:8px; padding:10px; border-top:1px solid rgba(150,178,187,.2); }
+.employee-root .image-clip-editor > header { display:flex; align-items:center; justify-content:space-between; }
+.employee-root .image-clip-editor > header b { color:#dceff0; font-size:11px; }
+.employee-root .image-clip-editor > header button { border:0; background:transparent; color:#8fb3b6; font-size:10px; cursor:pointer; }
+.employee-root .image-clip-editor input,.employee-root .image-clip-editor textarea { width:100%; box-sizing:border-box; margin:0; }
+.employee-root .image-clip-editor textarea { min-height:64px; resize:vertical; }
+.employee-root .image-clip-editor > div { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+.employee-root .image-clip-editor > div > span { margin-right:3px; color:#92abb1; font-size:10px; }
+.employee-root .image-clip-editor .color-blue,.employee-root .image-clip-editor .color-green,.employee-root .image-clip-editor .color-gold,.employee-root .image-clip-editor .color-rose { border:1px solid rgba(151,174,181,.32); border-radius:999px; background:transparent; color:#cbdadd; padding:4px 8px; font-size:10px; cursor:pointer; }
+.employee-root .image-clip-editor .color-blue.selected { border-color:#6fadd9; color:#bde1fb; }
+.employee-root .image-clip-editor .color-green.selected { border-color:#72b993; color:#c4edd4; }
+.employee-root .image-clip-editor .color-gold.selected { border-color:#c9a35f; color:#f3d99b; }
+.employee-root .image-clip-editor .color-rose.selected { border-color:#c87d8d; color:#f1bcc6; }
+.employee-root .image-clip-save { display:inline-flex; align-items:center; gap:5px; margin-left:auto; border:1px solid rgba(115,176,153,.5); border-radius:7px; background:rgba(54,127,91,.7); color:#effbf4; padding:6px 9px; font-size:10px; font-weight:800; cursor:pointer; }
+.employee-root .image-clip-save:disabled { opacity:.45; cursor:not-allowed; }
+.employee-root .image-clip-save svg { width:12px; height:12px; }
+
+.employee-root .image-reference-strip { margin:12px 0 9px; }
+.employee-root .image-reference-actions { display:flex; align-items:center; gap:9px; margin-top:10px; }
+.employee-root .image-reference-actions button { display:inline-flex; align-items:center; gap:7px; min-height:38px; border:1px solid #446384; border-radius:10px; background:#18344f; color:#e4f3ff; padding:0 11px; font-size:11px; font-weight:800; cursor:pointer; }
+.employee-root .image-reference-actions button:disabled { opacity:.5; cursor:not-allowed; }
+.employee-root .image-reference-actions button svg { width:15px; height:15px; }
+.employee-root .image-reference-actions button span { color:#93cce9; font-size:10px; }
+.employee-root .image-reference-actions small { color:#91a8b9; font-size:10px; }
+@media (max-width:600px) {
+  .employee-root .image-generation-form .design-mode { grid-template-columns:1fr; }
+  .employee-root .image-reference-actions { align-items:flex-start; flex-direction:column; }
+}
