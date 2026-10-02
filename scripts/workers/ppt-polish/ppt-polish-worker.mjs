@@ -5,6 +5,7 @@ import { spawnSync } from "child_process";
 import path from "path";
 import sharp from "sharp";
 import JSZip from "jszip";
+import { FormData } from "undici";
 import {
   aiImageConfig,
   createServiceFetch,
