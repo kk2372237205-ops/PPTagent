@@ -211,7 +211,9 @@ async function requestOpenAiImage(prompt, sourcePage) {
     body: form
   });
   const result = await response.json().catch(() => ({}));
-  if (!response.ok || !result.data?.[0]) throw new Error(providerError(result, "图片中转服务生成失败"));
+  if (!response.ok || !result.data?.[0]) {
+    throw new Error(`${providerError(result, "图片中转服务生成失败")}（图片编辑接口 HTTP ${response.status}）`);
+  }
   const image = result.data[0];
   if (image.b64_json) return Buffer.from(image.b64_json, "base64");
   if (image.url) {

@@ -59,17 +59,6 @@ export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onC
   const sourcePageCount = run.sourceSnapshot?.pageCount || sourcePages.length;
   const selectingSourcePages = run.status === "source_ready" && sourcePages.length > 0;
   const sourceConverting = ["confirmed", "planning"].includes(run.status) && run.options?.convertSourcePages !== false;
-  const optionLabels = [
-    ["keepText", "保留原文字"],
-    ["keepNumbers", "保留数字信息"],
-    ["mainColor", "主色统一"],
-    ["headerFooter", "页眉页脚统一"],
-    ["backgroundTexture", "背景质感统一"],
-    ["cardStyle", "卡片样式统一"],
-    ["decorativeElements", "装饰元素统一"],
-    ["reduceText", "减少文字密度"]
-  ].filter(([key]) => run.options?.[key]).map(([, label]) => label);
-
   useEffect(() => {
     if (!selectingSourcePages) return;
     let live = true;
@@ -93,6 +82,15 @@ export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onC
 
   function selectedClipIds(pageIndex: number) {
     return pageClipIds[pageIndex] ?? savedPageNote(pageIndex)?.clipIds ?? [];
+  }
+
+  function savedRequirementSummary(note?: { note?: string; manualNote?: string; clipIds?: string[] }) {
+    const manualLength = String(note?.manualNote || "").trim().length;
+    const clipCount = Array.isArray(note?.clipIds) ? note.clipIds.length : 0;
+    if (manualLength && clipCount) return `已保存手写要求与 ${clipCount} 个夹子`;
+    if (manualLength) return "已保存手写要求";
+    if (clipCount) return `已套用 ${clipCount} 个夹子`;
+    return note?.note ? "已保存页面要求" : "尚未填写";
   }
 
   function appendClip(pageIndex: number, clip: PolishPromptClip) {
@@ -146,7 +144,7 @@ export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onC
         {run.status === "plan_ready" && <><button className="design-secondary polish-plan-back" onClick={onBack} disabled={busy}><ChevronLeft/>返回修改</button><button className="design-apply" onClick={onConfirm} disabled={busy}>确认并转换页面</button></>}
         {run.status === "source_ready" && <button className="design-apply" onClick={onConfirm} disabled={busy}>开始生成页面</button>}
         {["plan_ready", "confirmed", "planning", "source_ready", "generating"].includes(run.status) && <button className="polish-emergency-cancel" onClick={onCancel} disabled={busy}><OctagonX/>取消任务（紧急）</button>}
-        {run.status === "failed" && run.slides?.length > 0 && <button className="design-apply" onClick={onRetry} disabled={busy}>继续生成</button>}
+        {run.status === "failed" && run.slides?.length > 0 && <button className="design-apply" onClick={onRetry} disabled={busy}>重新生成失败页面</button>}
         {["review_ready", "pdf_ready"].includes(run.status) && <button className="design-apply" onClick={onCreatePpt} disabled={busy}>转化 PPT</button>}
         {run.pdfStoredName && <a className="design-secondary" href={pdfUrl}><Download/>下载 PDF</a>}
         {run.status === "ppt_ready" && run.pptStoredName && <a className="design-apply" href={pptUrl}><Download/>下载 PPTX</a>}
@@ -161,14 +159,13 @@ export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onC
     </section>}
     {!sourceConverting && run.status !== "source_ready" && <section className="deck-plan-review inline polish-plan-review">
       <article>
-        <span>美化方案</span>
-        <h3>按页面要求美化</h3>
-        <p>保留原稿关键信息，并根据勾选要求和逐页提示词重组版面。</p>
-        <div className="polish-plan-tags">{optionLabels.map(label => <i key={label}>{label}</i>)}</div>
+        <span>美化方式</span>
+        <h3>按原页图片与逐页要求重绘</h3>
+        <p>每一页原始 PNG 会连同该页已保存的要求一对一发送给图片模型。</p>
       </article>
       <article>
         <span>逐页修改清单</span>
-        {run.pageNotes?.length ? <ol>{run.pageNotes.map(item => <li key={item.id}><b>第 {item.pages} 页</b><small>{item.note}</small></li>)}</ol> : <p>确认后可从页面缩略图中点选并填写要求。</p>}
+        {run.pageNotes?.length ? <ol className="polish-page-note-summary-list">{run.pageNotes.map(item => <li key={item.id}><b>第 {item.pages} 页</b><small>{savedRequirementSummary(item)}</small></li>)}</ol> : <p>确认后可从页面缩略图中点选并填写要求。</p>}
       </article>
     </section>}
     {(sourcePages.length > 0 || run.status === "source_ready") && <section className={`deck-plan-review inline polish-source-pages ${selectingSourcePages ? "is-selecting" : ""}`}>
@@ -210,7 +207,7 @@ export function PolishInlineRun({ service, run, busy, workerWarning, onBack, onC
         return <article key={slide.slideIndex}>
         <header><b>{slide.title || `第 ${slide.slideIndex} 页`}</b><span>{slide.status}</span></header>
         <button className="deck-slide-preview" disabled={!slide.storedName} onClick={() => slide.storedName && onPreview({ url: slideImageUrl, title: slide.title || `第 ${slide.slideIndex} 页` })}>{slide.storedName ? <img src={slideImageUrl} alt={slide.title}/> : <><LoaderCircle className={!workerBlocked && slidePending ? "spin" : ""}/><span>{workerBlocked ? "等待 Worker" : slide.status}</span></>}</button>
-        {slide.note && <p>{slide.note}</p>}
+        {slide.note && <p className="polish-slide-note-summary">已保存本页修改要求</p>}
         {slide.error && <p>{slide.error}</p>}
         <footer><button onClick={() => onRegenerate(slide.slideIndex, "reroll")} disabled={busy || !canRegenerate}>重新生成本页</button><button onClick={() => onRegenerate(slide.slideIndex, "closer_previous")} disabled={busy || !canRegenerate}>更贴近上一页</button></footer>
       </article>;
