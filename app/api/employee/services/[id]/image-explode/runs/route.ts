@@ -11,9 +11,8 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
     const { id } = await context.params;
     const authorization = await authorizeEmployeeService(id, "imageTools");
     if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
-    const employee = authorization.access.employee;
     const runs = await db.imageExplodeRun.findMany({
-      where: { serviceId: id, employeeId: employee.id },
+      where: { serviceId: id },
       orderBy: { createdAt: "desc" }, take: 12,
       include: { parts: { orderBy: [{ zIndex: "asc" }, { createdAt: "asc" }] }, textLayers: { orderBy: { createdAt: "asc" } }, events: { orderBy: { createdAt: "asc" } }, sourceImage: true }
     });
@@ -46,7 +45,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     if (!generated || generated.job.serviceId !== id) return NextResponse.json({ error: "这张图片不属于当前订单" }, { status: 400 });
     sourceImageId = generated.id;
     const existing = await db.imageExplodeRun.findFirst({
-      where: { serviceId: id, employeeId: employee.id, sourceImageId: generated.id },
+      where: { serviceId: id, sourceImageId: generated.id },
       orderBy: { createdAt: "desc" },
       include: { parts: { orderBy: [{ zIndex: "asc" }, { createdAt: "asc" }] }, textLayers: { orderBy: { createdAt: "asc" } }, events: { orderBy: { createdAt: "asc" } }, sourceImage: true }
     });

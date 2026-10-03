@@ -11,7 +11,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   const { id } = await context.params;
   const consultation = await db.consultation.findUnique({
     where: { id },
-    include: { services: { select: { assigneeId: true, organizationId: true } } }
+    include: { services: { select: { assigneeId: true, organizationId: true, collaborators: { select: { employeeId: true } } } } }
   });
   if (!consultation) return NextResponse.json({ error: "会话不存在" }, { status: 404 });
   if (!access.employee.isAdmin && !consultation.services.some((service) => canAccessService(access, service))) {

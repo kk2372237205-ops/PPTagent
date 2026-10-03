@@ -36,9 +36,8 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
   const { id } = await context.params;
   const authorization = await authorizeEmployeeService(id, "aiAssistant");
   if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
-  const employee = authorization.access.employee;
   const jobs = await db.generationJob.findMany({
-    where: { serviceId: id, employeeId: employee.id },
+    where: { serviceId: id },
     orderBy: { createdAt: "desc" },
     take: 20,
     include: {

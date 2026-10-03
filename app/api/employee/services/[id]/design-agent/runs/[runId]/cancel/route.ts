@@ -6,9 +6,8 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   const { id, runId } = await context.params;
   const authorization = await authorizeEmployeeService(id, "aiAssistant");
   if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
-  const employee = authorization.access.employee;
   const result = await db.designAgentRun.updateMany({
-    where: { id: runId, serviceId: id, employeeId: employee.id, status: { in: ["queued", "running"] } },
+    where: { id: runId, serviceId: id, status: { in: ["queued", "running"] } },
     data: { status: "cancelled", finishedAt: new Date(), error: "员工已取消任务" }
   });
   if (!result.count) return NextResponse.json({ error: "该任务当前不能取消" }, { status: 400 });

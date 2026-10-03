@@ -35,7 +35,7 @@
   border-radius:8px;
   background:#F3F6F9;
   display:grid;
-  grid-template-columns:1fr 1fr;
+  grid-template-columns:repeat(3,minmax(0,1fr));
   gap:3px;
 }
 .employee-login-providers button {
@@ -60,6 +60,11 @@
   color:#214D6A;
   box-shadow:0 1px 4px rgba(31,52,72,.12);
 }
+.employee-password-login { margin-top:20px; }
+.employee-password-login > label { display:block;margin:15px 0 7px;font-size:11px;font-weight:700;color:#445168; }
+.employee-password-login .employee-password-remember { margin-top:14px;display:flex;align-items:center;gap:7px;color:#69788c;font-weight:500;cursor:pointer; }
+.employee-password-remember input { width:15px;height:15px;accent-color:#214d6a; }
+.employee-password-login > small { margin-top:19px;line-height:1.55; }
 .employee-wechat-school {
   margin:0 0 14px !important;
 }
@@ -441,6 +446,12 @@
   gap:5px;
   white-space:nowrap;
 }
+.employee-account-control { margin-top:14px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px; }
+.employee-account-control form { min-width:0;border:1px solid #2B3440;border-radius:8px;padding:15px;background:#151A22;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px; }
+.employee-account-control header { grid-column:1/-1;display:flex;align-items:center;gap:10px;margin-bottom:2px; }
+.employee-account-control header > svg { width:20px;color:#C6A15B; }.employee-account-control header b,.employee-account-control header small { display:block; }.employee-account-control header b { font-size:11px; }.employee-account-control header small { margin-top:4px;color:#7C8794;font-size:8px;line-height:1.45; }
+.employee-account-control label { min-width:0;color:#9AA4B0;font-size:8px; }.employee-account-control input,.employee-account-control select { box-sizing:border-box;width:100%;height:34px;margin-top:6px;border:1px solid #303A46;border-radius:6px;padding:0 9px;background:#10151C;color:#E8ECF0;outline:0;font-size:9px; }.employee-account-control input:focus,.employee-account-control select:focus { border-color:#667D89; }
+.employee-account-control button { grid-column:1/-1;height:34px;border:1px solid #597483;border-radius:6px;background:#3D5D69;color:#F4F6F7;display:flex;align-items:center;justify-content:center;gap:6px;font-size:9px;font-weight:700;cursor:pointer; }.employee-account-control button:disabled { opacity:.55;cursor:wait; }.employee-account-control button svg { width:14px; }
 .employee-control-tools {
   margin:14px 0 10px;
   display:grid;
@@ -623,6 +634,10 @@
   color:#697482;
   font-size:8px;
 }
+.employee-member-account-fields { grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px; }
+.employee-permission-grid .employee-member-account-fields label { height:auto;min-height:56px;padding:8px;display:block;color:#9EA9B7;cursor:default; }
+.employee-permission-grid .employee-member-account-fields input { display:block;box-sizing:border-box;width:100%;height:28px;margin-top:6px;border:1px solid #394552;border-radius:5px;padding:0 7px;background:#10151C;color:#E8ECF0;outline:0;font-size:9px; }.employee-permission-grid .employee-member-account-fields input:focus { border-color:#667D89; }
+.employee-member-account-save { grid-column:1/-1;justify-self:end;height:32px;border:1px solid #597483;border-radius:6px;background:#3D5D69;color:#F4F6F7;padding:0 12px;font-size:8px;cursor:pointer; }.employee-member-account-save:disabled { opacity:.45;cursor:default; }
 
 @media (max-width:1500px) {
   .employee-member-main {
@@ -631,4 +646,5 @@
   .employee-permission-grid {
     grid-template-columns:repeat(3,minmax(110px,1fr));
   }
+  .employee-account-control { grid-template-columns:1fr; }
 }

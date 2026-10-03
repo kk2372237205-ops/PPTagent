@@ -49,9 +49,8 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
   const { id } = await context.params;
   const authorization = await authorizeEmployeeService(id, "aiAssistant");
   if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
-  const employee = authorization.access.employee;
   const runs = await db.designAgentRun.findMany({
-    where: { serviceId: id, employeeId: employee.id },
+    where: { serviceId: id },
     orderBy: { createdAt: "desc" },
     take: 12,
     include: { references: { orderBy: { sortOrder: "asc" }, include: { generatedImage: true } }, events: { orderBy: { createdAt: "asc" } }, evaluations: { orderBy: { createdAt: "asc" } }, generatedJob: { include: { images: true } } }
@@ -105,7 +104,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   }
 
   const materials = imageIds.length ? await db.materialItem.findMany({
-    where: { serviceId: id, employeeId: employee.id, imageId: { in: imageIds } },
+    where: {
+      serviceId: id,
+      imageId: { in: imageIds },
+      OR: [{ employeeId: employee.id }, { scope: "project" }]
+    },
     include: { image: true }
   }) : [];
   if (materials.length !== imageIds.length) return NextResponse.json({ error: "参考素材不存在或不属于当前员工" }, { status: 403 });

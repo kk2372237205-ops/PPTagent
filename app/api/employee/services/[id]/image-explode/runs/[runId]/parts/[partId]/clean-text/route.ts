@@ -13,7 +13,6 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   const { id, runId, partId } = await context.params;
   const authorization = await authorizeEmployeeService(id, "imageTools");
   if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
-  const employee = authorization.access.employee;
   const imageService = aiImageConfig();
   if (!imageService.apiKey) return NextResponse.json({ error: "未配置 AI_IMAGE_API_KEY，暂时不能使用 AI 清字精修" }, { status: 503 });
   if (!imageService.supportsEdits) {
@@ -23,7 +22,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   }
 
   const part = await db.imageExplodePart.findFirst({
-    where: { id: partId, runId, variant: "clean-text", run: { serviceId: id, employeeId: employee.id } },
+    where: { id: partId, runId, variant: "clean-text", run: { serviceId: id } },
     include: {
       run: {
         include: {

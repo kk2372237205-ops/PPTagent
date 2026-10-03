@@ -28,34 +28,23 @@ export const featureLabels: Record<EmployeeFeature, string> = {
 
 export const roleLabels: Record<string, string> = {
   platform_admin: "平台管理员",
-  org_admin: "学校管理员",
-  manager: "项目主管",
-  designer: "设计师",
-  reviewer: "审核员",
-  member: "普通成员"
+  member: "普通员工"
 };
 
 export const rolePermissionDefaults: Record<string, EmployeePermissions> = {
   platform_admin: Object.fromEntries(Object.keys(featureLabels).map((feature) => [feature, true])) as EmployeePermissions,
-  org_admin: Object.fromEntries(Object.keys(featureLabels).map((feature) => [feature, true])) as EmployeePermissions,
-  manager: Object.fromEntries(Object.keys(featureLabels).map((feature) => [feature, true])) as EmployeePermissions,
-  designer: {
+  member: {
     orders: true, customerMessages: false, team: true, officeEditor: true, aiAssistant: true,
     smartPpt: true, materials: true, imageTools: true, exports: true
-  },
-  reviewer: {
-    orders: true, customerMessages: false, team: true, officeEditor: true, aiAssistant: false,
-    smartPpt: false, materials: false, imageTools: false, exports: true
-  },
-  member: Object.fromEntries(Object.keys(featureLabels).map((feature) => [feature, false])) as EmployeePermissions
+  }
 };
 
 export function canOpenEmployeeAdmin(employee: Employee) {
-  return employee.isAdmin || ["platform_admin", "org_admin"].includes(employee.membership.role);
+  return employee.isAdmin || employee.membership.role === "platform_admin";
 }
 
 export function canAssignOrders(employee: Employee) {
-  return employee.isAdmin || ["platform_admin", "org_admin", "manager"].includes(employee.membership.role);
+  return employee.isAdmin || employee.membership.role === "platform_admin";
 }
 
 export function identityProviderLabel(provider: string) {

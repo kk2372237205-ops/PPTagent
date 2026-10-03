@@ -9,9 +9,8 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   const { id, runId } = await context.params;
   const authorization = await authorizeEmployeeService(id, "imageTools");
   if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
-  const employee = authorization.access.employee;
   const run = await db.imageExplodeRun.findFirst({
-    where: { id: runId, serviceId: id, employeeId: employee.id },
+    where: { id: runId, serviceId: id },
     select: { reconstructionName: true }
   });
   if (!run?.reconstructionName) return NextResponse.json({ error: "重建预览尚未生成" }, { status: 404 });

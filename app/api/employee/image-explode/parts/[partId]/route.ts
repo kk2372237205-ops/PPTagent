@@ -17,12 +17,12 @@ export async function GET(request: NextRequest, context: { params: Promise<{ par
       run: {
         include: {
           sourceImage: true,
-          service: { select: { assigneeId: true, organizationId: true } }
+          service: { select: { assigneeId: true, organizationId: true, collaborators: { select: { employeeId: true } } } }
         }
       }
     }
   });
-  if (!part || part.run.employeeId !== access.employee.id || !canAccessService(access, part.run.service)) {
+  if (!part || !canAccessService(access, part.run.service)) {
     return NextResponse.json({ error: "该候选不存在或你无权查看" }, { status: 404 });
   }
   const showSource = request.nextUrl.searchParams.get("source") === "1";

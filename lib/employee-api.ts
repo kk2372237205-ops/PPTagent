@@ -61,6 +61,10 @@ export const employeeApi = {
     /** 当前员工、订单、客户消息的总入口 */
     me: () => get(`${employeeBase}/me`),
     logout: () => post(`${employeeBase}/auth/logout`),
+    passwordLogin: (username: string, password: string, remember = true) =>
+      post(`${employeeBase}/auth/password`, { username, password, remember }),
+    updateOwnCredentials: (body: { username?: string; currentPassword?: string; newPassword?: string }) =>
+      patch(`${employeeBase}/account/credentials`, body),
     /** 扫码登录参数；provider 为 "wechat" 或 "wecom" */
     loginConfig: (provider: string, query: string) => get(`${employeeBase}/auth/${provider}/config${query}`),
     /** 本地开发专用入口，生产环境服务端始终拒绝 */
@@ -70,6 +74,7 @@ export const employeeApi = {
   /* 管理控制台 */
   admin: {
     overview: () => get(`${employeeBase}/admin/overview`),
+    createMember: (value: ApiBody) => post(`${employeeBase}/admin/members`, value),
     updateMember: (membershipId: string, value: ApiBody) => patch(`${employeeBase}/admin/members/${membershipId}`, value)
   },
 
@@ -80,6 +85,11 @@ export const employeeApi = {
       patch(`${employeeBase}/services/${serviceId}/status`, body),
     setAssignee: (serviceId: string, assigneeId: string | null) =>
       patch(`${employeeBase}/services/${serviceId}/assignee`, { assigneeId: assigneeId || null }),
+    collaborators: (serviceId: string) => get(`${employeeBase}/services/${serviceId}/collaborators`),
+    addCollaborator: (serviceId: string, employeeId: string, role: "lead" | "member") =>
+      post(`${employeeBase}/services/${serviceId}/collaborators`, { employeeId, role }),
+    removeCollaborator: (serviceId: string, employeeId: string) =>
+      request(`${employeeBase}/services/${serviceId}/collaborators`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ employeeId }) }),
     replyToCustomer: (consultationId: string, content: string) =>
       post(`${employeeBase}/consultations/${consultationId}/messages`, { content })
   },
@@ -178,7 +188,7 @@ export const employeeApi = {
     list: (serviceId: string) => get(`${employeeBase}/services/${serviceId}/generate-images`),
     create: (serviceId: string, form: FormData) => post(`${employeeBase}/services/${serviceId}/generate-images`, form),
     import: (serviceId: string, form: FormData) => post(`${employeeBase}/services/${serviceId}/import-image`, form),
-    setMaterial: (imageId: string, body: { isMaterial: boolean; materialOrder: number }) =>
+    setMaterial: (imageId: string, body: { isMaterial: boolean; materialOrder: number; scope?: "personal" | "project" }) =>
       patch(`${employeeBase}/generated-images/${imageId}`, body),
     /** 图片二进制读取（下载用 urls.image.download） */
     file: (imageId: string) => get(`${employeeBase}/generated-images/${imageId}`)

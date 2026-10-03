@@ -7,11 +7,10 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   const { id, runId, slideId } = await context.params;
   const authorization = await authorizeEmployeeService(id, "smartPpt");
   if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
-  const employee = authorization.access.employee;
   const slide = await db.deckGenerationSlide.findFirst({
     where: {
       id: slideId,
-      run: { id: runId, serviceId: id, employeeId: employee.id }
+      run: { id: runId, serviceId: id }
     }
   });
   if (!slide?.storedName) return NextResponse.json({ error: "页面图片尚未生成" }, { status: 404 });

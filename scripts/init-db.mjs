@@ -120,6 +120,9 @@ CREATE TABLE IF NOT EXISTS "Employee" (
   "id" TEXT NOT NULL PRIMARY KEY,
   "code" TEXT NOT NULL UNIQUE,
   "name" TEXT NOT NULL,
+  "username" TEXT UNIQUE,
+  "passwordHash" TEXT,
+  "passwordChangedAt" DATETIME,
   "phone" TEXT UNIQUE,
   "isAdmin" BOOLEAN NOT NULL DEFAULT false,
   "enabled" BOOLEAN NOT NULL DEFAULT true,
@@ -158,6 +161,17 @@ CREATE TABLE IF NOT EXISTS "EmployeeMembership" (
   UNIQUE("organizationId", "wecomUserId"),
   UNIQUE("organizationId", "identityProvider", "externalUserId"),
   UNIQUE("organizationId", "employeeId")
+);
+CREATE TABLE IF NOT EXISTS "ServiceCollaborator" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "serviceId" TEXT NOT NULL,
+  "employeeId" TEXT NOT NULL,
+  "role" TEXT NOT NULL DEFAULT 'member',
+  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "ServiceCollaborator_serviceId_fkey" FOREIGN KEY ("serviceId") REFERENCES "Service" ("id") ON DELETE CASCADE,
+  CONSTRAINT "ServiceCollaborator_employeeId_fkey" FOREIGN KEY ("employeeId") REFERENCES "Employee" ("id") ON DELETE CASCADE,
+  UNIQUE("serviceId", "employeeId")
 );
 CREATE TABLE IF NOT EXISTS "EmployeeSession" (
   "id" TEXT NOT NULL PRIMARY KEY,
@@ -267,6 +281,7 @@ CREATE TABLE IF NOT EXISTS "AiMessage" (
 CREATE TABLE IF NOT EXISTS "MaterialItem" (
   "id" TEXT NOT NULL PRIMARY KEY,
   "materialOrder" INTEGER NOT NULL DEFAULT 0,
+  "scope" TEXT NOT NULL DEFAULT 'personal',
   "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "serviceId" TEXT NOT NULL,
   "employeeId" TEXT NOT NULL,
@@ -629,6 +644,7 @@ CREATE INDEX IF NOT EXISTS "EmployeeMembership_organizationId_status_updatedAt_i
 CREATE INDEX IF NOT EXISTS "EmployeeMembership_employeeId_updatedAt_idx" ON "EmployeeMembership"("employeeId", "updatedAt");
 CREATE INDEX IF NOT EXISTS "EmployeeLoginEvent_organizationId_createdAt_idx" ON "EmployeeLoginEvent"("organizationId", "createdAt");
 CREATE INDEX IF NOT EXISTS "EmployeeLoginEvent_employeeId_createdAt_idx" ON "EmployeeLoginEvent"("employeeId", "createdAt");
+CREATE INDEX IF NOT EXISTS "ServiceCollaborator_employeeId_updatedAt_idx" ON "ServiceCollaborator"("employeeId", "updatedAt");
 `);
 
 function ensureColumn(table, column, definition) {
@@ -642,6 +658,11 @@ ensureColumn("Message", "employeeId", "TEXT");
 ensureColumn("Service", "assigneeId", "TEXT");
 ensureColumn("Service", "organizationId", "TEXT");
 ensureColumn("EmployeeSession", "membershipId", "TEXT");
+ensureColumn("Employee", "username", "TEXT");
+ensureColumn("Employee", "passwordHash", "TEXT");
+ensureColumn("Employee", "passwordChangedAt", "DATETIME");
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS "Employee_username_key" ON "Employee"("username") WHERE "username" IS NOT NULL');
+ensureColumn("MaterialItem", "scope", "TEXT NOT NULL DEFAULT 'personal'");
 ensureColumn("EmployeeMembership", "identityProvider", "TEXT NOT NULL DEFAULT 'wecom'");
 ensureColumn("EmployeeMembership", "externalUserId", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("EmployeeMembership", "unionId", "TEXT NOT NULL DEFAULT ''");
@@ -649,6 +670,19 @@ db.exec(`
   UPDATE "EmployeeMembership"
   SET "externalUserId" = "wecomUserId"
   WHERE "externalUserId" = ''
+`);
+db.exec(`
+  UPDATE "EmployeeMembership"
+  SET "role" = 'member'
+  WHERE "role" NOT IN ('platform_admin', 'member')
+`);
+db.exec(`
+  UPDATE "Employee"
+  SET "isAdmin" = EXISTS (
+    SELECT 1 FROM "EmployeeMembership"
+    WHERE "EmployeeMembership"."employeeId" = "Employee"."id"
+      AND "EmployeeMembership"."role" = 'platform_admin'
+  )
 `);
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS "EmployeeMembership_organizationId_identityProvider_externalUserId_key" ON "EmployeeMembership"("organizationId", "identityProvider", "externalUserId")');
 db.exec('CREATE INDEX IF NOT EXISTS "EmployeeMembership_identityProvider_unionId_idx" ON "EmployeeMembership"("identityProvider", "unionId")');
@@ -716,33 +750,6 @@ ensureColumn("DeckGenerationSlide", "pendingImageCallKey", "TEXT NOT NULL DEFAUL
 ensureColumn("DeckGenerationPagePlan", "visualEvidenceJson", "TEXT NOT NULL DEFAULT '[]'");
 ensureColumn("DeckGenerationPagePlan", "directorContractJson", "TEXT NOT NULL DEFAULT '{}'");
 db.exec('CREATE INDEX IF NOT EXISTS "ImageExplodePart_runId_groupKey_idx" ON "ImageExplodePart"("runId", "groupKey")');
-
-const admins = db.prepare(`
-  SELECT "id", "code" FROM "Employee"
-  WHERE "isAdmin" = true
-  ORDER BY "createdAt" ASC
-`).all();
-if (admins.length) {
-  const canonicalId = admins[0].id;
-  for (const duplicate of admins.slice(1)) {
-    db.prepare(`UPDATE "EmployeeSession" SET "employeeId" = ? WHERE "employeeId" = ?`).run(canonicalId, duplicate.id);
-    db.prepare(`UPDATE "Service" SET "assigneeId" = ? WHERE "assigneeId" = ?`).run(canonicalId, duplicate.id);
-    db.prepare(`UPDATE "Message" SET "employeeId" = ? WHERE "employeeId" = ?`).run(canonicalId, duplicate.id);
-    db.prepare(`UPDATE "ServiceActivity" SET "employeeId" = ? WHERE "employeeId" = ?`).run(canonicalId, duplicate.id);
-    db.prepare(`UPDATE "WorkVersion" SET "createdById" = ? WHERE "createdById" = ?`).run(canonicalId, duplicate.id);
-    db.prepare(`UPDATE "GenerationJob" SET "employeeId" = ? WHERE "employeeId" = ?`).run(canonicalId, duplicate.id);
-    db.prepare(`UPDATE "AiConversation" SET "employeeId" = ? WHERE "employeeId" = ?`).run(canonicalId, duplicate.id);
-    db.prepare(`UPDATE "AiMessage" SET "employeeId" = ? WHERE "employeeId" = ?`).run(canonicalId, duplicate.id);
-    db.prepare(`UPDATE "MaterialItem" SET "employeeId" = ? WHERE "employeeId" = ?`).run(canonicalId, duplicate.id);
-    db.prepare(`UPDATE "DeckGenerationRun" SET "employeeId" = ? WHERE "employeeId" = ?`).run(canonicalId, duplicate.id);
-    db.prepare(`DELETE FROM "Employee" WHERE "id" = ?`).run(duplicate.id);
-  }
-  db.prepare(`
-    UPDATE "Employee"
-    SET "code" = ?, "updatedAt" = CURRENT_TIMESTAMP
-    WHERE "id" = ?
-  `).run("12345678", canonicalId);
-}
 
 db.close();
 console.log("SQLite database initialized.");

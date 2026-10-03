@@ -16,7 +16,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     where: { id },
     include: {
       workDocument: { include: { versions: { orderBy: { version: "desc" }, take: 1 } } },
-      versions: { orderBy: { version: "desc" }, take: 1 }
+      versions: { orderBy: { version: "desc" }, take: 1 },
+      collaborators: { select: { employeeId: true } }
     }
   });
   if (!service) return NextResponse.json({ error: "订单不存在" }, { status: 404 });

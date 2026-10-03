@@ -2,6 +2,7 @@ import { randomBytes } from "crypto";
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
 import { hash } from "@/lib/auth";
+import { hashEmployeePassword, normalizeEmployeeUsername } from "@/lib/employee-password";
 import { syncEmployeeWorkspaces } from "@/lib/employee-workspaces";
 
 export const EMPLOYEE_SESSION_COOKIE = "wzlcf_employee_session";
@@ -25,10 +26,6 @@ export type EmployeePermissions = Record<EmployeeFeature, boolean>;
 
 export const employeeRoles = [
   "platform_admin",
-  "org_admin",
-  "manager",
-  "designer",
-  "reviewer",
   "member"
 ] as const;
 
@@ -39,6 +36,9 @@ type EmployeeAccessContext = {
     id: string;
     code: string;
     name: string;
+    username: string | null;
+    passwordHash: string | null;
+    passwordChangedAt: Date | null;
     phone: string | null;
     isAdmin: boolean;
     enabled: boolean;
@@ -81,9 +81,7 @@ const noPermissions = Object.fromEntries(employeeFeatures.map((key) => [key, fal
 
 const rolePermissions: Record<EmployeeRole, EmployeePermissions> = {
   platform_admin: { ...allPermissions },
-  org_admin: { ...allPermissions },
-  manager: { ...allPermissions },
-  designer: {
+  member: {
     orders: true,
     customerMessages: false,
     team: true,
@@ -94,18 +92,6 @@ const rolePermissions: Record<EmployeeRole, EmployeePermissions> = {
     imageTools: true,
     exports: true
   },
-  reviewer: {
-    orders: true,
-    customerMessages: false,
-    team: true,
-    officeEditor: true,
-    aiAssistant: false,
-    smartPpt: false,
-    materials: false,
-    imageTools: false,
-    exports: true
-  },
-  member: { ...noPermissions }
 };
 
 function asRole(role: string): EmployeeRole {
@@ -117,7 +103,8 @@ export function resolveEmployeePermissions(
   isPlatformAdmin = false
 ) {
   if (membership.status !== "active") return { ...noPermissions };
-  const base = isPlatformAdmin ? allPermissions : rolePermissions[asRole(membership.role)];
+  if (isPlatformAdmin) return { ...allPermissions };
+  const base = rolePermissions[asRole(membership.role)];
   let overrides: Partial<EmployeePermissions> = {};
   try {
     const parsed = JSON.parse(membership.permissionsJson || "{}");
@@ -146,8 +133,27 @@ export async function ensureEmployeeBootstrap() {
         enabled: true
       }
     });
-  } else if (!admin.enabled) {
-    admin = await db.employee.update({ where: { id: admin.id }, data: { enabled: true } });
+  }
+
+  // 首次部署可通过未提交的环境变量建立管理员账号；一旦设置过密码便不再读取它们。
+  // 这样没有扫码条件的部署也不会被硬编码初始密码锁死。
+  if (!admin.username && !admin.passwordHash) {
+    const bootstrapUsername = process.env.EMPLOYEE_BOOTSTRAP_USERNAME;
+    const bootstrapPassword = process.env.EMPLOYEE_BOOTSTRAP_PASSWORD;
+    if (bootstrapUsername && bootstrapPassword) {
+      try {
+        admin = await db.employee.update({
+          where: { id: admin.id },
+          data: {
+            username: normalizeEmployeeUsername(bootstrapUsername),
+            passwordHash: await hashEmployeePassword(bootstrapPassword),
+            passwordChangedAt: new Date()
+          }
+        });
+      } catch {
+        // 配置错误时保持扫码/本地开发入口可用，不把密码或环境变量内容写入日志。
+      }
+    }
   }
 
   const primaryOrganization = organizations[0];
@@ -210,7 +216,8 @@ export async function createEmployeeSession(
   employeeId: string,
   membershipId: string,
   remember: boolean,
-  ip: string | null
+  ip: string | null,
+  deviceLabel = "扫码登录 · 当前浏览器"
 ) {
   const token = randomBytes(32).toString("hex");
   const maxAge = remember ? 60 * 24 * 60 * 60 : 24 * 60 * 60;
@@ -220,7 +227,7 @@ export async function createEmployeeSession(
       employeeId,
       membershipId,
       remember,
-      deviceLabel: "微信扫码 · 当前浏览器",
+      deviceLabel,
       ip,
       expiresAt: new Date(Date.now() + maxAge * 1000)
     }
@@ -236,17 +243,16 @@ export function hasEmployeeFeature(
 }
 
 export function isEmployeeAdministrator(context: Pick<EmployeeAccessContext, "employee" | "membership">) {
-  return context.employee.isAdmin || context.membership.role === "platform_admin" || context.membership.role === "org_admin";
+  return context.employee.isAdmin || context.membership.role === "platform_admin";
 }
 
 export function canAccessService(
   context: Pick<EmployeeAccessContext, "employee" | "membership">,
-  service: { assigneeId: string | null; organizationId?: string | null }
+  service: { assigneeId: string | null; organizationId?: string | null; collaborators?: { employeeId: string }[] }
 ) {
   if (context.employee.isAdmin || context.membership.role === "platform_admin") return true;
   if (!service.organizationId || service.organizationId !== context.membership.organizationId) return false;
-  if (context.membership.role === "org_admin" || context.membership.role === "manager") return true;
-  return service.assigneeId === context.employee.id;
+  return service.assigneeId === context.employee.id || Boolean(service.collaborators?.some((item) => item.employeeId === context.employee.id));
 }
 
 export async function authorizeEmployeeService(serviceId: string, feature: EmployeeFeature) {
@@ -257,7 +263,12 @@ export async function authorizeEmployeeService(serviceId: string, feature: Emplo
   }
   const service = await db.service.findUnique({
     where: { id: serviceId },
-    select: { id: true, assigneeId: true, organizationId: true }
+    select: {
+      id: true,
+      assigneeId: true,
+      organizationId: true,
+      collaborators: { where: { employeeId: access.employee.id }, select: { employeeId: true } }
+    }
   });
   if (!service) return { ok: false as const, status: 404, error: "订单不存在" };
   if (!canAccessService(access, service)) {

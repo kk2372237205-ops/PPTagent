@@ -19,14 +19,11 @@ export async function GET(request: NextRequest) {
   const access = await currentEmployeeAccess();
   if (!access) return NextResponse.json({ error: "请先登录员工工作台" }, { status: 401 });
   if (!isEmployeeAdministrator(access)) {
-    return NextResponse.json({ error: "仅学校管理员可以打开管理控制台" }, { status: 403 });
+    return NextResponse.json({ error: "仅平台管理员可以打开管理控制台" }, { status: 403 });
   }
 
-  const isPlatformAdmin = access.employee.isAdmin || access.membership.role === "platform_admin";
   const requestedOrganizationId = request.nextUrl.searchParams.get("organizationId");
-  const organizationWhere = isPlatformAdmin
-    ? requestedOrganizationId ? { id: requestedOrganizationId } : {}
-    : { id: access.organization.id };
+  const organizationWhere = requestedOrganizationId ? { id: requestedOrganizationId } : {};
   const organizations = await db.organization.findMany({
     where: organizationWhere,
     orderBy: { createdAt: "asc" }
@@ -93,6 +90,7 @@ export async function GET(request: NextRequest) {
         id: membership.employee.id,
         name: membership.employee.name,
         code: membership.employee.code,
+        username: membership.employee.username,
         isAdmin: membership.employee.isAdmin,
         counts: membership.employee._count
       }

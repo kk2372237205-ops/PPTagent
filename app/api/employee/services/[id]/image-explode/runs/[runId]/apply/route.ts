@@ -15,7 +15,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
   const employee = authorization.access.employee;
   const run = await db.imageExplodeRun.findFirst({
-    where: { id: runId, serviceId: id, employeeId: employee.id, status: "completed" },
+    where: { id: runId, serviceId: id, status: "completed" },
     include: { parts: { where: { selected: true }, orderBy: [{ zIndex: "asc" }, { createdAt: "asc" }] }, textLayers: { orderBy: { createdAt: "asc" } }, service: { include: { workDocument: { include: { versions: true } } } } }
   });
   if (!run?.service.workDocument) return NextResponse.json({ error: "请先创建工作 PPT，再导入拆解部件" }, { status: 400 });

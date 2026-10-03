@@ -11,9 +11,8 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
   const { id, runId } = await context.params;
   const authorization = await authorizeEmployeeService(id, "exports");
   if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
-  const employee = authorization.access.employee;
   const run = await readPolishRun(runId);
-  if (!run || run.serviceId !== id || run.employeeId !== employee.id) return NextResponse.json({ error: "美化任务不存在" }, { status: 404 });
+  if (!run || run.serviceId !== id) return NextResponse.json({ error: "美化任务不存在" }, { status: 404 });
   if (run.status === "ppt_ready") return NextResponse.json({ run });
   const workerHealth = pptPolishWorkerHealth();
   if (!workerHealth.ok) {
@@ -38,9 +37,8 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
   const { id, runId } = await context.params;
   const authorization = await authorizeEmployeeService(id, "exports");
   if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
-  const employee = authorization.access.employee;
   const run = await readPolishRun(runId);
-  if (!run || run.serviceId !== id || run.employeeId !== employee.id) return NextResponse.json({ error: "美化任务不存在" }, { status: 404 });
+  if (!run || run.serviceId !== id) return NextResponse.json({ error: "美化任务不存在" }, { status: 404 });
   if (!run.pptStoredName || run.status !== "ppt_ready") return NextResponse.json({ error: "PPT 尚未生成完成" }, { status: 404 });
   const file = await readFile(path.join(documentRoot, path.basename(run.pptStoredName)));
   return new NextResponse(new Uint8Array(file), {

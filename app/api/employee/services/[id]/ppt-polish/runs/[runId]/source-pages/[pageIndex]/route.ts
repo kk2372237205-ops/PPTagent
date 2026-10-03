@@ -10,10 +10,9 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
   const { id, runId, pageIndex } = await context.params;
   const authorization = await authorizeEmployeeService(id, "smartPpt");
   if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
-  const employee = authorization.access.employee;
   const run = await readPolishRun(runId);
   const index = Number(pageIndex);
-  if (!run || run.serviceId !== id || run.employeeId !== employee.id || !Number.isInteger(index) || index < 1) {
+  if (!run || run.serviceId !== id || !Number.isInteger(index) || index < 1) {
     return NextResponse.json({ error: "源页面不存在" }, { status: 404 });
   }
   const page = run.sourceSnapshot?.pages?.find((item: { pageIndex?: number }) => item.pageIndex === index);

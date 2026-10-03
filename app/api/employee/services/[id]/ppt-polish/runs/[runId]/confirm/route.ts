@@ -13,9 +13,8 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
   const { id, runId } = await context.params;
   const authorization = await authorizeEmployeeService(id, "smartPpt");
   if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
-  const employee = authorization.access.employee;
   const run = await readPolishRun(runId);
-  if (!run || run.serviceId !== id || run.employeeId !== employee.id) return NextResponse.json({ error: "美化任务不存在" }, { status: 404 });
+  if (!run || run.serviceId !== id) return NextResponse.json({ error: "美化任务不存在" }, { status: 404 });
   const canConfirm = run.status === "plan_ready" || run.status === "source_ready" || (["queued", "confirmed", "planning", "generating"].includes(run.status) && !run.pageCount && !run.slides?.length);
   if (!canConfirm) {
     return NextResponse.json({ error: "当前美化任务不能重复确认" }, { status: 400 });

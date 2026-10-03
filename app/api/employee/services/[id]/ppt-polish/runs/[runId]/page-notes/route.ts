@@ -16,7 +16,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
   const employee = authorization.access.employee;
   const run = await readPolishRun(runId);
-  if (!run || run.serviceId !== id || run.employeeId !== employee.id) return NextResponse.json({ error: "美化任务不存在" }, { status: 404 });
+  if (!run || run.serviceId !== id) return NextResponse.json({ error: "美化任务不存在" }, { status: 404 });
   if (run.status !== "source_ready") return NextResponse.json({ error: "请先完成 PPT 转 PNG，再添加逐页修改要求。" }, { status: 400 });
 
   const body = await request.json().catch(() => ({}));

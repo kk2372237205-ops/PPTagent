@@ -16,7 +16,7 @@ export type AdminMember = {
   role: string; status: string; permissions: EmployeePermissions; position: string;
   avatarUrl: string; lastLoginAt: string | null; loginCount: number; createdAt: string;
   employee: {
-    id: string; name: string; code: string; isAdmin: boolean;
+    id: string; name: string; code: string; username: string | null; isAdmin: boolean;
     counts: { assignedServices: number; generationJobs: number; activities: number; deckGenerationRuns: number };
   };
 };

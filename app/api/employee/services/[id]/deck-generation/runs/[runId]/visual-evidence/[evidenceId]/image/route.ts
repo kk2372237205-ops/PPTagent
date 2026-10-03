@@ -9,12 +9,11 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   const { id, runId, evidenceId } = await context.params;
   const authorization = await authorizeEmployeeService(id, "smartPpt");
   if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
-  const employee = authorization.access.employee;
   const evidence = await db.deckGenerationVisualEvidence.findFirst({
     where: {
       id: evidenceId,
       runId,
-      run: { serviceId: id, employeeId: employee.id }
+      run: { serviceId: id }
     }
   });
   if (!evidence) return NextResponse.json({ error: "视觉证据不存在" }, { status: 404 });

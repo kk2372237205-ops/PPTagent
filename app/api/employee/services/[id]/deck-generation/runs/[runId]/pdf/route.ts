@@ -7,9 +7,8 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
   const { id, runId } = await context.params;
   const authorization = await authorizeEmployeeService(id, "exports");
   if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
-  const employee = authorization.access.employee;
   const run = await db.deckGenerationRun.findFirst({
-    where: { id: runId, serviceId: id, employeeId: employee.id },
+    where: { id: runId, serviceId: id },
     include: { slides: true }
   });
   if (!run) return NextResponse.json({ error: "生成 PPT 任务不存在" }, { status: 404 });
@@ -30,9 +29,8 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
   const { id, runId } = await context.params;
   const authorization = await authorizeEmployeeService(id, "exports");
   if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
-  const employee = authorization.access.employee;
   const run = await db.deckGenerationRun.findFirst({
-    where: { id: runId, serviceId: id, employeeId: employee.id }
+    where: { id: runId, serviceId: id }
   });
   if (!run?.pdfStoredName) {
     return NextResponse.json({ error: "PDF 尚未生成完成" }, { status: 404 });

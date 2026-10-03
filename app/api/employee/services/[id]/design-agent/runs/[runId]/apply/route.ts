@@ -15,7 +15,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
   const employee = authorization.access.employee;
   const run = await db.designAgentRun.findFirst({
-    where: { id: runId, serviceId: id, employeeId: employee.id, status: "completed" },
+    where: { id: runId, serviceId: id, status: "completed" },
     include: { generatedJob: { include: { images: true } }, evaluations: { orderBy: { createdAt: "desc" }, take: 1 }, service: { include: { workDocument: { include: { versions: true } } } } }
   });
   if (!run?.service.workDocument) return NextResponse.json({ error: "请先创建工作 PPT，再应用智能美化方案" }, { status: 400 });
@@ -46,7 +46,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
       return NextResponse.json({ error: "该智能美化任务还没有完成“干净背景 + 拆图重建”，请等待任务完成后再新增到 PPT。" }, { status: 400 });
     }
     const explodeRun = await db.imageExplodeRun.findFirst({
-      where: { id: reconstructionRunId, serviceId: id, employeeId: employee.id, status: "completed" },
+      where: { id: reconstructionRunId, serviceId: id, status: "completed" },
       include: { parts: { where: { selected: true }, orderBy: [{ zIndex: "asc" }, { createdAt: "asc" }] }, textLayers: { orderBy: { createdAt: "asc" } } }
     });
     if (!explodeRun) return NextResponse.json({ error: "图片炸开重建尚未完成，请稍后刷新后再试。" }, { status: 400 });

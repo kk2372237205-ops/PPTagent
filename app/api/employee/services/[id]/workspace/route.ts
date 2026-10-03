@@ -20,7 +20,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   const { id } = await context.params;
   const service = await db.service.findUnique({
     where: { id },
-    include: { workDocument: true }
+    include: { workDocument: true, collaborators: { select: { employeeId: true } } }
   });
   if (!service) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
   if (!canAccessService(access, service)) {

@@ -16,9 +16,8 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   const { id, runId } = await context.params;
   const authorization = await authorizeEmployeeService(id, "exports");
   if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
-  const employee = authorization.access.employee;
   const run = await db.deckGenerationRun.findFirst({
-    where: { id: runId, serviceId: id, employeeId: employee.id },
+    where: { id: runId, serviceId: id },
     include: { slides: { orderBy: { slideIndex: "asc" } } }
   });
   if (!run) return NextResponse.json({ error: "生成 PPT 任务不存在" }, { status: 404 });

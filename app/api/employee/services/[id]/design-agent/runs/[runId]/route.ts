@@ -6,9 +6,8 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
   const { id, runId } = await context.params;
   const authorization = await authorizeEmployeeService(id, "aiAssistant");
   if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
-  const employee = authorization.access.employee;
   const run = await db.designAgentRun.findFirst({
-    where: { id: runId, serviceId: id, employeeId: employee.id },
+    where: { id: runId, serviceId: id },
     include: { references: { orderBy: { sortOrder: "asc" }, include: { generatedImage: true } }, events: { orderBy: { createdAt: "asc" } }, evaluations: { orderBy: { createdAt: "asc" } }, generatedJob: { include: { images: true } } }
   });
   if (!run) return NextResponse.json({ error: "智能美化任务不存在" }, { status: 404 });
@@ -19,14 +18,13 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   const { id, runId } = await context.params;
   const authorization = await authorizeEmployeeService(id, "aiAssistant");
   if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
-  const employee = authorization.access.employee;
   const body = await request.json().catch(() => ({})) as { selectedBatchIndex?: number };
   const selectedBatchIndex = Number(body.selectedBatchIndex);
   if (!Number.isInteger(selectedBatchIndex) || selectedBatchIndex < 0 || selectedBatchIndex > 3) {
     return NextResponse.json({ error: "候选份数选择无效" }, { status: 400 });
   }
   const run = await db.designAgentRun.findFirst({
-    where: { id: runId, serviceId: id, employeeId: employee.id },
+    where: { id: runId, serviceId: id },
     include: { references: { orderBy: { sortOrder: "asc" }, include: { generatedImage: true } }, events: { orderBy: { createdAt: "asc" } }, evaluations: { orderBy: { createdAt: "asc" } }, generatedJob: { include: { images: true } } }
   });
   if (!run) return NextResponse.json({ error: "智能模式任务不存在" }, { status: 404 });

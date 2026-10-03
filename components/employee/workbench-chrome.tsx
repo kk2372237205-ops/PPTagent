@@ -10,7 +10,7 @@
  */
 
 import { useState } from "react";
-import { Activity, ArrowRight, BriefcaseBusiness, FileText, LayoutDashboard, LogOut, MessageCircle, RefreshCw, Send, Settings, ShieldCheck, UserCheck, UserCog, Users } from "lucide-react";
+import { Activity, ArrowRight, BriefcaseBusiness, FileText, LayoutDashboard, LogOut, MessageCircle, RefreshCw, Send, Settings, ShieldCheck, UserCheck, UserCog, UserPlus, Users, X } from "lucide-react";
 import { employeeApi } from "@/lib/employee-api";
 import { Consultation, Employee, EmployeeFeature, Message, Service } from "@/lib/employee-api-types";
 import { canAssignOrders, canOpenEmployeeAdmin, compactIdentity, identityProviderLabel, roleLabels } from "@/lib/employee-permissions";
@@ -102,12 +102,33 @@ export function Orders({ services, employees, employee, enterWorkspace, refresh,
   refresh: () => Promise<void>; notify: (text: string) => void;
 }) {
   const [filter, setFilter] = useState("全部");
+  const [memberDrafts, setMemberDrafts] = useState<Record<string, { employeeId: string; role: "lead" | "member" }>>({});
   const visible = filter === "全部" ? services : services.filter(service => service.status === filter);
   async function assign(serviceId: string, assigneeId: string) {
     const response = await employeeApi.orders.setAssignee(serviceId, assigneeId);
     const result = await responseJson(response);
     if (!response.ok) return notify(result.error);
     notify("负责人已更新"); await refresh();
+  }
+  function memberDraft(service: Service) {
+    return memberDrafts[service.id] || { employeeId: "", role: "member" as const };
+  }
+  async function addProjectMember(service: Service) {
+    const value = memberDraft(service);
+    if (!value.employeeId) return notify("请先选择要派遣的员工");
+    const response = await employeeApi.orders.addCollaborator(service.id, value.employeeId, value.role);
+    const result = await responseJson(response);
+    if (!response.ok) return notify(result.error || "派遣员工失败");
+    setMemberDrafts((current) => ({ ...current, [service.id]: { employeeId: "", role: "member" } }));
+    notify(value.role === "lead" ? "负责人已更新" : "员工已加入项目");
+    await refresh();
+  }
+  async function removeProjectMember(service: Service, employeeId: string) {
+    const response = await employeeApi.orders.removeCollaborator(service.id, employeeId);
+    const result = await responseJson(response);
+    if (!response.ok) return notify(result.error || "移出项目失败");
+    notify("员工已移出项目");
+    await refresh();
   }
   return <div className="employee-page">
     <header className="employee-page-head"><div><span>ORDER OPERATIONS</span><h1>把每一份托付，推进为作品</h1><p>查看全部客户订单，分配负责人并进入协同制作工作台。</p></div><div className="employee-head-stat"><b>{services.length}</b><span>项订单正在流转</span></div></header>
@@ -118,6 +139,11 @@ export function Orders({ services, employees, employee, enterWorkspace, refresh,
         <div className="employee-order-title"><div><span className={`employee-status status-${statusSlug(service.status)}`}>{service.status}</span><h3>{service.title}</h3></div><span className="employee-customer">客户 {maskPhone(service.user.phone)}</span></div>
         <div className="employee-order-meta"><span>服务编号<b>{service.number}</b></span><span>购买时间<b>{formatDate(service.purchasedAt)}</b></span><span>服务价格<b>￥{(service.priceCents / 100).toLocaleString()}</b></span><span>负责人{canAssignOrders(employee) ? <select value={service.assigneeId || ""} onChange={event => assign(service.id, event.target.value)}><option value="">待分配</option>{employees.filter(item => item.enabled && item.membership.status === "active" && item.permissions.orders).map(item => <option value={item.id} key={item.membership.id}>{item.name}</option>)}</select> : <b>{service.assignee?.name || "待管理员分配"}</b>}</span></div>
         <div className="employee-progress"><div><i style={{ width: `${service.progress}%` }}/></div><b>{service.progress}%</b></div>
+        {canAssignOrders(employee) && <div className="employee-project-members">
+          <span>项目成员</span>
+          <div className="employee-project-member-chips">{(service.collaborators?.length ? service.collaborators : service.assignee ? [{ id: `legacy-${service.assignee.id}`, role: "lead", employee: service.assignee }] : []).map((member) => <b key={member.id} className={member.role === "lead" ? "lead" : ""}>{member.employee.name}<em>{member.role === "lead" ? "负责人" : "普通员工"}</em>{!member.id.startsWith("legacy-") && <button title="移出项目" onClick={() => void removeProjectMember(service, member.employee.id)}><X/></button>}</b>)}</div>
+          <div className="employee-project-member-add"><select value={memberDraft(service).employeeId} onChange={(event) => setMemberDrafts((current) => ({ ...current, [service.id]: { ...memberDraft(service), employeeId: event.target.value } }))}><option value="">选择员工</option>{employees.filter((item) => item.enabled && item.membership.status === "active" && item.permissions.orders).map((item) => <option value={item.id} key={item.id}>{item.name}{item.username ? ` · ${item.username}` : ""}</option>)}</select><select value={memberDraft(service).role} onChange={(event) => setMemberDrafts((current) => ({ ...current, [service.id]: { ...memberDraft(service), role: event.target.value === "lead" ? "lead" : "member" } }))}><option value="member">普通员工</option><option value="lead">负责人</option></select><button onClick={() => void addProjectMember(service)}><UserPlus/>派遣</button></div>
+        </div>}
         <div className="employee-order-actions"><span>{service.workDocument ? `工作文件 · ${service.workDocument.versions.length} 个版本` : "尚未创建工作文件"}</span><button onClick={() => enterWorkspace(service)}><LayoutDashboard/>进入工作台<ArrowRight/></button></div>
       </div>
     </article>)}</div>

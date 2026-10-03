@@ -15,7 +15,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     include: {
       job: {
         include: {
-          service: { select: { assigneeId: true, organizationId: true } }
+          service: { select: { assigneeId: true, organizationId: true, collaborators: { select: { employeeId: true } } } }
         }
       }
     }
@@ -50,14 +50,15 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     include: {
       job: {
         include: {
-          service: { select: { assigneeId: true, organizationId: true } }
+          service: { select: { assigneeId: true, organizationId: true, collaborators: { select: { employeeId: true } } } }
         }
       }
     }
   });
   if (!image) return NextResponse.json({ error: "图片不存在" }, { status: 404 });
   if (!canAccessService(access, image.job.service)) return NextResponse.json({ error: "你无权管理这张图片" }, { status: 403 });
-  const { isMaterial, materialOrder } = await request.json();
+  const { isMaterial, materialOrder, scope } = await request.json();
+  const materialScope = scope === "project" ? "project" : "personal";
   if (isMaterial === false) {
     await db.materialItem.deleteMany({ where: { imageId: id, employeeId: employee.id } });
     return NextResponse.json({ ok: true });
@@ -69,9 +70,10 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       imageId: id,
       employeeId: employee.id,
       serviceId: image.job.serviceId,
-      materialOrder: order
+      materialOrder: order,
+      scope: materialScope
     },
-    update: { materialOrder: order }
+    update: { materialOrder: order, scope: materialScope }
   });
   return NextResponse.json({ materialItem: item });
 }

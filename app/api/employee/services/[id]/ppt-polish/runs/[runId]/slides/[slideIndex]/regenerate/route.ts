@@ -23,9 +23,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   const { id, runId, slideIndex } = await context.params;
   const authorization = await authorizeEmployeeService(id, "smartPpt");
   if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
-  const employee = authorization.access.employee;
   const run = await readPolishRun(runId);
-  if (!run || run.serviceId !== id || run.employeeId !== employee.id) return NextResponse.json({ error: "美化任务不存在" }, { status: 404 });
+  if (!run || run.serviceId !== id) return NextResponse.json({ error: "美化任务不存在" }, { status: 404 });
   if (!["generating", "review_ready", "pdf_ready", "ppt_ready", "failed"].includes(run.status)) {
     return NextResponse.json({ error: "当前美化任务还不能局部重生" }, { status: 400 });
   }

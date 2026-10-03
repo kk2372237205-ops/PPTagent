@@ -7,9 +7,8 @@ export const runtime = "nodejs";
 async function mine(id: string, runId: string) {
   const authorization = await authorizeEmployeeService(id, "imageTools");
   if (!authorization.ok) return { error: NextResponse.json({ error: authorization.error }, { status: authorization.status }) };
-  const employee = authorization.access.employee;
-  const run = await db.imageExplodeRun.findFirst({ where: { id: runId, serviceId: id, employeeId: employee.id }, include: { parts: { orderBy: [{ zIndex: "asc" }, { createdAt: "asc" }] }, textLayers: { orderBy: { createdAt: "asc" } }, events: { orderBy: { createdAt: "asc" } }, sourceImage: true } });
-  if (!run) return { error: NextResponse.json({ error: "拆图任务不存在或不属于当前员工" }, { status: 404 }) };
+  const run = await db.imageExplodeRun.findFirst({ where: { id: runId, serviceId: id }, include: { parts: { orderBy: [{ zIndex: "asc" }, { createdAt: "asc" }] }, textLayers: { orderBy: { createdAt: "asc" } }, events: { orderBy: { createdAt: "asc" } }, sourceImage: true } });
+  if (!run) return { error: NextResponse.json({ error: "拆图任务不存在或不属于当前项目" }, { status: 404 }) };
   return { run };
 }
 export async function GET(_request: NextRequest, context: { params: Promise<{ id: string; runId: string }> }) {

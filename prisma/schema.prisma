@@ -115,6 +115,7 @@ model Service {
   designAgentRuns DesignAgentRun[]
   imageExplodeRuns ImageExplodeRun[]
   deckGenerationRuns DeckGenerationRun[]
+  collaborators       ServiceCollaborator[]
 
   @@index([organizationId, purchasedAt])
 }
@@ -171,6 +172,9 @@ model Employee {
   id               String            @id @default(cuid())
   code             String            @unique
   name             String
+  username         String?           @unique
+  passwordHash     String?
+  passwordChangedAt DateTime?
   phone            String?           @unique
   isAdmin          Boolean           @default(false)
   enabled          Boolean           @default(true)
@@ -190,6 +194,22 @@ model Employee {
   deckGenerationRuns DeckGenerationRun[]
   memberships      EmployeeMembership[]
   loginEvents      EmployeeLoginEvent[]
+  collaborations   ServiceCollaborator[]
+}
+
+/// 项目成员：负责人和普通员工只在具体项目里产生差异；平台管理员不受该表限制。
+model ServiceCollaborator {
+  id         String   @id @default(cuid())
+  serviceId  String
+  service    Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  role       String   @default("member")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([serviceId, employeeId])
+  @@index([employeeId, updatedAt])
 }
 
 model EmployeeSession {
@@ -358,6 +378,7 @@ model AiMessage {
 model MaterialItem {
   id            String         @id @default(cuid())
   materialOrder Int            @default(0)
+  scope         String         @default("personal")
   createdAt     DateTime       @default(now())
   serviceId     String
   service       Service        @relation(fields: [serviceId], references: [id], onDelete: Cascade)

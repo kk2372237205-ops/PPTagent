@@ -23,7 +23,7 @@ export type EmployeeMembership = {
   organization: { id: string; name: string; slug: string };
 };
 export type Employee = {
-  id: string; code: string; name: string; phone: string | null; isAdmin: boolean; enabled: boolean; createdAt: string;
+  id: string; code: string; name: string; username?: string | null; phone: string | null; isAdmin: boolean; enabled: boolean; createdAt: string;
   membership: EmployeeMembership;
   permissions: EmployeePermissions;
 };
@@ -80,7 +80,7 @@ export type MaterialImage = GeneratedImage & {
   job: GenerationJob;
 };
 export type MaterialItem = {
-  id: string; materialOrder: number; createdAt: string;
+  id: string; materialOrder: number; scope?: "personal" | "project"; createdAt: string;
   employee: { id: string; name: string };
   image: MaterialImage;
 };
@@ -118,6 +118,7 @@ export type Service = {
   id: string; number: string; title: string; category: string; purchasedAt: string;
   priceCents: number; status: string; progress: number; assigneeId: string | null;
   assignee: { id: string; name: string; code: string } | null;
+  collaborators?: { id: string; role: string; employee: { id: string; name: string; code: string } }[];
   user: { phone: string }; workDocument: WorkDocument | null; activities: ActivityItem[];
   consultation: (Consultation & { messages: Message[] }) | null; generationJobs: GenerationJob[]; materialItems: MaterialItem[];
 };

@@ -13,8 +13,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const { id, runId, partId } = await context.params;
   const authorization = await authorizeEmployeeService(id, "imageTools");
   if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
-  const employee = authorization.access.employee;
-  const part = await db.imageExplodePart.findFirst({ where: { id: partId, runId, run: { serviceId: id, employeeId: employee.id } }, include: { run: { include: { sourceImage: true } } } });
+  const part = await db.imageExplodePart.findFirst({ where: { id: partId, runId, run: { serviceId: id } }, include: { run: { include: { sourceImage: true } } } });
   if (!part?.storedName || part.textContent) return NextResponse.json({ error: "只能对图片候选进行抠图精修" }, { status: 400 });
   const body = await request.json().catch(() => ({})) as { action?: string };
   if (body.action === "accept") {

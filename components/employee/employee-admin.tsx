@@ -11,8 +11,8 @@
  * 验证方式：`npm run verify`。
  */
 
-import { useCallback, useEffect, useState } from "react";
-import { Activity, Bot, ImagePlus, LoaderCircle, RefreshCw, School, ShieldCheck, UserCheck, UserX, Users } from "lucide-react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { Activity, Bot, ImagePlus, KeyRound, LoaderCircle, Plus, RefreshCw, School, ShieldCheck, UserCheck, UserPlus, UserX, Users } from "lucide-react";
 import { employeeApi } from "@/lib/employee-api";
 import type { Employee, EmployeeFeature, EmployeePermissions } from "@/lib/employee-api-types";
 import { compactIdentity, featureLabels, identityProviderLabel, roleLabels, rolePermissionDefaults } from "@/lib/employee-permissions";
@@ -25,7 +25,10 @@ export function EmployeeAdmin({ employee, notify }: { employee: Employee; notify
   const [organizationId, setOrganizationId] = useState("all");
   const [search, setSearch] = useState("");
   const [expandedId, setExpandedId] = useState("");
-  const [drafts, setDrafts] = useState<Record<string, { role: string; status: string; permissions: EmployeePermissions }>>({});
+  const [drafts, setDrafts] = useState<Record<string, { name: string; username: string; password: string; role: string; status: string; permissions: EmployeePermissions }>>({});
+  const [creating, setCreating] = useState(false);
+  const [newMember, setNewMember] = useState({ name: "", username: "", password: "", role: "member" });
+  const [ownCredentials, setOwnCredentials] = useState({ username: employee.username || "", currentPassword: "", newPassword: "" });
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
@@ -43,6 +46,9 @@ export function EmployeeAdmin({ employee, notify }: { employee: Employee; notify
 
   function draft(member: AdminMember) {
     return drafts[member.id] || {
+      name: member.employee.name,
+      username: member.employee.username || "",
+      password: "",
       role: member.role,
       status: member.status,
       permissions: member.permissions
@@ -55,7 +61,8 @@ export function EmployeeAdmin({ employee, notify }: { employee: Employee; notify
 
   async function save(member: AdminMember) {
     const value = draft(member);
-    const response = await employeeApi.admin.updateMember(member.id, value);
+    const { password, ...rest } = value;
+    const response = await employeeApi.admin.updateMember(member.id, { ...rest, ...(password ? { password } : {}) });
     const result = await response.json();
     if (!response.ok) return notify(result.error || "成员权限保存失败");
     setDrafts((current) => {
@@ -67,17 +74,44 @@ export function EmployeeAdmin({ employee, notify }: { employee: Employee; notify
     await loadOverview();
   }
 
+  async function createMember(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreating(true);
+    const response = await employeeApi.admin.createMember(newMember);
+    const result = await response.json();
+    setCreating(false);
+    if (!response.ok) return notify(result.error || "新增员工失败");
+    setNewMember({ name: "", username: "", password: "", role: "member" });
+    notify(result.employee?.username ? `已开通 ${result.employee.username} 的账号` : "员工账号已开通");
+    await loadOverview();
+  }
+
+  async function saveOwnCredentials(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const response = await employeeApi.session.updateOwnCredentials({
+      username: ownCredentials.username,
+      currentPassword: ownCredentials.currentPassword,
+      newPassword: ownCredentials.newPassword || undefined
+    });
+    const result = await response.json();
+    if (!response.ok) return notify(result.error || "个人账户保存失败");
+    setOwnCredentials((current) => ({ ...current, currentPassword: "", newPassword: "" }));
+    notify("个人用户名和密码已更新");
+    await loadOverview();
+  }
+
   const members = (overview?.members || []).filter((member) => {
     if (organizationId !== "all" && member.organizationId !== organizationId) return false;
     const keyword = search.trim().toLowerCase();
     return !keyword || member.employee.name.toLowerCase().includes(keyword) ||
+      (member.employee.username || "").toLowerCase().includes(keyword) ||
       member.externalUserId.toLowerCase().includes(keyword) ||
       member.organizationName.toLowerCase().includes(keyword);
   });
 
   return <div className="employee-page employee-control-page">
     <header className="employee-page-head">
-      <div><span>PLATFORM CONTROL</span><h1>管理控制台</h1><p>审批微信与企业微信登录申请，核对学校归属，分配角色与功能权限并查看实际使用情况。</p></div>
+      <div><span>PLATFORM CONTROL</span><h1>管理控制台</h1><p>管理平台管理员与员工账号、项目派遣和功能权限；平台管理员拥有全局访问权。</p></div>
       <button className="employee-control-refresh" onClick={() => void loadOverview()} disabled={loading}><RefreshCw className={loading ? "spin" : ""}/>刷新数据</button>
     </header>
     {loading && !overview ? <div className="employee-control-loading"><LoaderCircle className="spin"/>正在读取成员与使用记录</div> : overview && <>
@@ -111,7 +145,7 @@ export function EmployeeAdmin({ employee, notify }: { employee: Employee; notify
         </article>
       </section>
       <section className="employee-organization-strip">
-        <div><School/><span><b>学校工作区</b><small>普通微信需人工核验学校，企业微信可核验通讯录身份</small></span></div>
+        <div><School/><span><b>平台工作区</b><small>工作区仅用于数据归属；管理员不受工作区和项目范围限制</small></span></div>
         {overview.organizations.map((organization) => <article key={organization.id}>
           <span><b>{organization.name}</b><small>{organization.memberCount} 位成员</small></span>
           <div className="employee-org-login-status">
@@ -120,12 +154,29 @@ export function EmployeeAdmin({ employee, notify }: { employee: Employee; notify
           </div>
         </article>)}
       </section>
+      <section className="employee-account-control">
+        <form onSubmit={saveOwnCredentials}>
+          <header><KeyRound/><span><b>我的平台账户</b><small>{employee.username ? "用户名和密码仅由你本人修改；修改密码后会退出其他登录设备。" : "首次设置请同时填写用户名和新密码；之后可使用账号密码直接登录。"}</small></span></header>
+          <label>用户名<input value={ownCredentials.username} onChange={(event) => setOwnCredentials((current) => ({ ...current, username: event.target.value }))} autoComplete="username" required/></label>
+          <label>当前密码<input value={ownCredentials.currentPassword} onChange={(event) => setOwnCredentials((current) => ({ ...current, currentPassword: event.target.value }))} autoComplete="current-password" type="password" placeholder={employee.username ? "修改时填写" : "首次设置可留空"}/></label>
+          <label>新密码<input value={ownCredentials.newPassword} onChange={(event) => setOwnCredentials((current) => ({ ...current, newPassword: event.target.value }))} autoComplete="new-password" type="password" placeholder="至少 10 个字符" required={!employee.username}/></label>
+          <button>保存我的账户</button>
+        </form>
+        <form onSubmit={createMember}>
+          <header><UserPlus/><span><b>开通员工账号</b><small>员工只有项目内的负责人或普通员工身份；平台管理员是全局例外。</small></span></header>
+          <label>姓名<input value={newMember.name} onChange={(event) => setNewMember((current) => ({ ...current, name: event.target.value }))} placeholder="员工姓名" required/></label>
+          <label>初始用户名<input value={newMember.username} onChange={(event) => setNewMember((current) => ({ ...current, username: event.target.value }))} placeholder="例如 zhangsan" required/></label>
+          <label>初始密码<input value={newMember.password} onChange={(event) => setNewMember((current) => ({ ...current, password: event.target.value }))} type="password" placeholder="至少 10 个字符" required/></label>
+          <label>平台身份<select value={newMember.role} onChange={(event) => setNewMember((current) => ({ ...current, role: event.target.value }))}><option value="member">普通员工</option><option value="platform_admin">平台管理员</option></select></label>
+          <button disabled={creating}>{creating ? <LoaderCircle className="spin"/> : <Plus/>}{creating ? "正在开通" : "开通账号"}</button>
+        </form>
+      </section>
       <div className="employee-control-tools">
         <select value={organizationId} onChange={(event) => setOrganizationId(event.target.value)}>
-          <option value="all">全部学校</option>
+          <option value="all">全部工作区</option>
           {overview.organizations.map((organization) => <option value={organization.id} key={organization.id}>{organization.name}</option>)}
         </select>
-        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索昵称、登录身份标识或学校"/>
+        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索姓名、用户名或工作区"/>
         <span>{members.length} 位成员</span>
       </div>
       <section className="employee-member-list">
@@ -135,7 +186,7 @@ export function EmployeeAdmin({ employee, notify }: { employee: Employee; notify
           return <article className={`employee-member-row status-${value.status}`} key={member.id}>
             <div className="employee-member-main">
               <div className="employee-member-avatar">{member.avatarUrl ? <img src={member.avatarUrl} alt=""/> : member.employee.name.slice(0, 1)}</div>
-              <span className="employee-member-identity"><b>{member.employee.name}</b><small title={member.externalUserId}>{member.organizationName} · {identityProviderLabel(member.identityProvider)} · {compactIdentity(member.externalUserId)}</small></span>
+              <span className="employee-member-identity"><b>{member.employee.name}</b><small title={member.employee.username || member.externalUserId}>{member.employee.username ? `用户名 · ${member.employee.username}` : `${member.organizationName} · ${identityProviderLabel(member.identityProvider)} · ${compactIdentity(member.externalUserId)}`}</small></span>
               <select value={value.role} disabled={isSelf} onChange={(event) => {
                 const role = event.target.value;
                 patchDraft(member, {
@@ -156,11 +207,16 @@ export function EmployeeAdmin({ employee, notify }: { employee: Employee; notify
                 <span><b>{member.loginCount}</b>登录</span>
               </div>
               <button className="employee-member-expand" onClick={() => setExpandedId(expandedId === member.id ? "" : member.id)}>
-                {expandedId === member.id ? "收起权限" : "功能权限"}
+                {expandedId === member.id ? "收起设置" : "账户与权限"}
               </button>
               <button className="employee-member-save" disabled={isSelf || !drafts[member.id]} onClick={() => void save(member)}>保存</button>
             </div>
             {expandedId === member.id && <div className="employee-permission-grid">
+              {!isSelf && <div className="employee-member-account-fields">
+                <label>姓名<input value={value.name} onChange={(event) => patchDraft(member, { name: event.target.value })}/></label>
+                <label>用户名<input value={value.username} onChange={(event) => patchDraft(member, { username: event.target.value })}/></label>
+                <label>重置密码<input value={value.password} onChange={(event) => patchDraft(member, { password: event.target.value })} type="password" placeholder="留空则不修改"/></label>
+              </div>}
               {(overview.features || Object.keys(featureLabels) as EmployeeFeature[]).map((feature) => <label key={feature}>
                 <input type="checkbox" checked={value.permissions[feature]} disabled={isSelf} onChange={(event) => patchDraft(member, {
                   permissions: { ...value.permissions, [feature]: event.target.checked }
@@ -169,6 +225,7 @@ export function EmployeeAdmin({ employee, notify }: { employee: Employee; notify
                 <span>{featureLabels[feature]}</span>
               </label>)}
               <p>最后登录：{member.lastLoginAt ? formatDateTime(member.lastLoginAt) : "尚未登录"} · 最近操作 {member.employee.counts.activities} 次</p>
+              {!isSelf && <button className="employee-member-account-save" disabled={!drafts[member.id]} onClick={() => void save(member)}>保存账户与权限</button>}
             </div>}
           </article>;
         })}

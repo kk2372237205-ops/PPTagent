@@ -12,10 +12,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   const { id, runId, slideId } = await context.params;
   const authorization = await authorizeEmployeeService(id, "smartPpt");
   if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
-  const employee = authorization.access.employee;
   const body = await request.json().catch(() => ({})) as { action?: string };
   const run = await db.deckGenerationRun.findFirst({
-    where: { id: runId, serviceId: id, employeeId: employee.id },
+    where: { id: runId, serviceId: id },
     include: { slides: true }
   });
   if (!run) return NextResponse.json({ error: "生成 PPT 任务不存在" }, { status: 404 });

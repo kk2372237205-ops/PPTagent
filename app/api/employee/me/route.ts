@@ -12,8 +12,11 @@ export async function GET() {
   const access = await currentEmployeeAccess();
   if (!access) return NextResponse.json({ employee: null });
 
+  const { passwordHash, passwordChangedAt, ...safeEmployee } = access.employee;
+  void passwordHash;
+  void passwordChangedAt;
   const employee = {
-    ...access.employee,
+    ...safeEmployee,
     membership: {
       ...access.membership,
       organization: access.organization
@@ -25,13 +28,15 @@ export async function GET() {
   }
 
   const isPlatformAdmin = access.employee.isAdmin || access.membership.role === "platform_admin";
-  const canManageOrganization =
-    access.membership.role === "org_admin" || access.membership.role === "manager";
   const serviceWhere = isPlatformAdmin
     ? {}
-    : canManageOrganization
-      ? { organizationId: access.organization.id }
-      : { organizationId: access.organization.id, assigneeId: access.employee.id };
+    : {
+      organizationId: access.organization.id,
+      OR: [
+        { assigneeId: access.employee.id },
+        { collaborators: { some: { employeeId: access.employee.id } } }
+      ]
+    };
 
   const services = hasEmployeeFeature(access, "orders")
     ? await db.service.findMany({
@@ -40,6 +45,10 @@ export async function GET() {
       include: {
         user: { select: { phone: true } },
         assignee: { select: { id: true, name: true, code: true } },
+        collaborators: {
+          orderBy: { createdAt: "asc" },
+          include: { employee: { select: { id: true, name: true, code: true } } }
+        },
         workDocument: { include: { versions: { orderBy: { version: "desc" } } } },
         activities: {
           orderBy: { createdAt: "desc" },
@@ -65,6 +74,12 @@ export async function GET() {
           }
         },
         materialItems: {
+          where: isPlatformAdmin ? {} : {
+            OR: [
+              { employeeId: access.employee.id },
+              { scope: "project" }
+            ]
+          },
           orderBy: [{ materialOrder: "asc" }, { createdAt: "desc" }],
           include: {
             employee: { select: { id: true, name: true } },
@@ -82,7 +97,7 @@ export async function GET() {
     : [];
 
   const organizationMemberships =
-    hasEmployeeFeature(access, "team") || isPlatformAdmin || access.membership.role === "org_admin"
+    hasEmployeeFeature(access, "team") || isPlatformAdmin
       ? await db.employeeMembership.findMany({
         where: isPlatformAdmin ? {} : { organizationId: access.organization.id },
         include: {
@@ -92,15 +107,20 @@ export async function GET() {
         orderBy: [{ status: "asc" }, { updatedAt: "desc" }]
       })
       : [];
-  const employees = organizationMemberships.map((membership) => ({
-    ...membership.employee,
+  const employees = organizationMemberships.map((membership) => {
+    const { passwordHash, passwordChangedAt, ...safeMemberEmployee } = membership.employee;
+    void passwordHash;
+    void passwordChangedAt;
+    return {
+    ...safeMemberEmployee,
     membership: {
       ...membership,
       employee: undefined,
       organization: membership.organization
     },
     permissions: resolveEmployeePermissions(membership, membership.employee.isAdmin)
-  }));
+  };
+  });
 
   let consultations: Awaited<ReturnType<typeof db.consultation.findMany>> = [];
   if (hasEmployeeFeature(access, "customerMessages")) {

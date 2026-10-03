@@ -40,11 +40,10 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
   const { id } = await context.params;
   const authorization = await authorizeEmployeeService(id, "smartPpt");
   if (!authorization.ok) return NextResponse.json({ error: authorization.error }, { status: authorization.status });
-  const employee = authorization.access.employee;
   const service = await db.service.findUnique({ where: { id } });
   if (!service) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
 
-  const runs = await readRuns(id, employee.id);
+  const runs = await readRuns(id);
   return NextResponse.json({ runs, workerHealth: pptPolishWorkerHealth() });
 }
 
@@ -114,7 +113,7 @@ async function ensurePolishDirectories() {
   await mkdir(polishRunRoot, { recursive: true });
 }
 
-async function readRuns(serviceId: string, employeeId: string) {
+async function readRuns(serviceId: string) {
   await ensurePolishDirectories();
   const entries = await readdir(polishRunRoot, { withFileTypes: true }).catch(() => []);
   const runs: PolishRun[] = [];
@@ -124,7 +123,7 @@ async function readRuns(serviceId: string, employeeId: string) {
       const content = await readFile(path.join(polishRunRoot, entry.name), "utf8");
       const run = JSON.parse(content) as PolishRun;
       if (isUnstartedLegacyRun(run)) run.status = "plan_ready";
-      if (run.serviceId === serviceId && run.employeeId === employeeId) runs.push(run);
+      if (run.serviceId === serviceId) runs.push(run);
     } catch {
       // Ignore a single malformed run file so the panel can still load.
     }
