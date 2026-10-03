@@ -81,8 +81,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .mini-content.mint b { font-size: 24px; line-height: 1.25; }
 .mini-content.mint span { position:absolute; bottom:28px; font-size:10px; font-weight:700; }
 .slide-0{z-index:4}.slide-1{z-index:3}.slide-2{z-index:2}.slide-3{z-index:1}
-.deck-badge { position:absolute; z-index:8; right:5%; bottom:72px; background:rgba(255,255,255,.95); border:1px solid white; box-shadow:0 10px 35px rgba(23,42,36,.13); border-radius:30px; padding:10px 16px 10px 10px; font-size:11px; font-weight:600; display:flex; align-items:center; gap:8px; }
-.deck-badge span { width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:var(--mint-pale);color:var(--mint-dark); }
+.deck-badge { position:absolute; z-index:8; right:5%; bottom:72px; background:rgba(255,255,255,.95); border:1px solid white; box-shadow:0 10px 35px rgba(23,42,36,.13); border-radius:30px; padding:10px 16px 10px 10px; font-size:11px; font-weight:700; display:flex; align-items:center; gap:8px; }
+.deck-badge-icon { width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:var(--mint-pale);color:var(--mint-dark);flex:none; }
+.deck-badge-greeting { display:flex;align-items:center;gap:1px;color:#244137;letter-spacing:.12em; }
+.deck-badge-greeting i { display:block;font-style:normal;will-change:transform,opacity; }
 .login-panel { min-height:100vh; background:rgba(255,255,255,.86); backdrop-filter:blur(20px); display:flex; justify-content:center; align-items:center; padding:100px 55px 55px; position:relative; z-index:10; border-left:1px solid rgba(255,255,255,.7); }
 .login-card { width:100%; max-width:390px; }
 .mobile-login-brand { display:none; }
@@ -596,7 +598,7 @@ body,
 .mini-chart i { background: #173f81; }
 .mini-chart i:nth-child(5) { background: #ffe3eb; }
 .mini-grid i { border-color: #8299ba; }
-.deck-badge span { background: #faeaf0; color: #b4234d; }
+.deck-badge-icon { background: #faeaf0; color: #b4234d; }
 
 .login-panel { background: rgba(255,255,255,.96); border-left-color: #dfe6f1; }
 .welcome-mark span {

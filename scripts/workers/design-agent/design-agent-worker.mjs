@@ -151,11 +151,7 @@ async function openAiImageRaw(plan, vision, mode, references, promptOverride = "
 
   if (mode === "mixed" && references.length) {
     requireImageEdits(imageService);
-    const orderedReferences = [...references].sort((a, b) => {
-      const primary = Number(Boolean(b.isPrimary)) - Number(Boolean(a.isPrimary));
-      if (primary) return primary;
-      return Number(a.sortOrder || 0) - Number(b.sortOrder || 0);
-    });
+    const orderedReferences = [...references].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
     const files = await Promise.all(orderedReferences.map(referenceBuffer));
     const primary = multipartBody(
       { model: openAiImageModel, prompt, n: "1", size: openAiPrimaryImageSize },
@@ -1169,8 +1165,7 @@ async function createSmartBatch(run, job, batchIndex) {
   const masterPrompt = smartMasterPrompt(run);
   if (run.generationMode === "mixed") {
     const referenceCount = run.references?.length || 0;
-    const primary = (run.references || []).find(reference => reference.isPrimary) || run.references?.[0];
-    await logEvent(run.id, `batch-${batchIndex + 1}-mixed-master`, "running", `Mixed mode sends ${referenceCount} reference image(s) directly to OpenAI for the master image. Primary: ${primary?.label || "reference 1"}. Downstream pipeline is identical to text-to-image mode.`);
+    await logEvent(run.id, `batch-${batchIndex + 1}-mixed-master`, "running", `Mixed mode sends ${referenceCount} equally weighted reference image(s) directly to OpenAI for the master image. Downstream pipeline is identical to text-to-image mode.`);
   }
   await logEvent(run.id, `batch-${batchIndex + 1}-master`, "running", `OpenAI is generating master image ${batchIndex + 1}.`);
   const masterBuffer = await normalizeSlidePng(await openAiImageRaw({}, {}, run.generationMode, run.references || [], masterPrompt), "#08244f");

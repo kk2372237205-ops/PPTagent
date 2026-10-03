@@ -111,11 +111,10 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   if (materials.length !== imageIds.length) return NextResponse.json({ error: "参考素材不存在或不属于当前员工" }, { status: 403 });
 
   const storedUploads = await Promise.all(uploadFiles.map(async file => ({ label: file.name, storedName: await saveFile(file, referenceRoot) })));
-  const primaryIndex = Math.max(0, Math.min(imageIds.length + storedUploads.length - 1, Number(form.get("primaryIndex") || 0)));
   const references = [
     ...materials.map(item => ({ source: "material", label: item.image.storedName, generatedImageId: item.imageId, sortOrder: 0 })),
     ...storedUploads.map(item => ({ source: "upload", label: item.label, storedName: item.storedName, sortOrder: 0 }))
-  ].map((item, index) => ({ ...item, sortOrder: index, isPrimary: index === primaryIndex }));
+  ].map((item, index) => ({ ...item, sortOrder: index, isPrimary: false }));
 
   const run = await db.designAgentRun.create({
     data: {

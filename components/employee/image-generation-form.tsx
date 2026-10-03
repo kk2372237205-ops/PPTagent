@@ -17,11 +17,10 @@ type Props = {
   busy: boolean;
   selectedMaterialItems: MaterialItem[];
   localReferences: LocalDesignReference[];
-  primaryKey: string;
   selectedCount: number;
   onAddFiles: (files: File[]) => void;
+  onRemoveMaterial: (imageId: string) => void;
   onRemoveLocal: (id: string) => void;
-  onSetPrimaryKey: (key: string) => void;
   onSubmit: (brief: string, batchCount: number) => void;
   notify: (message: string) => void;
 };
@@ -39,8 +38,8 @@ async function responseJson(response: Response): Promise<Record<string, unknown>
  */
 export function ImageGenerationForm({
   service, mode, onModeChange, busy, selectedMaterialItems,
-  localReferences, primaryKey, selectedCount, onAddFiles, onRemoveLocal,
-  onSetPrimaryKey, onSubmit, notify
+  localReferences, selectedCount, onAddFiles, onRemoveMaterial, onRemoveLocal,
+  onSubmit, notify
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [brief, setBrief] = useState("");
@@ -161,8 +160,8 @@ export function ImageGenerationForm({
     {mode === "mixed" && <>
       <input ref={fileRef} hidden type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={event => { onAddFiles(Array.from(event.target.files || [])); event.currentTarget.value = ""; }}/>
       {selectedCount > 0 && <div className="design-reference-strip image-reference-strip">
-        {selectedMaterialItems.map(item => <button type="button" key={item.id} className={primaryKey === `material:${item.image.id}` ? "primary" : ""} onClick={() => onSetPrimaryKey(`material:${item.image.id}`)}><img src={generatedImageUrl(item.image.id)} alt="素材参考"/><span>主参考</span></button>)}
-        {localReferences.map(item => <button type="button" key={item.id} className={primaryKey === `local:${item.id}` ? "primary" : ""} onClick={() => onSetPrimaryKey(`local:${item.id}`)}><img src={item.previewUrl} alt={item.file.name}/><span onClick={event => { event.stopPropagation(); onRemoveLocal(item.id); }}><X/></span></button>)}
+        {selectedMaterialItems.map(item => <div className="image-reference-item" key={item.id}><img src={generatedImageUrl(item.image.id)} alt="素材库参考图"/><button type="button" onClick={() => onRemoveMaterial(item.image.id)} aria-label="移除这张参考图"><X/></button></div>)}
+        {localReferences.map(item => <div className="image-reference-item" key={item.id}><img src={item.previewUrl} alt={item.file.name}/><button type="button" onClick={() => onRemoveLocal(item.id)} aria-label={`移除参考图 ${item.file.name}`}><X/></button></div>)}
       </div>}
       <div className="image-reference-actions"><button type="button" onClick={() => fileRef.current?.click()} disabled={selectedCount >= 6}><Upload/>添加参考图<span>{selectedCount}/6</span></button><small>可一次选择多张 PNG、JPEG 或 WebP 图片</small></div>
     </>}

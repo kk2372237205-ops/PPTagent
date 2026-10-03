@@ -258,7 +258,15 @@ function LoginScreen({ onLogin }: { onLogin: () => Promise<void> }) {
           <MiniSlide index={index} />
         </motion.div>)}
         <motion.div className="deck-badge" initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{delay:1.35}}>
-          <span><Check size={14} /></span>专业演示稿已就绪
+          <span className="deck-badge-icon"><Check size={14} /></span>
+          <span className="deck-badge-greeting" aria-label="欢迎光临">
+            {["欢", "迎", "光", "临"].map((character, index) => <motion.i
+              key={character}
+              initial={reduceMotion ? false : { opacity: 0, y: 11, rotate: index % 2 ? 8 : -8, scale: .74 }}
+              animate={{ opacity: 1, y: 0, rotate: 0, scale: 1 }}
+              transition={{ delay: 1.58 + index * .11, type: "spring", stiffness: 360, damping: 16 }}
+            >{character}</motion.i>)}
+          </span>
         </motion.div>
       </div>
     </section>

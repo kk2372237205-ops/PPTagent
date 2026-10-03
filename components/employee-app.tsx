@@ -208,7 +208,6 @@ function DesignStudio({ service, employee, refresh, notify, back, openEditor }: 
   const [polishRequirement, setPolishRequirement] = useState("");
   const [selectedMaterials, setSelectedMaterials] = useState<string[]>([]);
   const [localReferences, setLocalReferences] = useState<LocalDesignReference[]>([]);
-  const [primaryKey, setPrimaryKey] = useState("");
   const [polishDraftRun, setPolishDraftRun] = useState<PptPolishRun | null>(null);
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
   // 三条链路（单页设计 / 生成 PPT / 美化 PPT）的状态与加载都收敛到这个 Hook，
@@ -233,12 +232,6 @@ function DesignStudio({ service, employee, refresh, notify, back, openEditor }: 
   const mineMaterials = useMemo(() => service.materialItems.filter(item => item.employee.id === employee.id), [employee.id, service.materialItems]);
   const selectedCount = selectedMaterials.length + localReferences.length;
   const selectedMaterialItems = mineMaterials.filter(item => selectedMaterials.includes(item.image.id));
-  const primaryIndex = (() => {
-    const materialIndex = selectedMaterials.indexOf(primaryKey.replace(/^material:/, ""));
-    if (primaryKey.startsWith("material:") && materialIndex >= 0) return materialIndex;
-    const uploadIndex = localReferences.findIndex(item => `local:${item.id}` === primaryKey);
-    return uploadIndex >= 0 ? selectedMaterials.length + uploadIndex : 0;
-  })();
 
   function editPolishPlan() {
     if (!activePolishRun || activePolishRun.status !== "plan_ready") return;
@@ -282,7 +275,6 @@ function DesignStudio({ service, employee, refresh, notify, back, openEditor }: 
       referencesToClear.forEach(item => URL.revokeObjectURL(item.previewUrl));
       setSelectedMaterials([]);
       setLocalReferences([]);
-      setPrimaryKey("");
     }, 0);
     return () => window.clearTimeout(timer);
   }, [localReferences, mentorTool, mode, selectedCount]);
@@ -294,17 +286,14 @@ function DesignStudio({ service, employee, refresh, notify, back, openEditor }: 
     if (!accepted.length) return notify("请添加 PNG、JPEG 或 WebP 图片，单张不超过 10MB");
     const next = accepted.map(file => ({ id: `${Date.now()}-${Math.random()}`, file, previewUrl: URL.createObjectURL(file), source }));
     setLocalReferences(current => [...current, ...next]);
-    setPrimaryKey(current => current || `local:${next[0].id}`);
   }
   function toggleMaterial(imageId: string) {
     if (mentorTool === "image" && mode === "text") return notify("文生图模式只能文字描述，不能选择素材图");
     setSelectedMaterials(current => {
       if (current.includes(imageId)) {
-        setPrimaryKey(key => key === `material:${imageId}` ? "" : key);
         return current.filter(item => item !== imageId);
       }
       if (current.length + localReferences.length >= 6) { notify("最多选择 6 张参考图"); return current; }
-      setPrimaryKey(key => key || `material:${imageId}`);
       return [...current, imageId];
     });
   }
@@ -313,13 +302,12 @@ function DesignStudio({ service, employee, refresh, notify, back, openEditor }: 
       const target = current.find(item => item.id === id); if (target) URL.revokeObjectURL(target.previewUrl);
       return current.filter(item => item.id !== id);
     });
-    setPrimaryKey(key => key === `local:${id}` ? "" : key);
   }
   async function createRun(runBrief: string, batchCount: number) {
     if (!runBrief.trim()) return notify("请写下这一页的生成要求");
     if (mode === "mixed" && !selectedCount) return notify("混合模式至少需要一张参考图");
     const form = new FormData();
-    form.set("brief", runBrief.trim()); form.set("generationMode", mode); form.set("qualityMode", "standard"); form.set("generatedImageIds", JSON.stringify(mode === "mixed" ? selectedMaterials : [])); form.set("primaryIndex", String(primaryIndex)); form.set("batchCount", String(batchCount));
+    form.set("brief", runBrief.trim()); form.set("generationMode", mode); form.set("qualityMode", "standard"); form.set("generatedImageIds", JSON.stringify(mode === "mixed" ? selectedMaterials : [])); form.set("batchCount", String(batchCount));
     if (mode === "mixed") localReferences.forEach(item => form.append("references", item.file));
     setBusy(true);
     try {
@@ -386,7 +374,22 @@ function DesignStudio({ service, employee, refresh, notify, back, openEditor }: 
         </div>
         {mentorTool === "deck" && <DeckGenerationForm service={service} notify={notify} onCreated={(run) => { setDeckRun(run); setMentorOpen(false); }}/>}
         {mentorTool === "polish" && <section className="deck-generation-form"><label>美化范围<select defaultValue="current"><option value="current">当前文稿</option><option value="all">整套 PPT</option><option value="selected">指定页面</option></select></label><label>风格方向<select defaultValue={deckDefaultStylePackId}>{deckStylePacks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label>修改要求<textarea value={polishRequirement} onChange={event => setPolishRequirement(event.target.value)} placeholder="例如：更像发布会、减少文字、强化科技感、统一页眉页脚和图标风格。"/></label><button type="button" onClick={() => notify("美化 PPT 入口已恢复，真实重绘链路暂不自动启动。")}><WandSparkles/>即将接入</button></section>}
-        {mentorTool === "image" && <ImageGenerationForm service={service} mode={mode} onModeChange={setMode} busy={busy} selectedMaterialItems={selectedMaterialItems} localReferences={localReferences} primaryKey={primaryKey} selectedCount={selectedCount} onAddFiles={addFiles} onRemoveLocal={removeLocal} onSetPrimaryKey={setPrimaryKey} onSubmit={(runBrief, count) => void createRun(runBrief, count)} notify={notify}/>}
+        {mentorTool === "image" && (
+          <ImageGenerationForm
+            service={service}
+            mode={mode}
+            onModeChange={setMode}
+            busy={busy}
+            selectedMaterialItems={selectedMaterialItems}
+            localReferences={localReferences}
+            selectedCount={selectedCount}
+            onAddFiles={addFiles}
+            onRemoveMaterial={toggleMaterial}
+            onRemoveLocal={removeLocal}
+            onSubmit={(runBrief, count) => void createRun(runBrief, count)}
+            notify={notify}
+          />
+        )}
       </section>}
     </div>
     {mentorOpen && mentorTool === "polish" && <section className="design-mentor-large-panel polish-only-panel">
