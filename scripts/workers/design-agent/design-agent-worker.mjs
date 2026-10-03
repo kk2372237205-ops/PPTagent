@@ -1194,7 +1194,7 @@ async function processRun(run) {
   const batchCount = clampBatchCount(run.generationBudget);
   await setRun(run.id, { workflowState: "image_generation", designIntent: JSON.stringify({ workflow: "employee-prompt-image-v1", batchCount }), error: null, generationAttempts: 0, evaluationAttempts: 0 });
   await logEvent(run.id, "context", "completed", "已加载员工提交的文字与明确套用的夹子；没有追加预设提示词。");
-  const job = await db.generationJob.create({ data: { prompt: run.brief, status: "processing", provider: "openai", model: openAiImageModel, serviceId: run.serviceId, employeeId: run.employeeId } });
+  const job = await db.generationJob.create({ data: { prompt: run.brief, status: "processing", provider: "design-agent", model: openAiImageModel, serviceId: run.serviceId, employeeId: run.employeeId } });
   await setRun(run.id, { generatedJobId: job.id, visualPrompt: run.brief });
   const batches = [];
   for (let index = 0; index < batchCount; index += 1) {

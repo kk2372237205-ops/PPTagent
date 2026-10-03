@@ -26,6 +26,12 @@ function chronologicalSort<T extends { id: string; createdAt: string }>(a: T, b:
   return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id.localeCompare(b.id);
 }
 
+/** 只有此面板亲自发起的 Ark / 图片中转任务才属于「AI 图片」。
+ * 上传到素材库、图片工具和设计工作流共用图片存储，但不能混入这里。 */
+function isAssistantImageJob(job: TrackedImageJob) {
+  return job.provider === "ark" || job.provider === "openai";
+}
+
 export function AiPanel({ service, employee, refresh, notify }: { service: Service; employee: Employee; refresh: (silent?: boolean) => Promise<void>; notify: (text: string) => void }) {
   const [tab, setTab] = useState<"chat" | "image">("chat");
   const [messages, setMessages] = useState<AiMessage[]>([]);
@@ -52,11 +58,12 @@ export function AiPanel({ service, employee, refresh, notify }: { service: Servi
   const chatFeedRef = useRef<HTMLDivElement>(null);
   const imageFeedRef = useRef<HTMLDivElement>(null);
   const mineMaterials = useMemo(() => new Set(service.materialItems.filter(item => item.employee.id === employee.id).map(item => item.image.id)), [employee.id, service.materialItems]);
-  const images = service.generationJobs
-    .filter(job => !job.employee.id || job.employee.id === employee.id)
+  const assistantImageJobs = service.generationJobs
+    .filter(job => (!job.employee.id || job.employee.id === employee.id) && isAssistantImageJob(job));
+  const images = assistantImageJobs
     .flatMap(job => job.images.map(image => ({ ...image, job })))
     .sort(chronologicalSort);
-  const serviceImageJobs = service.generationJobs.filter(job => !job.employee.id || job.employee.id === employee.id);
+  const serviceImageJobs = assistantImageJobs;
   const imageJobMap = new Map<string, TrackedImageJob>();
   [...trackedImageJobs, ...serviceImageJobs].forEach(job => imageJobMap.set(job.id, job));
   const displayImageJobs = Array.from(imageJobMap.values())
@@ -274,4 +281,3 @@ export function AiPanel({ service, employee, refresh, notify }: { service: Servi
     {preview && <ImagePreviewModal image={preview} onClose={() => setPreview(null)}/>}
   </aside>;
 }
-

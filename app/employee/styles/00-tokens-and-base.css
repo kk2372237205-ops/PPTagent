@@ -432,10 +432,11 @@
 .image-preview-card footer a { height:34px;border-radius:9px;background:#2b6c9f;color:#fff;text-decoration:none;display:flex;align-items:center;gap:7px;padding:0 13px;font-size:10px;font-weight:700; }
 .image-preview-card svg { width:14px;height:14px; }
 
-.material-rail > div { align-items:center; }
+.material-rail > div { align-items:center;min-width:0; }
+.material-rail > div > span { min-width:0;flex:1 1 auto; }
 .material-rail > div b { font-size:12px; }
-.material-rail > div small { font-size:10px; }
-.material-import-button { margin-left:auto;height:30px;border:1px solid #35445b;border-radius:8px;background:#202d43;color:#dbe7f4;display:flex;align-items:center;gap:5px;padding:0 8px;font-size:11px;cursor:pointer; }
+.material-rail > div small { max-width:none;font-size:10px; }
+.material-import-button { flex:0 0 auto;min-width:90px;margin-left:0;height:30px;border:1px solid #35445b;border-radius:8px;background:#202d43;color:#dbe7f4;display:flex;align-items:center;justify-content:center;gap:5px;padding:0 8px;font-size:11px;line-height:1;white-space:nowrap;cursor:pointer; }
 .material-import-button svg { width:13px;height:13px; }
 .material-import-button:disabled { opacity:.45;cursor:not-allowed; }
 .material-shelf { flex-direction:row;justify-content:flex-start;width:100%;max-width:none; }
