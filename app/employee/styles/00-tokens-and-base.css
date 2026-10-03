@@ -65,7 +65,6 @@
 .employee-login-kicker { position:relative;z-index:2;display:flex;align-items:center;gap:8px;font-size:10px;letter-spacing:2.4px;color:#a9c9ff;font-weight:700; }
 .employee-login-art h1 { position:relative;z-index:2;font-size:clamp(50px,5.4vw,83px);line-height:1.08;letter-spacing:-4px;margin:25px 0 22px; }
 .employee-login-art h1 em { color:#ff9eb6;font-style:normal; }
-.employee-login-art > p { position:relative;z-index:2;color:#c8d5e9;font-size:16px;letter-spacing:.2px; }
 .employee-art-cards { position:absolute;z-index:2;right:8%;bottom:9%;width:390px;height:270px;perspective:900px; }
 .employee-art-card-entry { position:absolute;width:245px;aspect-ratio:16/10;will-change:transform,opacity; }
 .employee-art-card-entry.one { right:0;bottom:0; }.employee-art-card-entry.two { right:85px;bottom:22px; }.employee-art-card-entry.three { right:35px;bottom:65px; }
@@ -102,8 +101,7 @@
 
 .employee-shell { min-height:100vh;display:flex; }
 .employee-sidebar { position:fixed;inset:0 auto 0 0;width:250px;padding:26px 20px 19px;background:rgba(255,255,255,.96);border-right:1px solid #dde5f0;display:flex;flex-direction:column;z-index:20; }
-.employee-side-caption { margin:42px 12px 13px;color:#9ba8b9;font-size:9px;letter-spacing:1.8px;font-weight:800;text-transform:uppercase; }
-.employee-sidebar nav { display:flex;flex-direction:column;gap:7px; }
+.employee-sidebar nav { display:flex;flex-direction:column;gap:7px;margin-top:65px; }
 .employee-sidebar nav button { height:46px;border:0;border-radius:13px;background:transparent;display:flex;align-items:center;gap:12px;padding:0 13px;color:#697990;cursor:pointer;text-align:left;transition:.2s; }
 .employee-sidebar nav button svg { width:18px; }
 .employee-sidebar nav button:hover { color:#174ea6;background:#f1f5fb; }
@@ -433,8 +431,8 @@
 .image-preview-card svg { width:14px;height:14px; }
 
 .material-rail > div { align-items:center;min-width:0; }
-.material-rail > div > span { min-width:0;flex:1 1 auto; }
-.material-rail > div b { font-size:12px; }
+.material-rail > div > span { min-width:0;flex:1 1 auto;display:flex;align-items:center; }
+.material-rail > div b { font-size:12px;line-height:1; }
 .material-rail > div small { max-width:none;font-size:10px; }
 .material-import-button { flex:0 0 auto;min-width:90px;margin-left:0;height:30px;border:1px solid #35445b;border-radius:8px;background:#202d43;color:#dbe7f4;display:flex;align-items:center;justify-content:center;gap:5px;padding:0 8px;font-size:11px;line-height:1;white-space:nowrap;cursor:pointer; }
 .material-import-button svg { width:13px;height:13px; }

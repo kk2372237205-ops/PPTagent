@@ -18,7 +18,7 @@ import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronLeft, ChevronUp, Copy, Download, FileText, ImagePlus, LoaderCircle, Save, Trash2, Upload, X } from "lucide-react";
 import { employeeApi } from "@/lib/employee-api";
 import type { DeckGenerationRun, DeckPageBlock, DeckPageDraft, Service } from "@/lib/employee-api-types";
-import { deckAdvancedLayoutPacks, deckStylePacks } from "@/lib/employee-deck-constants";
+import { deckStylePacks } from "@/lib/employee-deck-constants";
 import { deckPageDraft, deckRunStyleLabel, deckStatusText, formatDeckFileSize, parseDeckObject, type DeckRegenerateAction, type DeckRunActions } from "@/lib/employee-deck-shared";
 import { DeckAdvancedContentReview, DeckSourceSummary } from "./deck-summary";
 
@@ -159,7 +159,7 @@ export function DeckAdvancedSettingsEditor({ service, run, onRunUpdate, onCancel
         <button type="button" className={paletteMode === "preset" ? "active" : ""} onClick={() => setPaletteMode("preset")}><Check/><span><b>内置配色</b><small>不使用旧配色参考图</small></span></button>
         <button type="button" className={paletteMode === "reference" ? "active" : ""} onClick={() => setPaletteMode("reference")}><ImagePlus/><span><b>参考图配色</b><small>{sources.some(source => source.kind === "theme" && !removedSourceIds.has(source.id)) ? "沿用现有参考图" : "需要上传一张新参考图"}</small></span></button>
       </div>
-      <label className="deck-layout-language">{paletteMode === "reference" ? "版式语言（不含配色）" : "内置配色风格"}<select value={stylePack} onChange={event => setStylePack(event.target.value)}>{(paletteMode === "reference" ? deckAdvancedLayoutPacks : deckStylePacks).map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select><small>{paletteMode === "reference" ? "Image2 的颜色只服从参考图；这里选择信息组织、图文关系、留白和节奏。" : "内置风格同时规定配色与版式。"}</small></label>
+      {paletteMode === "preset" && <label className="deck-layout-language">内置配色风格<select value={stylePack} onChange={event => setStylePack(event.target.value)}>{deckStylePacks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select><small>内置风格同时规定配色与版式。</small></label>}
       {paletteMode === "reference" && <>
         {themeSources.length > 0 && <div className="deck-source-list deck-theme-files">{themeSources.map(source => <article key={source.id} className={removedSourceIds.has(source.id) ? "removed" : ""}><ImagePlus/><span><b>{source.originalName}</b><small>配色参考图 · {formatDeckFileSize(source.size)}</small></span><button type="button" onClick={() => toggleRemoveSource(source.id)} aria-label={removedSourceIds.has(source.id) ? "保留参考图" : "移除参考图"}>{removedSourceIds.has(source.id) ? <Check/> : <X/>}</button></article>)}</div>}
         <div className="deck-theme-reference compact" onClick={() => themeInputRef.current?.click()}>{themePreview ? <><img src={themePreview} alt="新配色参考"/><b>{themeFile?.name}</b></> : <><ImagePlus/><span>上传新的配色参考图（可留空以沿用现有图）</span></>}<input ref={themeInputRef} type="file" hidden accept=".png,.jpg,.jpeg,.webp" onChange={event => chooseTheme(event.target.files?.[0])}/></div>
@@ -410,7 +410,7 @@ export function DeckAdvancedPlanRun(props: DeckRunActions) {
       </details>)}</div> : <DeckAdvancedContentReview drafts={drafts} updatePage={updatePage} updateBlock={updateBlock}/>}
       {message && <div className="deck-editor-message">{message}</div>}
       <footer className="deck-editor-actions">
-        {isOutlineStep ? <><button className="design-secondary" onClick={() => void savePages("save")} disabled={saving}>保存旧任务草稿</button><button className="design-apply" onClick={() => void savePages("match")} disabled={saving}>{saving ? <LoaderCircle className="spin"/> : <Check/>}继续整理完整方案</button></> : <><label>{run.paletteMode === "reference" ? "版式语言（不含配色）" : "生成风格"}<select value={nextStylePack} onChange={event => setNextStylePack(event.target.value)}>{(run.paletteMode === "reference" ? deckAdvancedLayoutPacks : deckStylePacks).map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><button className="design-secondary" onClick={() => void changeStyle()} disabled={saving || busy}>按新版式重整方案</button><button className="design-apply" onClick={() => void confirmFinal()} disabled={saving || busy}>确认整套方案并生成预览</button></>}
+        {isOutlineStep ? <><button className="design-secondary" onClick={() => void savePages("save")} disabled={saving}>保存旧任务草稿</button><button className="design-apply" onClick={() => void savePages("match")} disabled={saving}>{saving ? <LoaderCircle className="spin"/> : <Check/>}继续整理完整方案</button></> : <>{run.paletteMode === "preset" && <><label>生成风格<select value={nextStylePack} onChange={event => setNextStylePack(event.target.value)}>{deckStylePacks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><button className="design-secondary" onClick={() => void changeStyle()} disabled={saving || busy}>按新风格重整方案</button></>}<button className="design-apply" onClick={() => void confirmFinal()} disabled={saving || busy}>确认整套方案并生成预览</button></>}
       </footer>
     </section>}
   </section>;

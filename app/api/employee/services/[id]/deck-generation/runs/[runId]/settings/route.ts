@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { authorizeEmployeeService } from "@/lib/employee-auth";
-import { deckStylePackIds } from "@/lib/employee-deck-constants";
+import { deckDefaultStylePackId, deckStylePackIds } from "@/lib/employee-deck-constants";
 import { deckSourceRoot, deckThemeRoot, saveFile } from "@/lib/workspace-storage";
 
 export const runtime = "nodejs";
@@ -32,8 +32,9 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   const brief = String(form.get("brief") || "").trim();
   const referenceText = String(form.get("referenceText") || "").trim();
   const outlineText = String(form.get("outlineText") || "").trim();
-  const stylePack = String(form.get("stylePack") || run.stylePack);
   const paletteMode = form.get("paletteMode") === "reference" ? "reference" : "preset";
+  const requestedStylePack = String(form.get("stylePack") || run.stylePack);
+  const stylePack = paletteMode === "reference" ? deckDefaultStylePackId : requestedStylePack;
   const unityOptionsJson = normalizeUnityOptions(String(form.get("unityOptions") || run.unityOptionsJson || "{}"));
   const removedSourceIds = new Set(parseStringArray(String(form.get("removedSourceIds") || "[]")));
   const referenceFiles = form.getAll("references").filter(isUploadedFile);

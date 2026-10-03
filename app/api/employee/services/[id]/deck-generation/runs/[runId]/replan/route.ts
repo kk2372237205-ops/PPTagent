@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { authorizeEmployeeService } from "@/lib/employee-auth";
-import { deckStylePackIds } from "@/lib/employee-deck-constants";
+import { deckDefaultStylePackId, deckStylePackIds } from "@/lib/employee-deck-constants";
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string; runId: string }> }) {
   const { id, runId } = await context.params;
@@ -16,7 +16,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   if (!["plan_ready", "failed"].includes(run.status)) {
     return NextResponse.json({ error: "只有方案阶段可以重新生成方案" }, { status: 400 });
   }
-  const stylePack = String(body.stylePack || run.stylePack);
+  const requestedStylePack = String(body.stylePack || run.stylePack);
+  const stylePack = run.paletteMode === "reference" ? deckDefaultStylePackId : requestedStylePack;
   if (!deckStylePackIds.has(stylePack)) return NextResponse.json({ error: "风格包无效" }, { status: 400 });
 
   await db.deckGenerationSlide.deleteMany({ where: { runId: run.id } });

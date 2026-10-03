@@ -41,8 +41,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   const generationMode = form.get("generationMode") === "advanced" ? "advanced" : "quick";
   const outlineText = String(form.get("outlineText") || "").trim();
   const pageCount = Math.max(2, Math.min(30, Number(form.get("pageCount") || 12) || 12));
-  const stylePack = String(form.get("stylePack") || deckDefaultStylePackId);
   const paletteMode = form.get("paletteMode") === "reference" ? "reference" : "preset";
+  const requestedStylePack = String(form.get("stylePack") || deckDefaultStylePackId);
+  const stylePack = paletteMode === "reference" ? deckDefaultStylePackId : requestedStylePack;
   const unityOptionsJson = normalizeUnityOptions(String(form.get("unityOptions") || "{}"));
   const referenceFiles = form.getAll("references").filter(isUploadedFile);
   const outlineFile = isUploadedFile(form.get("outlineFile")) ? form.get("outlineFile") as File : null;

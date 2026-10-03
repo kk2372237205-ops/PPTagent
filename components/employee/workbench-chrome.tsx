@@ -87,7 +87,7 @@ export function EmployeeSidebar({ active, setActive, employee, services, logout 
   active: string; setActive: (value: string) => void; employee: Employee; services: Service[]; logout: () => void;
 }) {
   return <aside className="employee-sidebar">
-    <EmployeeBrand/><span className="employee-side-caption">员工协同中心</span>
+    <EmployeeBrand/>
     <nav>{navItems.filter((item) => !item.feature || employee.permissions[item.feature]).map(item => <button key={item.id} className={active === item.id ? "active" : ""} onClick={() => setActive(item.id)}><item.icon/><span>{item.label}</span>{item.id === "orders" && <em>{services.length}</em>}</button>)}
       {canOpenEmployeeAdmin(employee) && <button className={active === "admin" ? "active" : ""} onClick={() => setActive("admin")}><UserCog/><span>管理控制台</span></button>}
     </nav>
@@ -131,7 +131,7 @@ export function Orders({ services, employees, employee, enterWorkspace, refresh,
     await refresh();
   }
   return <div className="employee-page">
-    <header className="employee-page-head"><div><span>ORDER OPERATIONS</span><h1>把每一份托付，推进为作品</h1><p>查看全部客户订单，分配负责人并进入协同制作工作台。</p></div><div className="employee-head-stat"><b>{services.length}</b><span>项订单正在流转</span></div></header>
+    <header className="employee-page-head"><div><span>ORDER OPERATIONS</span><h1>把每一份托付，推进为作品</h1></div><div className="employee-head-stat"><b>{services.length}</b><span>项订单正在流转</span></div></header>
     <div className="employee-filters">{["全部", ...statusOptions].map(item => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}<span>{item === "全部" ? services.length : services.filter(service => service.status === item).length}</span></button>)}</div>
     <div className="employee-order-list">{visible.map((service, index) => <article className="employee-order-card" key={service.id}>
       <div className={`employee-order-cover cover-${(index % 4) + 1}`}><small>{service.category}</small><strong>{service.title}</strong><span>WZLCF / {service.number.slice(0, 8)}</span></div>

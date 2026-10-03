@@ -18,7 +18,7 @@ import type { CSSProperties, DragEvent } from "react";
 import { Check, FileText, ImagePlus, LoaderCircle, Sparkles, Upload, X } from "lucide-react";
 import { employeeApi } from "@/lib/employee-api";
 import type { DeckGenerationRun, Service } from "@/lib/employee-api-types";
-import { deckAdvancedLayoutPacks, deckDefaultStylePackId, deckStylePacks, defaultDeckUnityOptions } from "@/lib/employee-deck-constants";
+import { deckDefaultStylePackId, deckStylePacks, defaultDeckUnityOptions } from "@/lib/employee-deck-constants";
 
 function formatDeckFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -159,7 +159,6 @@ export function DeckGenerationForm({ service, notify, onCreated }: {
           {themePreview ? <><img src={themePreview} alt="配色参考"/><div><b>{themeReference?.name}</b><span>仅提取背景、文字、强调色及使用比例；原图不交给 Image2</span></div></> : <><ImagePlus/><div><b>上传一张配色参考图</b><span>PNG、JPEG 或 WebP，不要求它是 PPT</span></div></>}
           <input ref={themeInputRef} type="file" hidden accept=".png,.jpg,.jpeg,.webp" onChange={event => chooseTheme(event.target.files?.[0])}/>
         </div>
-        {generationMode === "advanced" && <label className="deck-layout-language">版式语言（不含配色）<select value={stylePack} onChange={event => setStylePack(event.target.value)}>{deckAdvancedLayoutPacks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select><small>参考图决定全部颜色；这里选择信息组织、图文关系、留白和节奏，不是文字密度。</small></label>}
       </>}
     </section>
 

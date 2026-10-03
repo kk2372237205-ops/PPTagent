@@ -215,7 +215,6 @@ export function EmployeeLogin({ onLogin }: { onLogin: () => Promise<void> }) {
     <section className="employee-login-art">
       <span className="employee-login-kicker"><Sparkles size={14}/> WZLCF CREATIVE OPERATIONS</span>
       <h1>让灵感成为<br/><em>可靠的交付。</em></h1>
-      <p>订单、沟通、协同编辑与 AI 素材，在同一处有序发生。</p>
       <div className="employee-art-cards">
         {(["one", "two", "three"] as const).map((card, index) => <motion.span
           className={`employee-art-card-entry ${card}`}
