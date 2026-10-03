@@ -74,9 +74,9 @@
 .employee-art-card.two { background:radial-gradient(circle at 70% 35%,#ff9ab4 0 18%,transparent 19%),#174ea6;animation:employee-card-two 7.6s ease-in-out -.9s infinite; }
 .employee-art-card.three { background:linear-gradient(120deg,#152642,#1f5bad);animation:employee-card-three 6.3s ease-in-out -1.7s infinite; }
 .employee-art-card.three:after { content:"CREATE / COLLABORATE";position:absolute;left:24px;bottom:24px;color:#fff;font-style:normal;font-size:11px;letter-spacing:1.5px; }
-.employee-login-welcome { position:absolute;z-index:4;right:8px;bottom:26px;min-width:174px;height:45px;padding:0 17px 0 6px;border:1px solid rgba(255,255,255,.75);border-radius:999px;background:rgba(255,255,255,.95);box-shadow:0 16px 30px rgba(9,22,54,.24);display:flex;align-items:center;gap:9px;color:#28344b; }
+.employee-login-welcome { position:absolute;z-index:5;right:-4px;bottom:-4px;min-width:174px;height:45px;padding:0 17px 0 6px;border:1px solid rgba(255,255,255,.75);border-radius:999px;background:rgba(255,255,255,.97);box-shadow:0 16px 30px rgba(9,22,54,.24);display:flex;align-items:center;gap:9px;color:#28344b;isolation:isolate; }
 .employee-login-welcome > span { width:31px;height:31px;border-radius:50%;display:grid;place-items:center;color:#c52d5a;background:#fff0f5; }.employee-login-welcome > span svg { width:16px;height:16px; }
-.employee-login-welcome b { display:flex;font-size:11px;letter-spacing:.4px;white-space:nowrap; }.employee-login-welcome b i { display:block;font-style:normal; }
+.employee-login-welcome b { display:flex;font-size:11px;letter-spacing:.4px;white-space:nowrap;color:#28344b;text-shadow:none; }.employee-login-welcome b i { display:block;font-style:normal;background:transparent!important; }
 @keyframes employee-card-one { 0%,100% { transform:translate3d(0,0,0) rotate(8deg); } 50% { transform:translate3d(-8px,-11px,0) rotate(5.5deg); } }
 @keyframes employee-card-two { 0%,100% { transform:translate3d(0,0,0) rotate(-5deg); } 50% { transform:translate3d(9px,-15px,0) rotate(-1.5deg); } }
 @keyframes employee-card-three { 0%,100% { transform:translate3d(0,0,0) rotate(2deg); } 50% { transform:translate3d(-5px,-18px,0) rotate(5deg); } }

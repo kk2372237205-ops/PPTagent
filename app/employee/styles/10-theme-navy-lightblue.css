@@ -39,9 +39,9 @@
 .employee-login-kicker { color:#9ed3f2; }
 .employee-login-art h1 em { color:#9ed3f2; }
 .employee-login-art > p { color:#b9cad8; }
-.employee-art-cards i:nth-child(1) { background:linear-gradient(145deg,#fff 0 50%,#6faed8 50%); }
-.employee-art-cards i:nth-child(2) { background:radial-gradient(circle at 70% 35%,#dceef9 0 18%,transparent 19%),#245f94; }
-.employee-art-cards i:nth-child(3) { background:linear-gradient(120deg,#0b2540,#365f8a); }
+.employee-art-card.one { background:linear-gradient(145deg,#fff 0 50%,#6faed8 50%); }
+.employee-art-card.two { background:radial-gradient(circle at 70% 35%,#dceef9 0 18%,transparent 19%),#245f94; }
+.employee-art-card.three { background:linear-gradient(120deg,#0b2540,#365f8a); }
 .employee-login-mark { box-shadow:10px 10px 0 #e5f2fc; }
 .employee-input:focus-within { border-color:#78b9e6;box-shadow:0 0 0 4px rgba(89,157,207,.12); }
 .employee-dev-code { color:#386b91;background:#edf6fb; }
