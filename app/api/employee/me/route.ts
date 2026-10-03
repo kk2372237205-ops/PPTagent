@@ -17,6 +17,7 @@ export async function GET() {
   void passwordChangedAt;
   const employee = {
     ...safeEmployee,
+    hasPassword: Boolean(passwordHash),
     membership: {
       ...access.membership,
       organization: access.organization

@@ -50,7 +50,8 @@ export function canAssignOrders(employee: Employee) {
 export function identityProviderLabel(provider: string) {
   if (provider === "wechat") return "微信";
   if (provider === "wecom") return "企业微信";
-  if (provider === "local") return "本地管理员";
+  if (provider === "password") return "账号密码";
+  if (provider === "local") return "本地引导";
   return "外部账号";
 }
 

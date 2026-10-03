@@ -23,7 +23,7 @@ export type EmployeeMembership = {
   organization: { id: string; name: string; slug: string };
 };
 export type Employee = {
-  id: string; code: string; name: string; username?: string | null; phone: string | null; isAdmin: boolean; enabled: boolean; createdAt: string;
+  id: string; code: string; name: string; username?: string | null; hasPassword?: boolean; phone: string | null; isAdmin: boolean; enabled: boolean; createdAt: string;
   membership: EmployeeMembership;
   permissions: EmployeePermissions;
 };

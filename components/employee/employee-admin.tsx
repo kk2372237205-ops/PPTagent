@@ -29,6 +29,7 @@ export function EmployeeAdmin({ employee, notify }: { employee: Employee; notify
   const [creating, setCreating] = useState(false);
   const [newMember, setNewMember] = useState({ name: "", username: "", password: "", role: "member" });
   const [ownCredentials, setOwnCredentials] = useState({ username: employee.username || "", currentPassword: "", newPassword: "" });
+  const [currentAccountReady, setCurrentAccountReady] = useState(Boolean(employee.username && employee.hasPassword));
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
@@ -96,6 +97,7 @@ export function EmployeeAdmin({ employee, notify }: { employee: Employee; notify
     const result = await response.json();
     if (!response.ok) return notify(result.error || "个人账户保存失败");
     setOwnCredentials((current) => ({ ...current, currentPassword: "", newPassword: "" }));
+    setCurrentAccountReady(true);
     notify("个人用户名和密码已更新");
     await loadOverview();
   }
@@ -156,17 +158,17 @@ export function EmployeeAdmin({ employee, notify }: { employee: Employee; notify
       </section>
       <section className="employee-account-control">
         <form onSubmit={saveOwnCredentials}>
-          <header><KeyRound/><span><b>我的平台账户</b><small>{employee.username ? "用户名和密码仅由你本人修改；修改密码后会退出其他登录设备。" : "首次设置请同时填写用户名和新密码；之后可使用账号密码直接登录。"}</small></span></header>
-          <label>用户名<input value={ownCredentials.username} onChange={(event) => setOwnCredentials((current) => ({ ...current, username: event.target.value }))} autoComplete="username" required/></label>
-          <label>当前密码<input value={ownCredentials.currentPassword} onChange={(event) => setOwnCredentials((current) => ({ ...current, currentPassword: event.target.value }))} autoComplete="current-password" type="password" placeholder={employee.username ? "修改时填写" : "首次设置可留空"}/></label>
-          <label>新密码<input value={ownCredentials.newPassword} onChange={(event) => setOwnCredentials((current) => ({ ...current, newPassword: event.target.value }))} autoComplete="new-password" type="password" placeholder="至少 10 个字符" required={!employee.username}/></label>
-          <button>保存我的账户</button>
+          <header><KeyRound/><span><b>我的平台账户</b><small>{currentAccountReady ? "这是当前登录的管理员账号；修改密码后会退出其他登录设备。" : "当前为本机开发引导身份，尚未完成账号确认。请设置只有你知道的登录用户名和密码。"}</small></span></header>
+          <label>登录用户名<input value={ownCredentials.username} onChange={(event) => setOwnCredentials((current) => ({ ...current, username: event.target.value }))} autoComplete="username" placeholder="例如 zhangsan" required/></label>
+          <label>当前登录密码<input value={ownCredentials.currentPassword} onChange={(event) => setOwnCredentials((current) => ({ ...current, currentPassword: event.target.value }))} autoComplete="current-password" type="password" placeholder={currentAccountReady ? "修改时填写" : "首次设置无需填写"}/></label>
+          <label>{currentAccountReady ? "新登录密码" : "设置登录密码"}<input value={ownCredentials.newPassword} onChange={(event) => setOwnCredentials((current) => ({ ...current, newPassword: event.target.value }))} autoComplete="new-password" type="password" placeholder="至少 10 个字符" required={!currentAccountReady}/></label>
+          <button>{currentAccountReady ? "保存我的账户" : "确认这是我的平台账户"}</button>
         </form>
         <form onSubmit={createMember}>
           <header><UserPlus/><span><b>开通员工账号</b><small>员工只有项目内的负责人或普通员工身份；平台管理员是全局例外。</small></span></header>
           <label>姓名<input value={newMember.name} onChange={(event) => setNewMember((current) => ({ ...current, name: event.target.value }))} placeholder="员工姓名" required/></label>
-          <label>初始用户名<input value={newMember.username} onChange={(event) => setNewMember((current) => ({ ...current, username: event.target.value }))} placeholder="例如 zhangsan" required/></label>
-          <label>初始密码<input value={newMember.password} onChange={(event) => setNewMember((current) => ({ ...current, password: event.target.value }))} type="password" placeholder="至少 10 个字符" required/></label>
+          <label>登录用户名<input value={newMember.username} onChange={(event) => setNewMember((current) => ({ ...current, username: event.target.value }))} placeholder="例如 zhangsan" required/></label>
+          <label>设置登录密码<input value={newMember.password} onChange={(event) => setNewMember((current) => ({ ...current, password: event.target.value }))} type="password" placeholder="至少 10 个字符" required/></label>
           <label>平台身份<select value={newMember.role} onChange={(event) => setNewMember((current) => ({ ...current, role: event.target.value }))}><option value="member">普通员工</option><option value="platform_admin">平台管理员</option></select></label>
           <button disabled={creating}>{creating ? <LoaderCircle className="spin"/> : <Plus/>}{creating ? "正在开通" : "开通账号"}</button>
         </form>
@@ -186,7 +188,7 @@ export function EmployeeAdmin({ employee, notify }: { employee: Employee; notify
           return <article className={`employee-member-row status-${value.status}`} key={member.id}>
             <div className="employee-member-main">
               <div className="employee-member-avatar">{member.avatarUrl ? <img src={member.avatarUrl} alt=""/> : member.employee.name.slice(0, 1)}</div>
-              <span className="employee-member-identity"><b>{member.employee.name}</b><small title={member.employee.username || member.externalUserId}>{member.employee.username ? `用户名 · ${member.employee.username}` : `${member.organizationName} · ${identityProviderLabel(member.identityProvider)} · ${compactIdentity(member.externalUserId)}`}</small></span>
+              <span className="employee-member-identity"><b>{member.employee.name}</b><small title={member.employee.username || member.externalUserId}>{member.employee.username ? `登录用户名 · ${member.employee.username}` : member.externalUserId === "bootstrap-unbound" ? "尚未设置登录账户或绑定扫码身份" : `${member.organizationName} · ${identityProviderLabel(member.identityProvider)} · ${compactIdentity(member.externalUserId)}`}</small></span>
               <select value={value.role} disabled={isSelf} onChange={(event) => {
                 const role = event.target.value;
                 patchDraft(member, {
