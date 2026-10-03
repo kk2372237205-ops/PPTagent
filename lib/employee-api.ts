@@ -75,7 +75,14 @@ export const employeeApi = {
   admin: {
     overview: () => get(`${employeeBase}/admin/overview`),
     createMember: (value: ApiBody) => post(`${employeeBase}/admin/members`, value),
-    updateMember: (membershipId: string, value: ApiBody) => patch(`${employeeBase}/admin/members/${membershipId}`, value)
+    updateMember: (membershipId: string, value: ApiBody) => patch(`${employeeBase}/admin/members/${membershipId}`, value),
+    createService: (value: ApiBody) => post(`${employeeBase}/admin/services`, value),
+    updateService: (serviceId: string, value: ApiBody) => patch(`${employeeBase}/admin/services/${serviceId}`, value),
+    deleteService: (serviceId: string) => request(`${employeeBase}/admin/services/${serviceId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm: true })
+    })
   },
 
   /* 订单：状态、负责人、客户消息 */

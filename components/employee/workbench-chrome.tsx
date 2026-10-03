@@ -10,12 +10,13 @@
  */
 
 import { useState } from "react";
-import { Activity, ArrowRight, BriefcaseBusiness, FileText, LayoutDashboard, LogOut, MessageCircle, RefreshCw, Send, Settings, ShieldCheck, UserCheck, UserCog, UserPlus, Users, X } from "lucide-react";
+import { Activity, ArrowRight, BriefcaseBusiness, FileText, LayoutDashboard, LogOut, MessageCircle, Pencil, Plus, RefreshCw, Send, Settings, ShieldCheck, Trash2, UserCheck, UserCog, UserPlus, Users, X } from "lucide-react";
 import { employeeApi } from "@/lib/employee-api";
 import { Consultation, Employee, EmployeeFeature, Message, Service } from "@/lib/employee-api-types";
 import { canAssignOrders, canOpenEmployeeAdmin, compactIdentity, identityProviderLabel, roleLabels } from "@/lib/employee-permissions";
 import { formatDate, formatDateTime, maskPhone, statusSlug } from "@/lib/employee-format";
 import { EmployeeBrand } from "./employee-login";
+import { OrderManagementModal, type OrderManagementMode } from "./order-management-modal";
 
 /** 左侧导航项；feature 为空表示始终可见 */
 const navItems: { id: string; label: string; icon: typeof BriefcaseBusiness; feature?: EmployeeFeature }[] = [
@@ -103,6 +104,8 @@ export function Orders({ services, employees, employee, enterWorkspace, refresh,
 }) {
   const [filter, setFilter] = useState("全部");
   const [memberDrafts, setMemberDrafts] = useState<Record<string, { employeeId: string; role: "lead" | "member" }>>({});
+  const [orderModal, setOrderModal] = useState<{ mode: OrderManagementMode; service?: Service } | null>(null);
+  const canManageOrders = canOpenEmployeeAdmin(employee);
   const visible = filter === "全部" ? services : services.filter(service => service.status === filter);
   async function assign(serviceId: string, assigneeId: string) {
     const response = await employeeApi.orders.setAssignee(serviceId, assigneeId);
@@ -131,12 +134,12 @@ export function Orders({ services, employees, employee, enterWorkspace, refresh,
     await refresh();
   }
   return <div className="employee-page">
-    <header className="employee-page-head"><div><span>ORDER OPERATIONS</span><h1>把每一份托付，推进为作品</h1></div><div className="employee-head-stat"><b>{services.length}</b><span>项订单正在流转</span></div></header>
+    <header className="employee-page-head"><div><span>ORDER OPERATIONS</span><h1>把每一份托付，推进为作品</h1></div><div className="employee-head-stat"><div><b>{services.length}</b><span>项订单正在流转</span></div>{canManageOrders && <button className="employee-order-create" onClick={() => setOrderModal({ mode: "create" })}><Plus/>新增订单</button>}</div></header>
     <div className="employee-filters">{["全部", ...statusOptions].map(item => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}<span>{item === "全部" ? services.length : services.filter(service => service.status === item).length}</span></button>)}</div>
     <div className="employee-order-list">{visible.map((service, index) => <article className="employee-order-card" key={service.id}>
       <div className={`employee-order-cover cover-${(index % 4) + 1}`}><small>{service.category}</small><strong>{service.title}</strong><span>WZLCF / {service.number.slice(0, 8)}</span></div>
       <div className="employee-order-content">
-        <div className="employee-order-title"><div><span className={`employee-status status-${statusSlug(service.status)}`}>{service.status}</span><h3>{service.title}</h3></div><span className="employee-customer">客户 {maskPhone(service.user.phone)}</span></div>
+        <div className="employee-order-title"><div><span className={`employee-status status-${statusSlug(service.status)}`}>{service.status}</span><h3>{service.title}</h3></div><div className="employee-order-title-side"><span className="employee-customer">客户 {maskPhone(service.user.phone)}</span>{canManageOrders && <div className="employee-order-admin-actions"><button onClick={() => setOrderModal({ mode: "edit", service })} title="修改订单"><Pencil/>修改</button><button className="danger" onClick={() => setOrderModal({ mode: "delete", service })} title="删除订单"><Trash2/>删除</button></div>}</div></div>
         <div className="employee-order-meta"><span>服务编号<b>{service.number}</b></span><span>购买时间<b>{formatDate(service.purchasedAt)}</b></span><span>服务价格<b>￥{(service.priceCents / 100).toLocaleString()}</b></span><span>负责人{canAssignOrders(employee) ? <select value={service.assigneeId || ""} onChange={event => assign(service.id, event.target.value)}><option value="">待分配</option>{employees.filter(item => item.enabled && item.membership.status === "active" && item.permissions.orders).map(item => <option value={item.id} key={item.membership.id}>{item.name}</option>)}</select> : <b>{service.assignee?.name || "待管理员分配"}</b>}</span></div>
         <div className="employee-progress"><div><i style={{ width: `${service.progress}%` }}/></div><b>{service.progress}%</b></div>
         {canAssignOrders(employee) && <div className="employee-project-members">
@@ -146,7 +149,8 @@ export function Orders({ services, employees, employee, enterWorkspace, refresh,
         </div>}
         <div className="employee-order-actions"><span>{service.workDocument ? `工作文件 · ${service.workDocument.versions.length} 个版本` : "尚未创建工作文件"}</span><button onClick={() => enterWorkspace(service)}><LayoutDashboard/>进入工作台<ArrowRight/></button></div>
       </div>
-    </article>)}</div>
+    </article>)}{visible.length === 0 && <div className="employee-orders-empty">当前筛选下没有订单</div>}</div>
+    {orderModal && <OrderManagementModal mode={orderModal.mode} service={orderModal.service} onClose={() => setOrderModal(null)} onDone={async (message) => { await refresh(); setOrderModal(null); notify(message); }}/>}
   </div>;
 }
 

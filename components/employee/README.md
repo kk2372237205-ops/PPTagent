@@ -12,6 +12,7 @@
 | --- | --- | --- |
 | `employee-login.tsx` | 微信/企业微信双扫码登录页 + 手机端阻断页 + 品牌标志 + 加载态 | `/api/employee/auth/*` |
 | `workbench-chrome.tsx` | 待审批页、左侧导航、订单任务、客户消息、客户需求面板、团队协作、设置页 | `/api/employee/me` |
+| `order-management-modal.tsx` | 平台管理员的新建、修改与删除订单确认窗口 | `/api/employee/admin/services/**` |
 | `employee-admin.tsx` | 管理控制台：成员审批/停用、角色与逐项权限、学校筛选、使用统计 | `/api/employee/admin/*` |
 | `onlyoffice-editor.tsx` | ONLYOFFICE 在线编辑器外壳，支持拖入 PPT/PPTX 替换当前文稿 | `/api/employee/work-documents/*` |
 | `ai-assistant-panel.tsx` | **生图 / AI 创作助手**：订单级 AI 会话（文字助手）与生图、两条中转的健康检查、任务轮询、图片预览与存入素材库 | `/api/employee/services/[id]/ai`、`…/ai/chat`、`…/generate-images`、`/api/employee/generated-images/[id]` |

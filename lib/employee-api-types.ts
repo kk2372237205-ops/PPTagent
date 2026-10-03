@@ -122,6 +122,9 @@ export type Service = {
   user: { phone: string }; workDocument: WorkDocument | null; activities: ActivityItem[];
   consultation: (Consultation & { messages: Message[] }) | null; generationJobs: GenerationJob[]; materialItems: MaterialItem[];
 };
+export type OrderManagementDraft = {
+  title: string; category: string; phone: string; priceCents: number; status: string; progress: number; purchasedAt: string;
+};
 export type EmployeeData = {
   employee: Employee | null; employees: Employee[]; services: Service[]; consultations: Consultation[];
 };
