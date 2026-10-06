@@ -13,9 +13,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   const service = await db.service.findUnique({
     where: { id },
     include: {
-      assignee: { select: { name: true } },
-      user: { select: { phone: true } },
-      workDocument: { select: { originalName: true, updatedAt: true } }
+      workDocument: { select: { originalName: true } }
     }
   });
   if (!service) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
@@ -53,7 +51,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   try {
     const answer = await generateTextResponse(model, buildPrompt({
       service,
-      summary: conversation.summary,
       messages: [...conversation.messages, userMessage],
       employeeName: employee.name
     }));
@@ -66,10 +63,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         provider: model.provider,
         model: model.model
       }
-    });
-    await db.aiConversation.update({
-      where: { id: conversation.id },
-      data: { summary: buildRollingSummary(conversation.summary, [...conversation.messages, userMessage, assistantMessage]) }
     });
     return NextResponse.json({ messages: [userMessage, assistantMessage] });
   } catch (error) {
@@ -91,7 +84,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
 function buildPrompt({
   service,
-  summary,
   messages,
   employeeName
 }: {
@@ -101,31 +93,31 @@ function buildPrompt({
     category: string;
     status: string;
     progress: number;
-    priceCents: number;
-    customerInfo: string;
-    user: { phone: string };
-    assignee: { name: string } | null;
-    workDocument: { originalName: string; updatedAt: Date } | null;
+    workDocument: { originalName: string } | null;
   };
-  summary: string;
   messages: Array<{ role: string; content: string }>;
   employeeName: string;
 }) {
-  const history = messages.slice(-18).map(message => `${message.role === "assistant" ? "AI" : employeeName}：${message.content}`).join("\n");
+  const latestMessage = messages.at(-1)?.content || "";
+  const base = [
+    "你是 WZLCF Presentation Studio 的员工侧 AI 助手。",
+    "直接回答用户最新一句话；使用中文、专业且简洁。",
+    "只有用户明确询问当前订单或 PPT 工作时才使用订单信息。对问候、闲聊或泛问题，不要主动提订单、PPT、进度、文件、缺少资料或下一步计划。"
+  ];
+  if (!shouldUseOrderContext(latestMessage)) return [...base, `用户：${latestMessage}`].join("\n");
+
+  const history = messages.slice(-12).map(message => `${message.role === "assistant" ? "AI" : employeeName}：${message.content}`).join("\n");
   return [
-    "你是 WZLCF Presentation Studio 的员工侧 AI 助手，帮助员工分析客户需求、整理 PPT 文案、构思页面结构和生成可执行建议。",
-    "请用中文回答，语气专业、简洁，避免编造不存在的客户信息。",
+    ...base,
+    "当前订单工作上下文：",
     `订单：${service.number} / ${service.title}`,
     `类型：${service.category}，状态：${service.status}，进度：${service.progress}%`,
-    `客户信息：${service.customerInfo || service.user.phone}，负责人：${service.assignee?.name || "待分配"}`,
     service.workDocument ? `当前 PPT：${service.workDocument.originalName}` : "当前 PPT：尚未载入工作文件",
-    summary ? `历史摘要：${summary}` : "",
     "对话历史：",
     history
-  ].filter(Boolean).join("\n");
+  ].join("\n");
 }
 
-function buildRollingSummary(existing: string, messages: Array<{ role: string; content: string }>) {
-  const latest = messages.slice(-6).map(message => `${message.role}:${message.content.slice(0, 300)}`).join(" | ");
-  return [existing, latest].filter(Boolean).join(" || ").slice(-3000);
+function shouldUseOrderContext(text: string) {
+  return /订单|客户|需求|ppt|文稿|文件|幻灯|页面|页数|大纲|文案|版式|设计|素材|交付|进度|项目|这份/i.test(text);
 }

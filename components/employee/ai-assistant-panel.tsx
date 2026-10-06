@@ -72,7 +72,19 @@ export function AiPanel({ service, employee, refresh, notify }: { service: Servi
     .sort(chronologicalSort);
   const processingImageJobIds = displayImageJobs.filter(job => job.status === "processing").map(job => job.id).join("|");
   const imageFeedKey = images.map(image => image.id).join("|") + ":" + displayImageJobs.map(job => job.id + job.status).join("|");
+  const selectedTextModel = textModels.find(model => model.id === textModelId) || textModels[0];
   const selectedImageModel = imageModels.find(model => model.id === imageModelId) || imageModels[0];
+  const textProviderHealth = selectedTextModel?.provider === "ark"
+    ? {
+      ok: selectedTextModel.available,
+      text: selectedTextModel.available ? `${selectedTextModel.label} 已配置` : "尚未配置 ARK_API_KEY"
+    }
+    : {
+      ok: Boolean(openAiHealth?.text?.ok),
+      text: openAiHealth?.text?.ok
+        ? `${AI_TEXT_DISPLAY_NAME} 已配置`
+        : openAiHealth?.text?.error || openAiHealth?.error || "正在检查文字中转服务..."
+    };
   const selectedImageSupportsReference = selectedImageModel?.provider === "openai"
     ? Boolean(openAiHealth?.image?.supportsEdits)
     : false;
@@ -255,7 +267,7 @@ export function AiPanel({ service, employee, refresh, notify }: { service: Servi
     <header><div><WandSparkles/><span><b>AI 创作助手</b><small>{employee.name} 的独立上下文</small></span></div><i>AI</i></header>
     <div className="ai-tabs"><button className={tab === "chat" ? "active" : ""} onClick={() => setTab("chat")}><Bot/>文本助手</button><button className={tab === "image" ? "active" : ""} onClick={() => setTab("image")}><ImagePlus/>AI 图片</button></div>
     {tab === "image" && selectedImageModel && <div className={"ai-health " + (imageProviderHealth.ok ? "ok" : "error")}><span>{imageProviderHealth.text}</span>{selectedImageModel.provider === "openai" && !imageProviderHealth.ok && <button title="重新检查图片中转配置" onClick={() => setOpenAiHealthCheckNonce(value => value + 1)} disabled={openAiHealthChecking}><RefreshCw className={openAiHealthChecking ? "spin" : ""}/></button>}</div>}
-    {tab === "chat" && openAiHealth?.text && <div className={"ai-health " + (openAiHealth.text.ok ? "ok" : "error")}><span>{openAiHealth.text.ok ? `${AI_TEXT_DISPLAY_NAME} 已配置` : openAiHealth.text.error}</span>{!openAiHealth.text.ok && <button title="重新检查文字中转配置" onClick={() => setOpenAiHealthCheckNonce(value => value + 1)} disabled={openAiHealthChecking}><RefreshCw className={openAiHealthChecking ? "spin" : ""}/></button>}</div>}
+    {tab === "chat" && selectedTextModel && <div className={"ai-health " + (textProviderHealth.ok ? "ok" : "error")}><span>{textProviderHealth.text}</span>{selectedTextModel.provider === "openai" && !textProviderHealth.ok && <button title="重新检查文字中转配置" onClick={() => setOpenAiHealthCheckNonce(value => value + 1)} disabled={openAiHealthChecking}><RefreshCw className={openAiHealthChecking ? "spin" : ""}/></button>}</div>}
     {tab === "chat" ? <>
       <div className="ai-model-row"><select value={textModelId} onChange={event => setTextModelId(event.target.value)}>{textModels.map(model => <option key={model.id} value={model.id}>{model.label}{model.available ? "" : "（未配置）"}</option>)}</select></div>
       <div ref={chatFeedRef} className="ai-chat-feed">
