@@ -1,4 +1,5 @@
 import { fetch as undiciFetch, ProxyAgent } from "undici";
+import { AI_IMAGE_DISPLAY_NAME, AI_TEXT_DISPLAY_NAME } from "@/lib/employee-ai-labels";
 
 export type AiProvider = "ark" | "openai";
 
@@ -39,7 +40,7 @@ export function textModelOptions() {
       id: `openai:${openAi.model}`,
       provider: "openai",
       model: openAi.model,
-      label: openAi.serviceName,
+      label: AI_TEXT_DISPLAY_NAME,
       available: openAi.configured
     }
   ];
@@ -64,7 +65,7 @@ export function imageModelOptions() {
       id: `openai:${openAi.model}`,
       provider: "openai" as const,
       model: openAi.model,
-      label: openAi.serviceName,
+      label: AI_IMAGE_DISPLAY_NAME,
       available: openAi.configured
     }
   ];

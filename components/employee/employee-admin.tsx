@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Activity, Bot, ImagePlus, KeyRound, LoaderCircle, Plus, RefreshCw, School, ShieldCheck, Trash2, UserCheck, UserPlus, UserX, Users } from "lucide-react";
 import { employeeApi } from "@/lib/employee-api";
+import { AI_IMAGE_DISPLAY_NAME, AI_TEXT_DISPLAY_NAME } from "@/lib/employee-ai-labels";
 import type { Employee, EmployeeFeature, EmployeePermissions } from "@/lib/employee-api-types";
 import { compactIdentity, featureLabels, identityProviderLabel, roleLabels, rolePermissionDefaults } from "@/lib/employee-permissions";
 import { formatDateTime } from "@/lib/employee-format";
@@ -143,7 +144,7 @@ export function EmployeeAdmin({ employee, notify }: { employee: Employee; notify
           <Bot/>
           <span>
             <small>文字中转服务</small>
-            <b>{overview.aiServices.text.serviceName}</b>
+            <b>{AI_TEXT_DISPLAY_NAME}</b>
             <em>{overview.aiServices.text.model} · {overview.aiServices.text.apiMode === "chat-completions" ? "Chat Completions" : "Responses"}</em>
             <code>{overview.aiServices.text.baseUrl}</code>
           </span>
@@ -153,7 +154,7 @@ export function EmployeeAdmin({ employee, notify }: { employee: Employee; notify
           <ImagePlus/>
           <span>
             <small>图片中转服务</small>
-            <b>{overview.aiServices.image.serviceName}</b>
+            <b>{AI_IMAGE_DISPLAY_NAME}</b>
             <em>{overview.aiServices.image.model} · {overview.aiServices.image.size}</em>
             <code>{overview.aiServices.image.baseUrl}</code>
           </span>

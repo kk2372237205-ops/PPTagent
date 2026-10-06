@@ -1,11 +1,11 @@
 /* 25-color-refinement.css — 由 employee.css 拆分而来（2026-09-14）。只影响对应模块；顺序由入口文件固定。 */
-/* Product-grade color refinement: calmer graphite, softer actions */
+/* Product-grade color refinement: graphite surfaces with restrained champagne-gold emphasis. */
 .employee-root .ppt-workspace,
 .employee-root .design-studio,
 .employee-root .explode-studio {
   background:
-    radial-gradient(circle at 48% 0,rgba(88,121,138,.13),transparent 32%),
-    linear-gradient(180deg,rgba(198,161,91,.035),transparent 24%),
+    radial-gradient(circle at 48% 0,rgba(198,161,91,.075),transparent 32%),
+    linear-gradient(180deg,rgba(255,255,255,.018),transparent 24%),
     var(--bg-app);
 }
 
@@ -59,9 +59,9 @@
 .employee-root .design-mentor-inline-tools .design-start-inline,
 .employee-root .explode-run > header .design-apply,
 .employee-root .explode-refine-panel footer button {
-  background:linear-gradient(135deg,#344F5B,#58798A);
-  border-color:#506A78;
-  color:#F7F8FA;
+  background:linear-gradient(135deg,#383932,#62583F);
+  border-color:#766949;
+  color:#F7F3E9;
   box-shadow:0 10px 24px rgba(0,0,0,.22);
 }
 
@@ -73,8 +73,8 @@
 .employee-root .image-tools-toggle:hover,
 .employee-root .deck-generation-form > button:hover,
 .employee-root .deck-progress button:hover {
-  background:linear-gradient(135deg,#3D5D69,#668798);
-  border-color:#6D8EA0;
+  background:linear-gradient(135deg,#49483D,#796D4C);
+  border-color:#9A875C;
 }
 
 .employee-root .workspace-actions button.finish,
@@ -93,9 +93,9 @@
 .employee-root .material-pager button,
 .employee-root .image-tools-card footer button,
 .employee-root .image-tools-card footer a {
-  background:#18202A;
-  border-color:#303946;
-  color:#CFD5DD;
+  background:#1B1C1A;
+  border-color:#3B3A34;
+  color:#D8D3C8;
 }
 
 .employee-root .workspace-actions button:hover,
@@ -105,9 +105,9 @@
 .employee-root .material-pager button:hover,
 .employee-root .image-tools-card footer button:hover,
 .employee-root .image-tools-card footer a:hover {
-  background:#222B36;
-  border-color:#44515F;
-  color:#F3F4F6;
+  background:#292923;
+  border-color:#605842;
+  color:#F3EFE5;
 }
 
 .employee-root .design-board > header > span,
@@ -128,7 +128,7 @@
 .employee-root .explode-events b,
 .employee-root .explode-history span,
 .employee-root .explode-text-recovery > header > b {
-  color:#8EA4B0;
+  color:#B6A77E;
 }
 
 .employee-root .design-run-history button.active span,
@@ -137,11 +137,11 @@
 }
 
 .employee-root .deck-progress b {
-  color:#9CBCC7;
+  color:#D4C292;
 }
 
 .employee-root .deck-slide-grid article header span {
-  color:#8FB2BE;
+  color:#CDBB8E;
 }
 
 .employee-root .deck-slide-grid article header span::selection {
@@ -175,7 +175,7 @@
 .employee-root .deck-reference-drop svg,
 .employee-root .deck-waiting svg,
 .employee-root .explode-empty svg {
-  color:#7EA4B0;
+  color:#C4AA70;
 }
 
 .employee-root .ai-tabs button.active,
@@ -183,15 +183,15 @@
 .employee-root .image-tools-card > aside button.active,
 .employee-root .design-batch-picker button.active,
 .employee-root .design-quality-switch button.active {
-  background:linear-gradient(135deg,rgba(88,121,138,.22),rgba(198,161,91,.08));
-  border-color:#6C7C73;
-  color:#F4F5F6;
+  background:linear-gradient(135deg,rgba(198,161,91,.18),rgba(255,255,255,.025));
+  border-color:#817454;
+  color:#F5F0E5;
   box-shadow:none;
 }
 
 .employee-root .design-tool-tabs button.active svg,
 .employee-root .design-tool-tabs svg {
-  color:#8CAEB9;
+  color:#C6AD73;
 }
 
 .employee-root .design-material-grid button.selected,
@@ -216,8 +216,8 @@
 .employee-root .polish-upload-zone:hover,
 .employee-root .polish-upload-zone.is-dragging,
 .employee-root .deck-reference-drop:hover {
-  background:rgba(26,41,52,.78);
-  border-color:#607988;
+  background:rgba(43,41,34,.82);
+  border-color:#8A7954;
 }
 
 .employee-root .design-mentor::before {
@@ -225,4 +225,3 @@
   border-color:#C9B47F;
   color:#20242A;
 }
-
