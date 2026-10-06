@@ -274,7 +274,7 @@ export function EmployeeLogin({ onLogin }: { onLogin: () => Promise<void> }) {
             <button onClick={() => void loadConfig(provider, selectedOrganization)}><RefreshCw/>重新检查配置</button>
           </div>}
         {error && <div className="employee-error">{error}</div>}
-        {config?.developmentBypassAvailable && <button className="employee-dev-admin" disabled={busy} onClick={enterDevelopmentAdmin}>暂不扫码，进入本地工作台</button>}
+        {config?.developmentBypassAvailable && <button className="employee-dev-admin" disabled={busy} onClick={enterDevelopmentAdmin}>管理员专用通道</button>}
         <small><ShieldCheck size={14}/>{provider === "wechat" ? "只读取授权后的微信昵称、头像和身份标识，不读取密码、聊天记录或联系人" : "只读取企业微信授权范围内的成员身份，不读取密码、聊天记录或联系人"}</small>
         </>}
       </div>
