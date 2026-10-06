@@ -116,14 +116,14 @@ export type WorkDocument = {
 export type ActivityItem = { id: string; action: string; detail: string; createdAt: string; employee: { name: string } };
 export type Service = {
   id: string; number: string; title: string; category: string; purchasedAt: string;
-  priceCents: number; status: string; progress: number; assigneeId: string | null;
+  priceCents: number; status: string; progress: number; customerInfo: string; assigneeId: string | null;
   assignee: { id: string; name: string; code: string } | null;
   collaborators?: { id: string; role: string; employee: { id: string; name: string; code: string } }[];
   user: { phone: string }; workDocument: WorkDocument | null; activities: ActivityItem[];
   consultation: (Consultation & { messages: Message[] }) | null; generationJobs: GenerationJob[]; materialItems: MaterialItem[];
 };
 export type OrderManagementDraft = {
-  title: string; category: string; phone: string; priceCents: number; status: string; progress: number; purchasedAt: string;
+  title: string; category: string; customerInfo: string; priceCents: number; status: string; progress: number; purchasedAt: string;
 };
 export type EmployeeData = {
   employee: Employee | null; employees: Employee[]; services: Service[]; consultations: Consultation[];

@@ -35,6 +35,7 @@
 - **默认 1 个主导画面单元。** 只有内容确实是并列的多阶段、多对比时才增加到 2–3 个。
 - 3 个各占 8% 的小图，效果远差于 1 个占 45% 的主画面。
 - 禁止用一排小图标代替一个主画面：把 5 个 1% 的图标合并成 1 个 40%+ 的插图。
+- **禁止把手、眼、脑袋/大脑、叶子、齿轮、文档、盾牌、数据库等通用线性图标当作能力、流程、成果或数据的占位。** 这些符号在本产品的生成 PPT 中没有默认豁免；删除它们，改成具名的文字、过程箭头、事实表，或能看出设备/材料/动作的完整画面。
 
 ### 3. 主体必须是具体名词
 
@@ -77,7 +78,7 @@ view:           同一视角贯穿整套（写实类固定机位与焦段；图�
 consistency:    全套共用同一镜头语言 / 同一制图规范，逐页重申
 ```
 
-**绝对不要出现**：卡通、扁平矢量吉祥物、Q 版、厚描边描边插画、纸片剪贴、发光渐变球、通用图标拼贴。
+**绝对不要出现**：卡通、扁平矢量吉祥物、Q 版、厚描边描边插画、纸片剪贴、发光渐变球、通用图标拼贴、手/眼/脑/叶/齿轮/文档/数据库等单色线性图标。
 **"写实"不等于"假精致"**：不要影棚灯光、不要商业摆拍、不要过度磨皮的塑料感，那反而更假。
 
 > ⚠️ 写实渲染的边界（与真实性硬规则一致，必须逐页重申）：
@@ -136,6 +137,7 @@ binary code, matrix rain, holographic UI panels, floating translucent glass card
 glassmorphism, frosted glass, particle constellations, sparkles, lens flare, bokeh,
 light trails, abstract swirling ribbons, digital brains, cyberpunk cities,
 faceless business silhouettes in offices, generic isometric cities,
+generic outline pictograms of hands, eyes, brains, heads, leaves, gears, documents, shields or databases,
 studio-staged stock-photo posing, over-retouched plastic skin, heavy vignette,
 3D beveled charts, chrome, neon outlines, watermark, model signature,
 readable certificates, contracts, reports, patent pages, invoices, official stamps,
@@ -202,5 +204,6 @@ Never render official documents, seals, institution signage, logos, or identifia
 | 色数 | 数一数超过 5 种颜色 | 二.4 |
 | 视角一致 | 上一页正面，这一页斜视 | 二.4 |
 | 与文字的关系 | 把插图换成别的图也不影响理解 | 二.6 |
+| 伪信息图标 | 手、眼、脑、叶子或齿轮只是在“代表”一句话 | 二.2：删除图标，以具体文字、结构关系或完整主题画面替代 |
 | 像不像证据 | 一眼像官方文件或真实照片 | 四 |
 | 整套节奏 | 前后页插图忽大忽小 | 二.1 / 版式档位 |

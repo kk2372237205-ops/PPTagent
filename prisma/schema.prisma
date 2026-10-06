@@ -96,6 +96,7 @@ model Service {
   priceCents     Int
   status         String
   progress       Int
+  customerInfo   String            @default("")
   userId         String
   user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   consultationId String?

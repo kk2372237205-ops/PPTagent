@@ -9,3 +9,5 @@ Quick mode uses this compact rendering contract. It is intentionally shorter tha
 - Render equipment, materials, sites and processes realistically: natural light, honest texture, real material detail. Use a precise technical diagram only for mechanisms, process or data. Never use cartoons, flat vectors, mascots or clip art.
 - Keep title, key text and page footer inside a 6% safe margin. Compress copy instead of shrinking the visual.
 - Do not fabricate official documents, seals, logos, institution signage, software screenshots, evidence, or identifiable real people.
+- **Do not use generic outline icons or icon rows as content:** no hand, eye, brain/head, leaf, gear, document, shield or database pictograms. Delete the pictogram and use a concrete fact sentence, labeled process relation, compact comparison, or a real subject/detail image instead.
+- For an ordinary body page, make the space information-dense without becoming wordy: a conclusion plus two supporting fact/relationship blocks is the minimum. Each block must contain a specific claim, condition, number, named part or consequence; a card with only an icon and a short abstract label is forbidden.

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { currentEmployeeAccess, hasEmployeeFeature, isEmployeeAdministrator } from "@/lib/employee-auth";
 import { db } from "@/lib/db";
-import { parseManagedServiceInput } from "@/lib/employee-order-management";
+import { customerForManagedOrder, parseManagedServiceInput } from "@/lib/employee-order-management";
 
 async function requirePlatformOrderManager() {
   const access = await currentEmployeeAccess();
@@ -16,7 +16,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   const authorization = await requirePlatformOrderManager();
   if ("response" in authorization) return authorization.response;
   const { id } = await context.params;
-  const current = await db.service.findUnique({ where: { id }, select: { id: true, title: true } });
+  const current = await db.service.findUnique({ where: { id }, select: { id: true, title: true, userId: true } });
   if (!current) return NextResponse.json({ error: "订单不存在或已被删除" }, { status: 404 });
 
   try {
@@ -24,11 +24,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     const parsed = parseManagedServiceInput(body);
     if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
     const value = parsed.value;
-    const customer = await db.user.upsert({
-      where: { phone: value.phone },
-      create: { phone: value.phone },
-      update: {}
-    });
+    const customer = await customerForManagedOrder(value.customerInfo, current.userId);
     const service = await db.service.update({
       where: { id },
       data: {
@@ -38,6 +34,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
         priceCents: value.priceCents,
         status: value.status,
         progress: value.progress,
+        customerInfo: value.customerInfo,
         userId: customer.id
       }
     });

@@ -15,7 +15,7 @@ export const manageableServiceStatuses = ["待开始", "制作中", "待客户�
 export type ManagedServiceInput = {
   title: string;
   category: string;
-  phone: string;
+  customerInfo: string;
   priceCents: number;
   status: string;
   progress: number;
@@ -28,7 +28,7 @@ function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-/** 将表单中的日期、金额和手机号收敛为可安全存储的服务字段。 */
+/** 将表单中的日期、金额和客户信息收敛为可安全存储的服务字段。 */
 export function parseManagedServiceInput(body: Record<string, unknown>): ParseResult {
   const title = text(body.title);
   if (!title || title.length > 120) return { error: "订单名称需为 1–120 个字符" };
@@ -36,8 +36,8 @@ export function parseManagedServiceInput(body: Record<string, unknown>): ParseRe
   const category = text(body.category);
   if (!category || category.length > 40) return { error: "服务类型需为 1–40 个字符" };
 
-  const phone = text(body.phone).replace(/[\s()-]/g, "");
-  if (!/^1[3-9]\d{9}$/.test(phone)) return { error: "请输入有效的 11 位客户手机号" };
+  const customerInfo = text(body.customerInfo);
+  if (!customerInfo || customerInfo.length > 240) return { error: "客户信息需为 1–240 个字符" };
 
   const priceCents = Number(body.priceCents);
   if (!Number.isSafeInteger(priceCents) || priceCents < 0 || priceCents > 100_000_000) {
@@ -61,13 +61,33 @@ export function parseManagedServiceInput(body: Record<string, unknown>): ParseRe
     value: {
       title,
       category,
-      phone,
+      customerInfo,
       priceCents,
       status,
       progress: status === "已完成" ? 100 : progress,
       purchasedAt
     }
   };
+}
+
+/**
+ * 手工订单允许只记录微信、姓名或备注；现有 Service 仍要求关联一个 User。
+ * 若客户信息中含中国大陆手机号就复用该客户账户，否则仅创建不对外展示的内部占位账户。
+ */
+export async function customerForManagedOrder(customerInfo: string, fallbackUserId?: string) {
+  const normalized = customerInfo.replace(/[\s()-]/g, "");
+  const phone = normalized.match(/1[3-9]\d{9}/)?.[0];
+  if (phone) {
+    return db.user.upsert({
+      where: { phone },
+      create: { phone },
+      update: {}
+    });
+  }
+  if (fallbackUserId) return { id: fallbackUserId };
+  return db.user.create({
+    data: { phone: `manual-order-${randomBytes(12).toString("hex")}` }
+  });
 }
 
 /** 随机尾号避免同日并发创建时发生编号冲突。 */

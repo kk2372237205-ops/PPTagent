@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Activity, Bot, ImagePlus, KeyRound, LoaderCircle, Plus, RefreshCw, School, ShieldCheck, UserCheck, UserPlus, UserX, Users } from "lucide-react";
+import { Activity, Bot, ImagePlus, KeyRound, LoaderCircle, Plus, RefreshCw, School, ShieldCheck, Trash2, UserCheck, UserPlus, UserX, Users } from "lucide-react";
 import { employeeApi } from "@/lib/employee-api";
 import type { Employee, EmployeeFeature, EmployeePermissions } from "@/lib/employee-api-types";
 import { compactIdentity, featureLabels, identityProviderLabel, roleLabels, rolePermissionDefaults } from "@/lib/employee-permissions";
@@ -30,6 +30,8 @@ export function EmployeeAdmin({ employee, notify }: { employee: Employee; notify
   const [newMember, setNewMember] = useState({ name: "", username: "", password: "", role: "member" });
   const [ownCredentials, setOwnCredentials] = useState({ username: employee.username || "", currentPassword: "", newPassword: "" });
   const [currentAccountReady, setCurrentAccountReady] = useState(Boolean(employee.username && employee.hasPassword));
+  const [removeTarget, setRemoveTarget] = useState<AdminMember | null>(null);
+  const [removingId, setRemovingId] = useState("");
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
@@ -99,6 +101,18 @@ export function EmployeeAdmin({ employee, notify }: { employee: Employee; notify
     setOwnCredentials((current) => ({ ...current, currentPassword: "", newPassword: "" }));
     setCurrentAccountReady(true);
     notify("个人用户名和密码已更新");
+    await loadOverview();
+  }
+
+  async function removeMember(member: AdminMember) {
+    setRemovingId(member.id);
+    const response = await employeeApi.admin.removeMember(member.id);
+    const result = await response.json();
+    setRemovingId("");
+    if (!response.ok) return notify(result.error || "移除员工失败");
+    setRemoveTarget(null);
+    setExpandedId((current) => current === member.id ? "" : current);
+    notify(result.message || `已移除 ${member.employee.name}`);
     await loadOverview();
   }
 
@@ -227,12 +241,28 @@ export function EmployeeAdmin({ employee, notify }: { employee: Employee; notify
                 <span>{featureLabels[feature]}</span>
               </label>)}
               <p>最后登录：{member.lastLoginAt ? formatDateTime(member.lastLoginAt) : "尚未登录"} · 最近操作 {member.employee.counts.activities} 次</p>
-              {!isSelf && <button className="employee-member-account-save" disabled={!drafts[member.id]} onClick={() => void save(member)}>保存账户与权限</button>}
+              {!isSelf && <div className="employee-member-account-actions">
+                <button className="employee-member-account-save" disabled={!drafts[member.id]} onClick={() => void save(member)}>保存账户与权限</button>
+                <button className="employee-member-remove" onClick={() => setRemoveTarget(member)}><Trash2/>移除该员工</button>
+              </div>}
             </div>}
           </article>;
         })}
         {!members.length && <div className="employee-control-empty">没有符合条件的成员</div>}
       </section>
     </>}
+    {removeTarget && <div className="employee-member-remove-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target && !removingId) setRemoveTarget(null); }}>
+      <section className="employee-member-remove-dialog" role="dialog" aria-modal="true" aria-labelledby="remove-member-title">
+        <span className="employee-member-remove-icon"><Trash2/></span>
+        <small>MEMBER ACCESS CONTROL</small>
+        <h2 id="remove-member-title">移除 {removeTarget.employee.name}</h2>
+        <p>将撤销此人在当前工作区的登录、订单派遣与协作权限。</p>
+        <div className="employee-member-remove-note">历史交付版本、生成记录和操作日志会保留，以便后续追溯。</div>
+        <footer>
+          <button type="button" disabled={Boolean(removingId)} onClick={() => setRemoveTarget(null)}>取消</button>
+          <button type="button" className="danger" disabled={Boolean(removingId)} onClick={() => void removeMember(removeTarget)}>{removingId ? <LoaderCircle className="spin"/> : <Trash2/>}{removingId ? "正在移除" : "确认移除"}</button>
+        </footer>
+      </section>
+    </div>}
   </div>;
 }

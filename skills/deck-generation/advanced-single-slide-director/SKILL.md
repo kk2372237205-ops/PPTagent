@@ -144,10 +144,11 @@ Every prohibition below is paired with the replacement you must use instead. A p
 
 - Obey the global style fingerprint for palette, typography, header/footer, grid, spacing, image treatment, geometry, motifs, and **`image_language`**.
 - Change only the page silhouette and visual arrangement needed by the page's semantic job.
-- ~~Default generic decorative icons to zero~~ → **Generic decorative icons are zero. Replace any row of small icons with one larger illustration of the underlying subject.** A row of 5 icons at 1% each must become 1 illustration at 40%+.
+- ~~Default generic decorative icons to zero~~ → **Generic decorative icons are always zero in generated PPT.** Never use hand, eye, brain/head, leaf, gear, document, shield or database pictograms as a shorthand for capability, process or result. Replace any row of small icons with one larger illustration of the underlying subject, a labeled relationship, or a compact fact block. A row of 5 icons at 1% each must become 1 illustration at 40%+.
 - A `problem-diagnosis` page may use only current-state, failure, defect, dependency, or pain-point facts. Do not reveal the complete solution too early.
 - When a page promises several proof categories such as patent, test, cooperation, and application, preserve every confirmed category in concise text or a fact-based diagram. **Never create a fake document image to fill a gap** — draw the *relationship between the categories* instead.
 - Never translate dates, people, places, awards, security, products, experiments, patents, contracts, or customer proof into generic decorative icons. **Instead, give those facts the page's dominant illustration as a mechanism, timeline, or process view.**
+- A body page needs a conclusion and at least two information-bearing supports. Use confirmed facts, conditions, relationships, named components or consequences; do not leave equal cards empty or use a tiny icon plus an abstract label to impersonate content.
 - ~~Never default to equal-weight card grids~~ → **Never use equal-weight card grids. Use one of these instead:** a labeled process chain, a single annotated mechanism, a before/after split, a dominant chart with a narrow insight rail, or one full-bleed visual.
 - Never invent readable institution or school signage, logos, certificates, contracts, reports, product labels, customer proof, awards, news coverage, or documentary screenshots. **The replacement is a realistic depiction of the mechanism, device, or theme itself.**
 - A generated scene may communicate theme or mechanism, and it **should look realistic** — real materials, natural light, honest textures. What it must not do is present itself as a documentary record of a specific real campus, customer site, experiment log, or achievement. State that boundary in the brief: `realistic rendering of what the subject looks like, not a documentary record of a specific real event, site, or person`.
@@ -173,7 +174,7 @@ Every prohibition below is paired with the replacement you must use instead. A p
 | Visual looks cartoonish or unserious | Switch `image_language.rendering` to `photorealistic documentary photograph`, and add real materials, natural light and honest textures. |
 | Visual looks fake in a glossy way | Remove studio lighting and beauty-retouch language; ask for available light, unevenness, dust, worn surfaces, no heavy retouching. |
 | Visual is an abstract blob | Replace the abstract noun with 3+ concrete nouns from the page content. |
-| Several tiny icons instead of one visual | Consolidate into one unit at 40%+ and delete the icon row. |
+| Several tiny icons instead of one visual | Consolidate into one unit at 40%+ and delete the icon row. Hand, eye, brain, leaf and gear glyphs are never a fallback. |
 | Several concrete blocks but only one unrelated picture | Give each parallel case/stage a distinct hard-edged picture frame, up to three; bind every frame to one named block and keep one clear primary anchor. |
 | A diagram is counted as “enough illustration” while the page has only one photo | Keep the diagram, then add a distinct context, process, or detail photo insert unless this is a pure chart/data table or fully annotated mechanism. |
 | Whole deck repeats diagram on the left and one photo on the right | Select a different named layout family for the next body page: story rail, panorama plus evidence band, comparison diptych, photo-led process, or vertical image spine. |
@@ -227,7 +228,7 @@ Return one object containing:
     "support_zone": "",
     "reading_order": []
   },
-  "icon_policy": "none|functional-only|limited-semantic",
+  "icon_policy": "none",
   "card_policy": "avoid|limited|justified-grid",
   "web_visual_search": {
     "queries": [

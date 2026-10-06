@@ -76,6 +76,11 @@ export const employeeApi = {
     overview: () => get(`${employeeBase}/admin/overview`),
     createMember: (value: ApiBody) => post(`${employeeBase}/admin/members`, value),
     updateMember: (membershipId: string, value: ApiBody) => patch(`${employeeBase}/admin/members/${membershipId}`, value),
+    removeMember: (membershipId: string) => request(`${employeeBase}/admin/members/${membershipId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm: true })
+    }),
     createService: (value: ApiBody) => post(`${employeeBase}/admin/services`, value),
     updateService: (serviceId: string, value: ApiBody) => patch(`${employeeBase}/admin/services/${serviceId}`, value),
     deleteService: (serviceId: string) => request(`${employeeBase}/admin/services/${serviceId}`, {

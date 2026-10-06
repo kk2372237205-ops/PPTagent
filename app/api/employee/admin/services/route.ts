@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { currentEmployeeAccess, hasEmployeeFeature, isEmployeeAdministrator } from "@/lib/employee-auth";
 import { db } from "@/lib/db";
-import { nextManagedServiceNumber, parseManagedServiceInput } from "@/lib/employee-order-management";
+import { customerForManagedOrder, nextManagedServiceNumber, parseManagedServiceInput } from "@/lib/employee-order-management";
 
 /** 平台管理员手工建立一对一服务订单。 */
 export async function POST(request: NextRequest) {
@@ -16,11 +16,7 @@ export async function POST(request: NextRequest) {
     const parsed = parseManagedServiceInput(body);
     if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
     const value = parsed.value;
-    const customer = await db.user.upsert({
-      where: { phone: value.phone },
-      create: { phone: value.phone },
-      update: {}
-    });
+    const customer = await customerForManagedOrder(value.customerInfo);
     const service = await db.service.create({
       data: {
         number: await nextManagedServiceNumber(),
@@ -30,6 +26,7 @@ export async function POST(request: NextRequest) {
         priceCents: value.priceCents,
         status: value.status,
         progress: value.progress,
+        customerInfo: value.customerInfo,
         userId: customer.id,
         organizationId: access.organization.id
       }

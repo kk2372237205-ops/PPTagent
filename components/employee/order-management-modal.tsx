@@ -29,7 +29,7 @@ function draftFromService(service?: Service): OrderManagementDraft {
     return {
       title: "",
       category: "PPT 定制",
-      phone: "",
+      customerInfo: "",
       priceCents: 0,
       status: "待开始",
       progress: 0,
@@ -39,7 +39,7 @@ function draftFromService(service?: Service): OrderManagementDraft {
   return {
     title: service.title,
     category: service.category,
-    phone: service.user.phone,
+    customerInfo: service.customerInfo || service.user.phone,
     priceCents: service.priceCents,
     status: service.status,
     progress: service.progress,
@@ -124,7 +124,7 @@ export function OrderManagementModal({ mode, service, onClose, onDone }: {
         <div className="employee-order-modal-form">
           <label className="wide"><span>订单名称</span><input value={draft.title} maxLength={120} onChange={(event) => update("title", event.target.value)} placeholder="例如：新能源品牌年度发布会" autoFocus/></label>
           <label><span>服务类型</span><input value={draft.category} maxLength={40} onChange={(event) => update("category", event.target.value)} placeholder="例如：PPT 定制"/></label>
-          <label><span>客户手机号</span><input value={draft.phone} inputMode="numeric" maxLength={16} onChange={(event) => update("phone", event.target.value)} placeholder="用于关联客户账户"/></label>
+          <label><span>客户信息</span><input value={draft.customerInfo} maxLength={240} onChange={(event) => update("customerInfo", event.target.value)} placeholder="例如：王老师 · 微信 wxid_xxx · 138xxxx1234"/></label>
           <label><span>订单金额（元）</span><input value={priceYuan} inputMode="decimal" onChange={(event) => { setPriceYuan(event.target.value); setError(""); }} placeholder="0.00"/></label>
           <label><span>下单时间</span><div className="employee-order-datetime"><CalendarDays/><input type="datetime-local" value={draft.purchasedAt} onChange={(event) => update("purchasedAt", event.target.value)}/></div></label>
           <label><span>订单状态</span><select value={draft.status} onChange={(event) => update("status", event.target.value)}>{statuses.map((status) => <option value={status} key={status}>{status}</option>)}</select></label>

@@ -102,6 +102,7 @@ function buildPrompt({
     status: string;
     progress: number;
     priceCents: number;
+    customerInfo: string;
     user: { phone: string };
     assignee: { name: string } | null;
     workDocument: { originalName: string; updatedAt: Date } | null;
@@ -116,7 +117,7 @@ function buildPrompt({
     "请用中文回答，语气专业、简洁，避免编造不存在的客户信息。",
     `订单：${service.number} / ${service.title}`,
     `类型：${service.category}，状态：${service.status}，进度：${service.progress}%`,
-    `客户手机号尾号：${service.user.phone.slice(-4)}，负责人：${service.assignee?.name || "待分配"}`,
+    `客户信息：${service.customerInfo || service.user.phone}，负责人：${service.assignee?.name || "待分配"}`,
     service.workDocument ? `当前 PPT：${service.workDocument.originalName}` : "当前 PPT：尚未载入工作文件",
     summary ? `历史摘要：${summary}` : "",
     "对话历史：",

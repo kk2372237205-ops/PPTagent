@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS "Service" (
   "priceCents" INTEGER NOT NULL,
   "status" TEXT NOT NULL,
   "progress" INTEGER NOT NULL,
+  "customerInfo" TEXT NOT NULL DEFAULT '',
   "userId" TEXT NOT NULL,
   "consultationId" TEXT,
   "organizationId" TEXT,
@@ -657,6 +658,12 @@ function ensureColumn(table, column, definition) {
 ensureColumn("Message", "employeeId", "TEXT");
 ensureColumn("Service", "assigneeId", "TEXT");
 ensureColumn("Service", "organizationId", "TEXT");
+ensureColumn("Service", "customerInfo", "TEXT NOT NULL DEFAULT ''");
+db.exec(`
+  UPDATE "Service"
+  SET "customerInfo" = COALESCE((SELECT "phone" FROM "User" WHERE "User"."id" = "Service"."userId"), '')
+  WHERE "customerInfo" = ''
+`);
 ensureColumn("EmployeeSession", "membershipId", "TEXT");
 ensureColumn("Employee", "username", "TEXT");
 ensureColumn("Employee", "passwordHash", "TEXT");
