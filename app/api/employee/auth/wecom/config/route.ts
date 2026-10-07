@@ -1,6 +1,6 @@
 import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { WECOM_STATE_COOKIE } from "@/lib/employee-auth";
+import { WECOM_STATE_COOKIE, isEmployeeLocalBypassEnabled } from "@/lib/employee-auth";
 import {
   getWeComOrganizationConfig,
   getWeComOrganizationConfigs,
@@ -22,8 +22,7 @@ export async function GET(request: NextRequest) {
     name: item.name,
     configured: isWeComConfigured(item)
   }));
-  const developmentBypassAvailable =
-    process.env.NODE_ENV !== "production" && process.env.WECOM_DEV_BYPASS === "1";
+  const developmentBypassAvailable = isEmployeeLocalBypassEnabled();
 
   if (!selected || !isWeComConfigured(selected)) {
     return NextResponse.json({

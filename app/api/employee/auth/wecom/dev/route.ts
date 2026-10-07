@@ -3,11 +3,12 @@ import { db } from "@/lib/db";
 import {
   createEmployeeSession,
   EMPLOYEE_SESSION_COOKIE,
-  ensureEmployeeBootstrap
+  ensureEmployeeBootstrap,
+  isEmployeeLocalBypassEnabled
 } from "@/lib/employee-auth";
 
 export async function POST(request: NextRequest) {
-  if (process.env.NODE_ENV === "production" || process.env.WECOM_DEV_BYPASS !== "1") {
+  if (!isEmployeeLocalBypassEnabled()) {
     return NextResponse.json({ error: "开发管理员入口未启用" }, { status: 404 });
   }
   const { admin, organizations } = await ensureEmployeeBootstrap();
