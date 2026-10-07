@@ -1,0 +1,16 @@
+# 启动脚本的换行符策略：显式钉死为 CRLF，不依赖各台机器的 core.autocrlf。
+#
+# 背景（2026-10-07 踩坑）：server\ 下的启动脚本一旦是 LF 换行，cmd.exe 解析批处理
+# 会丢字符，报出一堆 "'el' 不是内部或外部命令" 之类的碎片错误，启动器直接失效。
+# Windows 上还能靠 core.autocrlf=true 侥幸还原，但在 Linux / autocrlf=false 的机器上
+# 克隆出来就是 LF。所以只针对这几个后缀在仓库层面钉死，与个人设置无关。
+#
+# 注意：只钉 server\ 用到的这三类，不要给全仓库加规则——那会把项目里上百个
+# 已有文件全部重新暂存（曾误用 git add --renormalize 触发过一次，已回退）。
+
+*.cmd text eol=crlf
+*.vbs text eol=crlf
+*.ps1 text eol=crlf
+
+# .cmd 里是 GBK 编码的中文提示，diff 时会显示成乱码属正常现象，
+# 不要为了"看得好看"去改它的编码：cmd.exe 只认当前代码页(936)的字节。
