@@ -67,7 +67,7 @@ await reportTargets("Uploads breakdown", [
 console.log("\nSafe cleanup notes");
 console.log("- Source code is small; storage is mostly uploads, Python environments, model caches, Git history, npm/Next caches.");
 console.log("- Do not delete uploads if you still need old generated PPT/PDF/image previews.");
-console.log("- .venv-sam3, .venv-image-gpu, and .models are optional local AI/image tooling assets.");
+console.log("- .venv-image-gpu is the only optional local Python runtime left; uploads holds the real business files.");
 console.log("- node_modules, .npm-cache, .next, and .next-dev are reproducible caches/dependencies.");
 console.log("- This script is read-only. It never deletes files.");
 

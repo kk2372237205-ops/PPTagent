@@ -115,7 +115,7 @@
 | **接口（6+1 条）** | `app/api/employee/services/[id]/image-explode/runs/route.ts`<br>`…/runs/[runId]/{route,apply,reconstruction}/route.ts`<br>`…/runs/[runId]/parts/[partId]/{clean-text,refine}/route.ts`<br>`app/api/employee/image-explode/parts/[partId]/route.ts` |
 | **后台执行脚本** | `scripts/workers/image-explode/image-explode-worker.mjs`（18.2 KB） |
 | **本地拆图服务** | `scripts/component-extractor.mjs` / `component-extractor.py`、`Dockerfile.components`、`requirements-components.txt` |
-| **可选后端** | OpenCV（基线）/ PaddleOCR / SAM3 / Grounded-SAM2，配置见 `.env` 与 `README.md` |
+| **可选后端** | OpenCV（基线）/ PaddleOCR；SAM3 与 Grounded-SAM2/SAM2 已于 2026-10-30 移除（环境、权重、setup/check 脚本、npm 命令一并删除） |
 | **入口状态** | `components/employee-app.tsx` 的 `openExplode()` **只弹提示**，不进入 |
 
 ---

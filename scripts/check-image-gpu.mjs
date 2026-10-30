@@ -3,9 +3,8 @@ import { existsSync } from "fs";
 import path from "path";
 
 const root = process.cwd();
-const bundledSam3 = path.join(root, ".venv-sam3", "Scripts", "python.exe");
 const bundledGpu = path.join(root, ".venv-image-gpu", "Scripts", "python.exe");
-const python = process.env.COMPONENT_EXTRACTOR_PYTHON || (existsSync(bundledSam3) ? bundledSam3 : (existsSync(bundledGpu) ? bundledGpu : "python"));
+const python = process.env.COMPONENT_EXTRACTOR_PYTHON || (existsSync(bundledGpu) ? bundledGpu : "python");
 const probe = [
   "import json",
   "try:",

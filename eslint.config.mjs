@@ -10,7 +10,6 @@ export default defineConfig([
     ".next-dev/**",
     ".next-employee-visual/**",
     "uploads/**",
-    ".venv-image-gpu/**",
-    ".venv-sam3/**"
+    ".venv-image-gpu/**"
   ])
 ]);

@@ -97,7 +97,7 @@ Schema: {"components":[{"semanticId":"stable-id","parentId":null,"label":"short 
 Coordinates are 0-1000.
 Critical rules:
 1. Output only foreground layers that a PPT editor would reasonably move: main robot/person/product/vehicle, title artwork, logo frame, information cards, icons, decorative frame lines. Do not output abstract background, code texture, particles, gradients, vignettes, halos, random network lines, or full-page background pieces.
-2. Boxes must be tight around the visible pixels of that object. Include a small glow if it is visually attached, but do not include large surrounding blue background. Bad boxes ruin SAM3 masks.
+2. Boxes must be tight around the visible pixels of that object. Include a small glow if it is visually attached, but do not include large surrounding blue background. Bad boxes ruin the cutout masks.
 3. Large decorative/3D/glowing title text must be one complete title-art or wordart component, not split into separate characters, and not ordinary editable text. Ordinary small text can appear in texts only when truly readable.
 4. If there is a group plus child parts, set the group recommended=false and children recommended=true. Never recommend both the group and its children.
 5. Do not add invented text, logos, names or phone numbers. Prefer recall over silence: if an important foreground object is uncertain, still output it with lower confidence and recommended=true so the reviewer can decide. Max 18 components, 10 texts.`;

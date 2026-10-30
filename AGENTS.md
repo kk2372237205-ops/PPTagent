@@ -191,7 +191,7 @@ npm start
 ### 图片工具与图片炸开
 
 - 图片工具包含智能抠图、PPT 提取、图片变清晰等能力。
-- 图片炸开/组件拆图保留独立流程，按需使用 OpenCV、PaddleOCR、SAM3、Grounded-SAM2/SAM2 等后端。
+- 图片炸开/组件拆图保留独立流程，按需使用 OpenCV（GrabCut 基线）与 PaddleOCR；SAM3 与 Grounded-SAM2/SAM2 已连同虚拟环境和权重从项目中移除（2026-10-30），setup/check 脚本与 npm 命令也已删除，不要再写回或把它们描述成可用后端。
 - 任何清字、精修、重建类操作都应由员工主动触发，不能自动破坏原图或原 PPT。
 
 ### 服务介绍

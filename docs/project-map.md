@@ -376,9 +376,10 @@ scripts\workers\
 
 **C 组｜图片拆解相关的本地工具（可选，需要时才用）**
 
-`component-extractor.mjs` / `component-extractor.py` /
-`setup-sam3-weights.mjs` / `check-sam3.mjs` /
-`setup-grounded-sam2.mjs` / `check-grounded-sam2.mjs` / `check-image-gpu.mjs`
+`component-extractor.mjs` / `component-extractor.py` / `check-image-gpu.mjs`
+
+SAM3 与 Grounded-SAM2/SAM2 的 setup/check 脚本已于 2026-10-30 删除（连同 `.venv-sam3`、
+`.venv-grounded-sam2` 和权重），不要恢复这些命令；拆图只走 OpenCV 基线。
 
 **D 组｜运维、检查与测试脚本**
 

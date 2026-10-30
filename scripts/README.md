@@ -49,12 +49,10 @@
 
 - `component-extractor.mjs`
 - `component-extractor.py`
-- `setup-sam3-weights.mjs`
-- `setup-grounded-sam2.mjs`
-- `check-sam3.mjs`
-- `check-grounded-sam2.mjs`
+- `check-image-gpu.mjs`
 
-这些主要服务图片拆解/抠图能力。只做生成 PPT 或生图时，不一定需要启动。
+这些主要服务图片拆解/抠图能力，只有 OpenCV 基线（GrabCut），不加载任何分割模型。
+只做生成 PPT 或生图时，不一定需要启动。
 
 ## 开发端口选择
 

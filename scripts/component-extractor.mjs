@@ -51,20 +51,16 @@ if (!(await canListen(port))) {
   process.exit(0);
 }
 
-const bundledGroundedSam2Python = path.join(root, ".venv-grounded-sam2", "Scripts", "python.exe");
-const bundledSam3Python = path.join(root, ".venv-sam3", "Scripts", "python.exe");
 const bundledGpuPython = path.join(root, ".venv-image-gpu", "Scripts", "python.exe");
 function canRunExtractor(pythonPath) {
   if (!existsSync(pythonPath)) return false;
   return spawnSync(pythonPath, ["-c", "import cv2, numpy"], { stdio: "ignore", shell: false }).status === 0;
 }
-// Keep heavy CUDA/SAM runtimes isolated from the system Python.  Prefer SAM3
-// when it is configured, then Grounded-SAM2, then the lighter CUDA probe
-// environment and finally system Python.
+// Keep the optional CV runtime isolated from the system Python, then fall back
+// to whatever `python` is on PATH. The extractor only needs OpenCV + NumPy: the
+// SAM3 and Grounded-SAM2/SAM2 adapters were removed from this project.
 const python = process.env.COMPONENT_EXTRACTOR_PYTHON
-  || (canRunExtractor(bundledSam3Python)
-    ? bundledSam3Python
-    : (canRunExtractor(bundledGroundedSam2Python) ? bundledGroundedSam2Python : (canRunExtractor(bundledGpuPython) ? bundledGpuPython : "python")));
+  || (canRunExtractor(bundledGpuPython) ? bundledGpuPython : "python");
 const child = spawn(python, ["scripts/component-extractor.py", "--host", host, "--port", String(port)], {
   cwd: root,
   stdio: "inherit",

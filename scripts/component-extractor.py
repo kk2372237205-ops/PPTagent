@@ -3,8 +3,9 @@
 The service deliberately has no cloud credential.  It receives semantic boxes from
 the application, creates transparent foreground candidates with GrabCut, and
 returns a background plus alternative component variants for employee review.
-When SAM3 is installed by the optional setup command, this file is the stable
-local HTTP boundary where the higher-quality mask adapter is loaded.
+Segmentation is the OpenCV/GrabCut baseline only: the former SAM3 and
+Grounded-SAM2/SAM2 adapters were removed together with their environments and
+weights, so nothing here imports torch or a mask model.
 """
 
 import base64
@@ -20,18 +21,15 @@ HOST = os.getenv("COMPONENT_EXTRACTOR_HOST", "127.0.0.1")
 PORT = int(os.getenv("COMPONENT_EXTRACTOR_PORT", "8765"))
 _PADDLE_OCR = None
 _PADDLE_ERROR = ""
-_SAM3_IMPORT_ERROR = ""
-_SAM3_PROCESSOR = None
-_GSAM2_IMPORT_ERROR = ""
-_GSAM2_PREDICTOR = None
 
 
 def gpu_runtime_status():
     """Report the real runtime state without calling a CPU path "GPU".
 
-    The production adapter is intentionally separate from this probe: a CUDA
-    capable PyTorch installation alone does not improve GrabCut.  It becomes
-    useful only when a validated segmentation model uses it.
+    A CUDA-capable PyTorch installation alone does not speed up GrabCut, and no
+    model-backed adapter is loaded any more, so this payload is informational
+    only.  It stays in the health contract so operations can see what the host
+    actually has.
     """
     requested = os.getenv("COMPONENT_EXTRACTOR_DEVICE", "auto").lower()
     try:
@@ -45,7 +43,7 @@ def gpu_runtime_status():
             "name": device_name,
             "torch": str(torch.__version__),
             "cuda": str(torch.version.cuda or ""),
-            "reason": "CUDA runtime is ready for a segmentation adapter." if available else "CUDA PyTorch is not ready; using CPU-safe fallback."
+            "reason": "CUDA PyTorch is available; GrabCut still runs on CPU." if available else "CUDA PyTorch is not ready; GrabCut runs on CPU."
         }
     except Exception as error:
         return {
@@ -58,111 +56,20 @@ def gpu_runtime_status():
             "reason": f"CUDA PyTorch is unavailable: {str(error)[:160]}"
         }
 
-def segmentation_backend_status():
-    """Expose the segmentation adapter decision without pretending SAM3 works.
 
-    The product calls this service through a stable HTTP contract.  SAM3 is a
-    future plug-in behind that contract and may only become active after its
-    official license, checkpoint and CUDA runtime have been verified.
+def segmentation_backend_status():
+    """Report the only segmentation backend this service ships.
+
+    The extractor runs OpenCV GrabCut plus the local mask clean-up helpers.
+    SAM3 and Grounded-SAM2/SAM2 were removed from this project, so
+    COMPONENT_EXTRACTOR_BACKEND is still read for compatibility but can no
+    longer select a model-backed adapter.
     """
-    requested = os.getenv("COMPONENT_EXTRACTOR_BACKEND", "auto").lower()
-    gpu = gpu_runtime_status()
-    checkpoint = os.getenv("SAM3_CHECKPOINT", "").strip()
-    hf_requested = os.getenv("SAM3_LOAD_FROM_HF", "0").lower() in {"1", "true", "yes"}
-    sam3_status = {
-        "installed": False,
-        "builderImport": False,
-        "checkpoint": checkpoint,
-        "checkpointReady": bool(checkpoint and os.path.exists(checkpoint)),
-        "hfRequested": hf_requested,
-        "error": "",
-    }
-    sam2_checkpoint = os.getenv("SAM2_CHECKPOINT", "").strip()
-    sam2_cfg = os.getenv("SAM2_MODEL_CFG", "").strip()
-    gsam2_status = {
-        "installed": False,
-        "builderImport": False,
-        "checkpoint": sam2_checkpoint,
-        "checkpointReady": bool(sam2_checkpoint and os.path.exists(sam2_checkpoint)),
-        "modelCfg": sam2_cfg,
-        "modelCfgReady": bool(sam2_cfg and (os.path.exists(sam2_cfg) or sam2_cfg.startswith("configs/"))),
-        "grounder": os.getenv("GROUNDED_SAM2_GROUNDER", "vision-boxes"),
-        "error": "",
-    }
-    if requested in {"sam3", "auto"}:
-        try:
-            import sam3  # type: ignore  # installed only by the approved GPU setup
-            from sam3.model_builder import build_sam3_image_model  # type: ignore
-            sam3_status["installed"] = True
-            sam3_status["builderImport"] = callable(build_sam3_image_model)
-            if gpu["available"] and (sam3_status["checkpointReady"] or hf_requested):
-                return {
-                    "requested": requested,
-                    "active": "sam3-configured",
-                    "device": gpu,
-                    "sam3": sam3_status,
-                    "reason": "SAM3 package, CUDA and weight access are configured; the extractor will try SAM3 first and fall back to OpenCV if inference fails."
-                }
-            return {
-                "requested": requested,
-                "active": "opencv",
-                "device": gpu,
-                "sam3": sam3_status,
-                "reason": "SAM3 package is installed, but weights are not configured yet; using OpenCV until SAM3_CHECKPOINT or approved Hugging Face loading is available."
-            }
-        except Exception as error:
-            sam3_status["error"] = str(error)[:220]
-            if requested == "sam3":
-                return {
-                    "requested": requested,
-                    "active": "opencv",
-                    "device": gpu,
-                    "sam3": sam3_status,
-                    "groundedSam2": gsam2_status,
-                    "reason": "SAM3 was requested but its package or weights are not ready; using OpenCV fallback."
-                }
-    if requested in {"grounded-sam2", "gsam2", "sam2", "auto"}:
-        try:
-            from sam2.build_sam import build_sam2  # type: ignore
-            from sam2.sam2_image_predictor import SAM2ImagePredictor  # type: ignore
-            gsam2_status["installed"] = True
-            gsam2_status["builderImport"] = callable(build_sam2) and callable(SAM2ImagePredictor)
-            if gpu["available"] and gsam2_status["checkpointReady"] and gsam2_status["modelCfgReady"]:
-                return {
-                    "requested": requested,
-                    "active": "grounded-sam2-configured",
-                    "device": gpu,
-                    "sam3": sam3_status,
-                    "groundedSam2": gsam2_status,
-                    "reason": "Grounded-SAM2/SAM2 package, CUDA and checkpoint are configured; the extractor will use semantic boxes as grounding and SAM2 for masks."
-                }
-            if requested in {"grounded-sam2", "gsam2", "sam2"}:
-                return {
-                    "requested": requested,
-                    "active": "opencv",
-                    "device": gpu,
-                    "sam3": sam3_status,
-                    "groundedSam2": gsam2_status,
-                    "reason": "Grounded-SAM2 was requested, but SAM2 checkpoint/config or CUDA is not ready; using OpenCV fallback."
-                }
-        except Exception as error:
-            gsam2_status["error"] = str(error)[:220]
-            if requested in {"grounded-sam2", "gsam2", "sam2"}:
-                return {
-                    "requested": requested,
-                    "active": "opencv",
-                    "device": gpu,
-                    "sam3": sam3_status,
-                    "groundedSam2": gsam2_status,
-                    "reason": "Grounded-SAM2 was requested, but its Python package is not importable; using OpenCV fallback."
-                }
     return {
-        "requested": requested,
+        "requested": os.getenv("COMPONENT_EXTRACTOR_BACKEND", "auto").lower(),
         "active": "opencv",
-        "device": gpu,
-        "sam3": sam3_status,
-        "groundedSam2": gsam2_status,
-        "reason": "Using the dependable OpenCV baseline until a licensed GPU segmentation adapter is validated. GrabCut itself is CPU-only."
+        "device": gpu_runtime_status(),
+        "reason": "Using the dependable OpenCV baseline. SAM3 and Grounded-SAM2/SAM2 are no longer part of this project; GrabCut itself is CPU-only.",
     }
 
 
@@ -316,230 +223,7 @@ def grabcut_rgba(crop):
     return np.dstack((crop, alpha))
 
 
-def _sam3_prompt_for_component(component):
-    """Return a conservative prompt for SAM3's text path.
 
-    The box prompt is the primary signal for PPT assets because many labels are
-    Chinese and Open vocabulary text grounding can be brittle.  Text prompts are
-    used only when the component already supplies an ASCII maskHint.
-    """
-    hint = str(component.get("maskHint") or "").strip()
-    if hint and len(hint) <= 80 and all(ord(ch) < 128 for ch in hint):
-        return hint
-    kind = str(component.get("kind") or "").lower()
-    fallback = {
-        "subject": "main object",
-        "title-art": "decorative title text",
-        "wordart": "decorative title text",
-        "frame": "decorative frame",
-        "card": "information card",
-        "panel": "information panel",
-        "icon": "icon",
-        "decoration": "decorative element",
-    }.get(kind, "")
-    return fallback if os.getenv("COMPONENT_EXTRACTOR_SAM3_USE_KIND_PROMPT", "0").lower() in {"1", "true", "yes"} else ""
-
-
-def load_sam3_processor():
-    """Load SAM3 lazily after weights have been explicitly configured."""
-    global _SAM3_PROCESSOR, _SAM3_IMPORT_ERROR
-    if _SAM3_PROCESSOR is not None:
-        return _SAM3_PROCESSOR
-    checkpoint = os.getenv("SAM3_CHECKPOINT", "").strip()
-    hf_requested = os.getenv("SAM3_LOAD_FROM_HF", "0").lower() in {"1", "true", "yes"}
-    if not checkpoint and not hf_requested:
-        return None
-    if checkpoint and not os.path.exists(checkpoint):
-        _SAM3_IMPORT_ERROR = f"SAM3_CHECKPOINT does not exist: {checkpoint}"
-        return None
-    try:
-        import torch  # type: ignore
-        if not torch.cuda.is_available() and os.getenv("COMPONENT_EXTRACTOR_DEVICE", "auto").lower() != "cpu":
-            _SAM3_IMPORT_ERROR = "SAM3 requires CUDA for this workflow; CUDA is not available."
-            return None
-        from sam3.model.sam3_image_processor import Sam3Processor  # type: ignore
-        from sam3.model_builder import build_sam3_image_model  # type: ignore
-        device = "cuda" if torch.cuda.is_available() and os.getenv("COMPONENT_EXTRACTOR_DEVICE", "auto").lower() != "cpu" else "cpu"
-        model = build_sam3_image_model(
-            checkpoint_path=checkpoint or None,
-            load_from_HF=bool(hf_requested and not checkpoint),
-            device=device,
-            eval_mode=True,
-            compile=False,
-        )
-        threshold = float(os.getenv("COMPONENT_EXTRACTOR_SAM3_CONFIDENCE", "0.35"))
-        _SAM3_PROCESSOR = Sam3Processor(model, device=device, confidence_threshold=threshold)
-        _SAM3_IMPORT_ERROR = ""
-        return _SAM3_PROCESSOR
-    except Exception as error:
-        _SAM3_IMPORT_ERROR = str(error)[:300]
-        _SAM3_PROCESSOR = None
-        return None
-
-
-def _mask_overlap_score(mask, x0, y0, x1, y1):
-    if mask is None or mask.size == 0:
-        return 0.0
-    height, width = mask.shape[:2]
-    x0, y0, x1, y1 = clamp(x0, 0, width - 1), clamp(y0, 0, height - 1), clamp(x1, 1, width), clamp(y1, 1, height)
-    rect_area = max(1, (x1 - x0) * (y1 - y0))
-    inside = float(np.count_nonzero(mask[y0:y1, x0:x1]))
-    total = float(np.count_nonzero(mask))
-    if total <= 0:
-        return 0.0
-    return 0.72 * (inside / total) + 0.28 * min(1.0, inside / rect_area)
-
-
-def sam3_component_masks(source, components, width, height):
-    """Try SAM3 once per image and return full-image alpha masks by component index."""
-    processor = load_sam3_processor()
-    if processor is None:
-        return {}
-    try:
-        from PIL import Image  # type: ignore
-        import torch  # type: ignore
-        rgb = cv2.cvtColor(source, cv2.COLOR_BGR2RGB)
-        pil_image = Image.fromarray(rgb)
-        device_type = "cuda" if torch.cuda.is_available() and os.getenv("COMPONENT_EXTRACTOR_DEVICE", "auto").lower() != "cpu" else "cpu"
-        autocast_enabled = device_type == "cuda"
-        with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=autocast_enabled):
-            base_state = processor.set_image(pil_image)
-        masks = {}
-        use_text = os.getenv("COMPONENT_EXTRACTOR_SAM3_USE_TEXT", "0").lower() in {"1", "true", "yes"}
-        for index, component in enumerate(components[:18]):
-            kind = str(component.get("kind") or "").lower()
-            if kind in {"group", "panel-group"}:
-                continue
-            x0, y0, x1, y1 = rect_from_box(component.get("box"), width, height, component_pad(component, "mask"))
-            state = dict(base_state)
-            prompt = _sam3_prompt_for_component(component) if use_text else ""
-            with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=autocast_enabled):
-                if prompt:
-                    state = processor.set_text_prompt(prompt=prompt, state=state)
-                cx = ((x0 + x1) / 2) / width
-                cy = ((y0 + y1) / 2) / height
-                bw = (x1 - x0) / width
-                bh = (y1 - y0) / height
-                state = processor.add_geometric_prompt([cx, cy, bw, bh], True, state)
-            raw_masks = state.get("masks")
-            if raw_masks is None or len(raw_masks) == 0:
-                continue
-            raw_scores = state.get("scores")
-            best_mask, best_score = None, -1.0
-            for mask_index in range(int(raw_masks.shape[0])):
-                mask = raw_masks[mask_index].squeeze()
-                if hasattr(mask, "detach"):
-                    mask = mask.detach().to("cpu").numpy()
-                mask = np.asarray(mask).astype(bool)
-                score = _mask_overlap_score(mask, x0, y0, x1, y1)
-                area_ratio, low_quality = alpha_quality(mask.astype(np.uint8) * 255, kind)
-                score += 0.08 if 0.015 <= area_ratio <= 0.72 else -0.08
-                if low_quality:
-                    score -= 0.18
-                if raw_scores is not None:
-                    score += 0.08 * float(raw_scores[mask_index].detach().to("cpu").item() if hasattr(raw_scores[mask_index], "detach") else raw_scores[mask_index])
-                if score > best_score:
-                    best_mask, best_score = mask, score
-            if best_mask is None:
-                continue
-            alpha = cleanup_alpha(best_mask.astype(np.uint8) * 255, kind)
-            masks[index] = alpha
-        return masks
-    except Exception as error:
-        global _SAM3_IMPORT_ERROR
-        _SAM3_IMPORT_ERROR = str(error)[:300]
-        try:
-            import torch  # type: ignore
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        except Exception:
-            pass
-        return {}
-
-
-def load_grounded_sam2_predictor():
-    """Load the legal Grounded-SAM2 fallback lazily.
-
-    In this product, grounding is already supplied by the visual layer planner
-    as semantic boxes.  When GroundingDINO/Florence-2 are installed later, they
-    can improve those boxes before this point; SAM2 is the mask executor here.
-    """
-    global _GSAM2_PREDICTOR, _GSAM2_IMPORT_ERROR
-    if _GSAM2_PREDICTOR is not None:
-        return _GSAM2_PREDICTOR
-    checkpoint = os.getenv("SAM2_CHECKPOINT", "").strip()
-    model_cfg = os.getenv("SAM2_MODEL_CFG", "").strip()
-    if not checkpoint or not model_cfg:
-        return None
-    if checkpoint and not os.path.exists(checkpoint):
-        _GSAM2_IMPORT_ERROR = f"SAM2_CHECKPOINT does not exist: {checkpoint}"
-        return None
-    if model_cfg and not os.path.exists(model_cfg) and not model_cfg.startswith("configs/"):
-        _GSAM2_IMPORT_ERROR = f"SAM2_MODEL_CFG does not exist: {model_cfg}"
-        return None
-    try:
-        import torch  # type: ignore
-        if not torch.cuda.is_available() and os.getenv("COMPONENT_EXTRACTOR_DEVICE", "auto").lower() != "cpu":
-            _GSAM2_IMPORT_ERROR = "Grounded-SAM2/SAM2 requires CUDA for this workflow; CUDA is not available."
-            return None
-        from sam2.build_sam import build_sam2  # type: ignore
-        from sam2.sam2_image_predictor import SAM2ImagePredictor  # type: ignore
-        device = "cuda" if torch.cuda.is_available() and os.getenv("COMPONENT_EXTRACTOR_DEVICE", "auto").lower() != "cpu" else "cpu"
-        model = build_sam2(model_cfg, checkpoint, device=device)
-        _GSAM2_PREDICTOR = SAM2ImagePredictor(model)
-        _GSAM2_IMPORT_ERROR = ""
-        return _GSAM2_PREDICTOR
-    except Exception as error:
-        _GSAM2_IMPORT_ERROR = str(error)[:300]
-        _GSAM2_PREDICTOR = None
-        return None
-
-
-def grounded_sam2_component_masks(source, components, width, height):
-    predictor = load_grounded_sam2_predictor()
-    if predictor is None:
-        return {}
-    try:
-        rgb = cv2.cvtColor(source, cv2.COLOR_BGR2RGB)
-        predictor.set_image(rgb)
-        masks = {}
-        min_score = float(os.getenv("GROUNDED_SAM2_MIN_SCORE", "0.0"))
-        for index, component in enumerate(components[:18]):
-            kind = str(component.get("kind") or "").lower()
-            if kind in {"group", "panel-group"}:
-                continue
-            x0, y0, x1, y1 = rect_from_box(component.get("box"), width, height, component_pad(component, "mask"))
-            box = np.array([x0, y0, x1, y1], dtype=np.float32)
-            raw_masks, raw_scores, _ = predictor.predict(box=box, multimask_output=True)
-            if raw_masks is None or len(raw_masks) == 0:
-                continue
-            best_mask, best_score = None, -1.0
-            for mask, score in zip(raw_masks, raw_scores if raw_scores is not None else [0] * len(raw_masks)):
-                mask = np.asarray(mask).astype(bool)
-                overlap = _mask_overlap_score(mask, x0, y0, x1, y1)
-                area_ratio, low_quality = alpha_quality(mask.astype(np.uint8) * 255, kind)
-                area_bonus = 0.08 if 0.015 <= area_ratio <= 0.72 else -0.08
-                combined = overlap + area_bonus + 0.12 * float(score)
-                if low_quality:
-                    combined -= 0.18
-                if combined > best_score:
-                    best_mask, best_score = mask, combined
-            if best_mask is None or best_score < min_score:
-                continue
-            alpha = (best_mask.astype(np.uint8) * 255)
-            alpha = cleanup_alpha(alpha, kind)
-            masks[index] = alpha
-        return masks
-    except Exception as error:
-        global _GSAM2_IMPORT_ERROR
-        _GSAM2_IMPORT_ERROR = str(error)[:300]
-        try:
-            import torch  # type: ignore
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        except Exception:
-            pass
-        return {}
 def normalize_rect(x0, y0, x1, y1, width, height):
     return {"x": x0 / width, "y": y0 / height, "width": (x1 - x0) / width, "height": (y1 - y0) / height}
 
@@ -788,10 +472,6 @@ def explode(payload):
     union_mask = np.zeros((height, width), dtype=np.uint8)
     reconstruction_parts = []
     segmentation = segmentation_backend_status()
-    sam3_full_masks = sam3_component_masks(source, components, width, height) if segmentation["active"] == "sam3-configured" else {}
-    sam3_used = bool(sam3_full_masks)
-    gsam2_full_masks = grounded_sam2_component_masks(source, components, width, height) if segmentation["active"] == "grounded-sam2-configured" and not sam3_used else {}
-    gsam2_used = bool(gsam2_full_masks)
 
     for index, component in enumerate(components[:18]):
         kind = str(component.get("kind") or "object")[:24]
@@ -813,33 +493,18 @@ def explode(payload):
         is_group = kind_key in {"group", "panel-group"}
         recommended = bool(component.get("recommended", not is_group))
         primary_crop = crop if related_artwork or kind_key in {"title-art", "wordart"} else clean_crop_text(crop, related_native, x0, y0)
-        full_alpha = sam3_full_masks.get(index)
-        if full_alpha is None:
-            full_alpha = gsam2_full_masks.get(index)
-        if full_alpha is not None:
-            alpha = full_alpha[y0:y1, x0:x1]
-            if alpha.shape[:2] != primary_crop.shape[:2]:
-                alpha = cv2.resize(alpha, (primary_crop.shape[1], primary_crop.shape[0]), interpolation=cv2.INTER_LINEAR)
-            alpha = cleanup_alpha(alpha, kind_key)
-            rgba = np.dstack((primary_crop, alpha))
-            extract_mode = "sam3-mask" if index in sam3_full_masks else "grounded-sam2-mask"
-        else:
-            rgba = grabcut_rgba(primary_crop)
-            alpha = rgba[:, :, 3]
-            alpha = cleanup_alpha(alpha, kind_key)
-            rgba[:, :, 3] = alpha
-            extract_mode = "local-mask"
-            if segmentation["active"] == "sam3-configured":
-                extract_mode = "sam3-fallback-local-mask-needs-review"
+        rgba = grabcut_rgba(primary_crop)
+        alpha = rgba[:, :, 3]
+        alpha = cleanup_alpha(alpha, kind_key)
+        rgba[:, :, 3] = alpha
+        extract_mode = "local-mask"
         rgba, x0, y0 = trim_rgba_to_alpha(rgba, x0, y0, width, height, kind_key)
         alpha = rgba[:, :, 3]
         rect = normalize_rect(x0, y0, x0 + rgba.shape[1], y0 + rgba.shape[0], width, height)
         alpha_ratio, low_quality_mask = alpha_quality(alpha, kind_key)
         if low_quality_mask and kind_key not in {"line", "decoration"}:
-            # SAM3 trial mode: do not hide candidates just because the local
-            # heuristic dislikes the mask. Show it to the employee and mark it
-            # for review; otherwise a strict filter can make SAM3 look like it
-            # produced nothing at all.
+            # Do not hide a candidate just because the local heuristic dislikes
+            # the mask: show it to the employee and mark it for review.
             extract_mode = f"{extract_mode}-needs-review"
         if component.get("removeFromBackground", not is_group):
             ux1 = min(width, x0 + alpha.shape[1])
@@ -879,21 +544,7 @@ def explode(payload):
             continue
         style = item["style"]
         text_layers.append({"label": f"Text {text_index + 1}", "content": item["content"], "groupKey": None, "rotation": item["rotation"], "style": style, "complexity": "complex" if item.get("mode") == "artwork" or style.get("complex") else "simple", "mode": item.get("mode", "skip"), "selected": item.get("mode") == "native", "confidence": item["confidence"], "ocrConfidence": item.get("ocrConfidence", 0.0), "visionConfidence": item.get("visionConfidence", 0.0), "semanticRole": item.get("semanticRole", "unknown"), **item["box"]})
-    if sam3_used:
-        segmentation = {**segmentation, "active": "sam3", "reason": f"SAM3 generated masks for {len(sam3_full_masks)} component(s); OpenCV remains the fallback for unmatched parts."}
-    elif segmentation["active"] == "sam3-configured":
-        sam3_meta = dict(segmentation.get("sam3") or {})
-        if _SAM3_IMPORT_ERROR:
-            sam3_meta["error"] = _SAM3_IMPORT_ERROR
-        segmentation = {**segmentation, "active": "opencv", "sam3": sam3_meta, "reason": f"SAM3 was configured but did not return usable masks; using OpenCV fallback. {_SAM3_IMPORT_ERROR}".strip()}
-    elif gsam2_used:
-        segmentation = {**segmentation, "active": "grounded-sam2", "reason": f"Grounded-SAM2/SAM2 generated masks for {len(gsam2_full_masks)} component(s); OpenCV remains the fallback for unmatched parts."}
-    elif segmentation["active"] == "grounded-sam2-configured":
-        gsam2_meta = dict(segmentation.get("groundedSam2") or {})
-        if _GSAM2_IMPORT_ERROR:
-            gsam2_meta["error"] = _GSAM2_IMPORT_ERROR
-        segmentation = {**segmentation, "active": "opencv", "groundedSam2": gsam2_meta, "reason": f"Grounded-SAM2 was configured but did not return usable masks; using OpenCV fallback. {_GSAM2_IMPORT_ERROR}".strip()}
-    return {"width": width, "height": height, "backend": f"{segmentation['active']}+{text_backend}", "segmentation": segmentation, "ocrWarning": _PADDLE_ERROR if text_backend != "paddleocr+vision" else "", "parts": parts, "textLayers": text_layers, "qa": qa, "reconstruction": png_data(reconstruction), "layerPlan": {"components": components, "textBackend": text_backend, "sam3Masks": len(sam3_full_masks), "groundedSam2Masks": len(gsam2_full_masks)}}
+    return {"width": width, "height": height, "backend": f"{segmentation['active']}+{text_backend}", "segmentation": segmentation, "ocrWarning": _PADDLE_ERROR if text_backend != "paddleocr+vision" else "", "parts": parts, "textLayers": text_layers, "qa": qa, "reconstruction": png_data(reconstruction), "layerPlan": {"components": components, "textBackend": text_backend}}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -913,10 +564,6 @@ class Handler(BaseHTTPRequestHandler):
                 "backend": segmentation["active"],
                 "segmentation": segmentation,
                 "gpu": segmentation["device"],
-                "sam3Installed": bool((segmentation.get("sam3") or {}).get("installed")),
-                "sam3Ready": segmentation["active"] in {"sam3", "sam3-configured"},
-                "groundedSam2Installed": bool((segmentation.get("groundedSam2") or {}).get("installed")),
-                "groundedSam2Ready": segmentation["active"] == "grounded-sam2",
             })
         self.send_json(404, {"error": "not found"})
 
