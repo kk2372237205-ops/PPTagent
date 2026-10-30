@@ -1,7 +1,7 @@
 import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { syncEmployeeWorkspaces } from "@/lib/employee-workspaces";
-import { WECHAT_STATE_COOKIE } from "@/lib/employee-auth";
+import { WECHAT_STATE_COOKIE, isEmployeeLocalBypassEnabled } from "@/lib/employee-auth";
 import {
   getWeChatLoginConfig,
   getWeChatWorkspaceOptions,
@@ -19,8 +19,7 @@ export async function GET(request: NextRequest) {
   const selected = workspaces.find((item) => item.slug === requestedSlug) || workspaces[0] || null;
   const loginConfig = getWeChatLoginConfig();
   const configured = isWeChatConfigured(loginConfig);
-  const developmentBypassAvailable =
-    process.env.NODE_ENV !== "production" && process.env.WECHAT_DEV_BYPASS === "1";
+  const developmentBypassAvailable = isEmployeeLocalBypassEnabled();
 
   if (!selected || !configured) {
     return NextResponse.json({

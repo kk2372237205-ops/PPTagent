@@ -118,6 +118,23 @@ export function resolveEmployeePermissions(
   ])) as EmployeePermissions;
 }
 
+/**
+ * 员工端“管理员专用通道”（免扫码直接以平台管理员身份进入工作台）的开关。
+ *
+ * 背景：2026-10-07 这台机器改为局域网常驻服务器，以 `next start` 生产模式运行。
+ * 原先该通道被硬编码为 `NODE_ENV !== "production"`，因此生产模式下一律关闭；
+ * 而微信/企业微信扫码登录需要已备案域名 + HTTPS 回调，裸 IP 部署无法配置，
+ * 结果是员工工作台完全无法登录。
+ *
+ * 现在改为：只要显式设置 EMPLOYEE_LOCAL_BYPASS=1 就放行，**默认关闭**。
+ * 这是有意的取舍——生产环境禁止绕过登录的意图保留（必须主动改环境变量才生效），
+ * 但允许"局域网内自建服务器"这种没有 HTTPS 域名的部署方式使用工作台。
+ * 对外网暴露的正式部署**不要**开启这一项。
+ */
+export function isEmployeeLocalBypassEnabled() {
+  return process.env.EMPLOYEE_LOCAL_BYPASS === "1";
+}
+
 export async function ensureEmployeeBootstrap() {
   const organizations = await syncEmployeeWorkspaces();
   let admin = await db.employee.findFirst({
